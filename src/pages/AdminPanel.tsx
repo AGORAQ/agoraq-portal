@@ -29,6 +29,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { db } from '@/services/db';
+import { emailService } from '@/services/emailService';
 import { User, CommissionGroup, AccessRequest, Bank, CommissionTable } from '@/types';
 
 export default function AdminPanel() {
@@ -51,7 +52,7 @@ export default function AdminPanel() {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [formData, setFormData] = useState<Partial<User>>({
-    name: '', email: '', role: 'vendedor', status: 'Ativo', fgtsGroup: '', cltGroup: ''
+    name: '', email: '', role: 'vendedor', status: 'Ativo', fgtsGroup: '', cltGroup: '', password: ''
   });
 
   // Commission Groups State
@@ -145,7 +146,6 @@ export default function AdminPanel() {
     );
   }
 
-  // ... (User management handlers: handleInputChange, handleEdit, handleDelete, handleSubmit)
   const handleInputChange = (field: string, value: string) => {
     setFormData(prev => ({ ...prev, [field]: value }));
   };
@@ -163,30 +163,105 @@ export default function AdminPanel() {
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (editingUser) {
       db.users.update(editingUser.id, formData);
+      alert('Usuário atualizado com sucesso!');
     } else {
+      const password = formData.password || '123456'; // Default if empty, but form should require it
+      
       db.users.create({
         name: formData.name || '',
         email: formData.email || '',
         role: formData.role as any,
         status: formData.status as any,
-        password: '123', // Default password
+        password: password,
         fgtsGroup: formData.fgtsGroup,
-        cltGroup: formData.cltGroup
+        cltGroup: formData.cltGroup,
+        bancos_permitidos: formData.bancos_permitidos
       });
       
-      // Simulate sending email with credentials
-      alert(`Usuário criado com sucesso!\n\nAs credenciais de acesso foram enviadas para: ${formData.email}`);
+      // Send credentials via email
+      const emailResult = await emailService.sendCredentials(
+        formData.email || '',
+        formData.name || '',
+        formData.email || '',
+        password
+      );
+
+      if (emailResult.success) {
+        alert(`Usuário criado com sucesso!\n\nAs credenciais foram enviadas para: ${formData.email}`);
+      } else {
+        alert(`Usuário criado, mas houve um erro ao enviar o e-mail.\n\nVerifique as configurações do EmailJS.`);
+      }
     }
     loadData();
     setIsFormOpen(false);
     setEditingUser(null);
-    setFormData({ name: '', email: '', role: 'vendedor', status: 'Ativo', fgtsGroup: '', cltGroup: '' });
+    setFormData({ name: '', email: '', role: 'vendedor', status: 'Ativo', fgtsGroup: '', cltGroup: '', password: '' });
   };
 
+  // ... (existing code)
+
+  const handleTestEmail = async () => {
+    const email = prompt("Digite um e-mail para receber o teste:");
+    if (email) {
+      alert("Enviando e-mail de teste...");
+      const result = await emailService.sendPasswordReset(email); // Reusing reset template for test
+      alert(result.message);
+    }
+  };
+
+  // ... (render code)
+
+      {activeTab === 'settings' && (
+        <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Settings className="w-5 h-5 text-blue-600" />
+                Configurações do Dashboard
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              
+              <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg">
+                <h3 className="font-medium mb-2">Teste de E-mail (EmailJS)</h3>
+                <p className="text-sm text-slate-500 mb-4">
+                  Verifique se as chaves de API estão configuradas corretamente enviando um e-mail de teste.
+                </p>
+                <Button onClick={handleTestEmail} variant="outline">
+                  <Mail className="w-4 h-4 mr-2" />
+                  Enviar E-mail de Teste
+                </Button>
+              </div>
+
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Link do Canva (Foto WhatsApp)</label>
+                  <Input 
+                    placeholder="https://www.canva.com/..." 
+                    value={canvaLink}
+                    onChange={(e) => setCanvaLink(e.target.value)}
+                  />
+                  <p className="text-xs text-slate-500">
+                    Este é o link que será aberto quando o vendedor clicar no card "Foto WhatsApp" no Dashboard.
+                  </p>
+                </div>
+
+                <div className="pt-4 flex justify-end">
+                  <Button onClick={handleSaveSettings} className="bg-blue-900 hover:bg-blue-800">
+                    <Save className="w-4 h-4 mr-2" />
+                    Salvar Configurações
+                  </Button>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+  
   const handleBankSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!bankFormData.nome_banco) return;
@@ -713,6 +788,20 @@ export default function AdminPanel() {
                       <label className="text-sm font-medium">E-mail</label>
                       <Input type="email" required value={formData.email} onChange={e => handleInputChange('email', e.target.value)} />
                     </div>
+                    
+                    {!editingUser && (
+                      <div className="space-y-2">
+                        <label className="text-sm font-medium">Senha Inicial</label>
+                        <Input 
+                          type="text" 
+                          required 
+                          placeholder="Defina uma senha provisória"
+                          value={formData.password || ''} 
+                          onChange={e => handleInputChange('password', e.target.value)} 
+                        />
+                        <p className="text-xs text-slate-500">O usuário poderá alterar esta senha no primeiro acesso.</p>
+                      </div>
+                    )}
                     <div className="space-y-2">
                       <label className="text-sm font-medium">Perfil de Acesso</label>
                       <select 
