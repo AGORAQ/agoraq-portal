@@ -79,22 +79,42 @@ export const db = {
   users: {
     getAll: () => {
       const users = getStorage<User[]>('users', INITIAL_USERS);
-      // Ensure admin email is always correct (migration fix)
+      
+      // Ensure admin exists and has correct email (migration/recovery fix)
       const adminIndex = users.findIndex(u => u.id === '1');
-      if (adminIndex !== -1 && users[adminIndex].email !== 'agoraq@agoraqoficial.com') {
+      
+      if (adminIndex === -1) {
+        // Admin missing, restore it
+        const adminUser = INITIAL_USERS.find(u => u.id === '1');
+        if (adminUser) {
+          users.push(adminUser);
+          setStorage('users', users);
+        }
+      } else if (users[adminIndex].email !== 'agoraq@agoraqoficial.com') {
+        // Fix email if incorrect
         users[adminIndex].email = 'agoraq@agoraqoficial.com';
         setStorage('users', users);
       }
+      
       return users;
     },
     getById: (id: string) => {
       const users = getStorage<User[]>('users', INITIAL_USERS);
-      // Ensure admin email is always correct (migration fix)
+      
+      // Ensure admin exists and has correct email (migration/recovery fix)
       const adminIndex = users.findIndex(u => u.id === '1');
-      if (adminIndex !== -1 && users[adminIndex].email !== 'agoraq@agoraqoficial.com') {
+      
+      if (adminIndex === -1) {
+        const adminUser = INITIAL_USERS.find(u => u.id === '1');
+        if (adminUser) {
+          users.push(adminUser);
+          setStorage('users', users);
+        }
+      } else if (users[adminIndex].email !== 'agoraq@agoraqoficial.com') {
         users[adminIndex].email = 'agoraq@agoraqoficial.com';
         setStorage('users', users);
       }
+      
       return users.find(u => u.id === id);
     },
     create: (user: Omit<User, 'id' | 'lastAccess'>) => {

@@ -33,7 +33,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const login = async (email: string, password?: string) => {
     // In a real app, this would be an API call
     const users = db.users.getAll();
-    const foundUser = users.find(u => u.email === email && (password ? u.password === password : true));
+    const normalizedEmail = email.trim().toLowerCase();
+    
+    const foundUser = users.find(u => 
+      u.email.toLowerCase() === normalizedEmail && 
+      (password ? u.password === password : true)
+    );
     
     if (foundUser) {
       // Update last access
