@@ -12,7 +12,9 @@ export default function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [successMessage, setSuccessMessage] = useState('');
   const [loading, setLoading] = useState(false);
+  const [isForgotPassword, setIsForgotPassword] = useState(false);
   const { login, isAuthenticated } = useAuth();
   const navigate = useNavigate();
 
@@ -25,6 +27,7 @@ export default function Login() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    setSuccessMessage('');
     setLoading(true);
     
     try {
@@ -41,6 +44,19 @@ export default function Login() {
     }
   };
 
+  const handleForgotPassword = (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    setSuccessMessage('');
+    setLoading(true);
+
+    // Simulate API call
+    setTimeout(() => {
+      setLoading(false);
+      setSuccessMessage('Se o e-mail estiver cadastrado, você receberá as instruções para redefinir sua senha.');
+    }, 1500);
+  };
+
   return (
     <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4">
       <div className="w-full max-w-md">
@@ -53,74 +69,112 @@ export default function Login() {
 
         <Card className="border-slate-200 shadow-xl">
           <CardHeader>
-            <CardTitle className="text-center text-xl">Acesso ao Sistema</CardTitle>
+            <CardTitle className="text-center text-xl">
+              {isForgotPassword ? 'Recuperar Senha' : 'Acesso ao Sistema'}
+            </CardTitle>
             <CardDescription className="text-center">
-              Entre com suas credenciais para continuar
+              {isForgotPassword 
+                ? 'Digite seu e-mail para receber as instruções' 
+                : 'Entre com suas credenciais para continuar'}
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              {error && (
-                <div className="bg-red-50 text-red-600 p-3 rounded-md text-sm flex items-center gap-2">
-                  <AlertCircle className="w-4 h-4" />
-                  {error}
+            {isForgotPassword ? (
+              <form onSubmit={handleForgotPassword} className="space-y-4">
+                {successMessage && (
+                  <div className="bg-green-50 text-green-600 p-3 rounded-md text-sm flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4" />
+                    {successMessage}
+                  </div>
+                )}
+                
+                <div className="space-y-2">
+                  <div className="relative">
+                    <Mail className="absolute left-3 top-3 h-5 w-5 text-slate-400" />
+                    <Input 
+                      type="email" 
+                      placeholder="seu@agoraqoficial.com.br" 
+                      className="pl-10"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      required
+                    />
+                  </div>
                 </div>
-              )}
-              
-              <div className="space-y-2">
-                <div className="relative">
-                  <Mail className="absolute left-3 top-3 h-5 w-5 text-slate-400" />
-                  <Input 
-                    type="email" 
-                    placeholder="seu@agoraqoficial.com.br" 
-                    className="pl-10"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    required
-                  />
-                </div>
-              </div>
-              <div className="space-y-2">
-                <div className="relative">
-                  <Lock className="absolute left-3 top-3 h-5 w-5 text-slate-400" />
-                  <Input 
-                    type="password" 
-                    placeholder="Sua senha" 
-                    className="pl-10"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    required
-                  />
-                </div>
-              </div>
 
-              <Button type="submit" className="w-full bg-blue-900 hover:bg-blue-800 text-white font-bold py-2" disabled={loading}>
-                {loading ? 'Entrando...' : 'Entrar'}
-              </Button>
-            </form>
+                <Button type="submit" className="w-full bg-blue-900 hover:bg-blue-800 text-white font-bold py-2" disabled={loading}>
+                  {loading ? 'Enviando...' : 'Enviar Instruções'}
+                </Button>
+                
+                <Button 
+                  type="button" 
+                  variant="ghost" 
+                  className="w-full text-slate-600"
+                  onClick={() => {
+                    setIsForgotPassword(false);
+                    setSuccessMessage('');
+                    setError('');
+                  }}
+                >
+                  Voltar para Login
+                </Button>
+              </form>
+            ) : (
+              <form onSubmit={handleSubmit} className="space-y-4">
+                {error && (
+                  <div className="bg-red-50 text-red-600 p-3 rounded-md text-sm flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4" />
+                    {error}
+                  </div>
+                )}
+                
+                <div className="space-y-2">
+                  <div className="relative">
+                    <Mail className="absolute left-3 top-3 h-5 w-5 text-slate-400" />
+                    <Input 
+                      type="email" 
+                      placeholder="seu@agoraqoficial.com.br" 
+                      className="pl-10"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      required
+                    />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <div className="relative">
+                    <Lock className="absolute left-3 top-3 h-5 w-5 text-slate-400" />
+                    <Input 
+                      type="password" 
+                      placeholder="Sua senha" 
+                      className="pl-10"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      required
+                    />
+                  </div>
+                </div>
 
-            <div className="mt-6 p-4 bg-slate-50 rounded-lg text-xs text-slate-500 space-y-2 border border-slate-100">
-              <p className="font-semibold text-slate-700">Credenciais de Demonstração:</p>
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <span className="font-medium">Admin:</span><br/>
-                  agoraq@agoraqoficial.com.br<br/>
-                  Senha: admin
-                </div>
-                <div>
-                  <span className="font-medium">Vendedor:</span><br/>
-                  vendedor@agoraqoficial.com.br<br/>
-                  Senha: vend
-                </div>
-              </div>
-            </div>
+                <Button type="submit" className="w-full bg-blue-900 hover:bg-blue-800 text-white font-bold py-2" disabled={loading}>
+                  {loading ? 'Entrando...' : 'Entrar'}
+                </Button>
+              </form>
+            )}
           </CardContent>
-          <CardFooter className="flex flex-col gap-2 justify-center border-t border-slate-100 pt-4">
-            <a href="#" className="text-sm text-blue-600 hover:underline">Esqueceu sua senha?</a>
-            <div className="text-sm text-slate-500">
-              Não tem acesso? <Link to="/solicitar-acesso" className="text-blue-600 font-medium hover:underline">Solicitar Cadastro</Link>
-            </div>
-          </CardFooter>
+          {!isForgotPassword && (
+            <CardFooter className="flex flex-col gap-2 justify-center border-t border-slate-100 pt-4">
+              <button 
+                type="button"
+                onClick={() => setIsForgotPassword(true)}
+                className="text-sm text-blue-600 hover:underline bg-transparent border-none cursor-pointer"
+              >
+                Esqueceu sua senha?
+              </button>
+              <div className="text-sm text-slate-500">
+                Não tem acesso? <Link to="/solicitar-acesso" className="text-blue-600 font-medium hover:underline">Solicitar Cadastro</Link>
+              </div>
+            </CardFooter>
+          )}
         </Card>
         
         <p className="text-center text-xs text-slate-400 mt-8">

@@ -6,7 +6,6 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { UserPlus, ArrowLeft, CheckCircle, Search } from 'lucide-react';
 import Logo from '@/components/Logo';
 import { db } from '@/services/db';
-import { BANK_OPTIONS } from '@/constants';
 
 export default function RequestAccess() {
   const navigate = useNavigate();
@@ -17,7 +16,6 @@ export default function RequestAccess() {
   const [formData, setFormData] = useState({
     name: '',
     email: '',
-    bank: '',
     requestedAccessType: '',
     sellerName: '',
     cpf: '',
@@ -222,22 +220,6 @@ export default function RequestAccess() {
             <div className="space-y-4">
               <h3 className="text-sm font-semibold text-slate-900 uppercase tracking-wider border-b pb-2 pt-4">Dados da Solicitação</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <label htmlFor="bank" className="text-sm font-medium text-slate-700">Banco Solicitado</label>
-                  <select
-                    id="bank"
-                    name="bank"
-                    required
-                    className="flex h-10 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-900 focus-visible:ring-offset-2"
-                    value={formData.bank}
-                    onChange={handleChange}
-                  >
-                    <option value="">Selecione um banco</option>
-                    {BANK_OPTIONS.map(bank => (
-                      <option key={bank} value={bank}>{bank}</option>
-                    ))}
-                  </select>
-                </div>
                 <div className="space-y-2">
                   <label htmlFor="requestedAccessType" className="text-sm font-medium text-slate-700">Tipo de Acesso Solicitado</label>
                   <select
