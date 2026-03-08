@@ -8,6 +8,7 @@ import { useAuth } from '@/context/AuthContext';
 import { db } from '@/services/db';
 import { AccessRequest, CommissionGroup } from '@/types';
 import { BANK_OPTIONS } from '@/constants';
+import { emailService } from '@/services/emailService';
 
 export default function UserRequests() {
   const { user } = useAuth();
@@ -208,13 +209,25 @@ export default function UserRequests() {
     alert('Solicitação de reset de senha enviada com sucesso!');
   };
 
-  const updateStatus = (id: string, newStatus: AccessRequest['status']) => {
+  const updateStatus = async (id: string, newStatus: AccessRequest['status']) => {
     if (newStatus === 'Recusado' && !adminObservation) {
       alert('Para recusar, é obrigatório informar o motivo na observação.');
       return;
     }
     
     db.requests.updateStatus(id, newStatus, adminObservation, user?.id);
+
+    // Send email if finalized/approved
+    if (newStatus === 'Finalizado' || newStatus === 'Aprovado') {
+      const req = requests.find(r => r.id === id);
+      if (req) {
+        // Generate a temporary password or use a default one for demo
+        const tempPass = 'mudar123'; 
+        await emailService.sendCredentials(req.email, req.name, req.email, tempPass);
+        alert(`Status atualizado. E-mail de credenciais enviado para ${req.email} (Simulado se não configurado).`);
+      }
+    }
+
     setAdminObservation('');
     refreshRequests();
     if (selectedRequest) setSelectedRequest(null);

@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Lock, Mail, AlertCircle } from 'lucide-react';
+import { emailService } from '@/services/emailService';
 
 import Logo from '@/components/Logo';
 
@@ -44,17 +45,26 @@ export default function Login() {
     }
   };
 
-  const handleForgotPassword = (e: React.FormEvent) => {
+  const handleForgotPassword = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     setSuccessMessage('');
     setLoading(true);
 
-    // Simulate API call
-    setTimeout(() => {
+    try {
+      // Use emailService to send (or simulate) email
+      const result = await emailService.sendPasswordReset(email);
+      
+      setSuccessMessage(result.message);
+      
+      if (result.message.includes('simulado')) {
+        // Additional visual feedback for demo mode if needed
+      }
+    } catch (err) {
+      setError('Erro ao processar solicitação.');
+    } finally {
       setLoading(false);
-      setSuccessMessage('Se o e-mail estiver cadastrado, você receberá as instruções para redefinir sua senha.');
-    }, 1500);
+    }
   };
 
   return (
@@ -93,7 +103,7 @@ export default function Login() {
                     <Mail className="absolute left-3 top-3 h-5 w-5 text-slate-400" />
                     <Input 
                       type="email" 
-                      placeholder="seu@agoraqoficial.com.br" 
+                      placeholder="seu@agoraqoficial.com" 
                       className="pl-10"
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
@@ -133,7 +143,7 @@ export default function Login() {
                     <Mail className="absolute left-3 top-3 h-5 w-5 text-slate-400" />
                     <Input 
                       type="email" 
-                      placeholder="seu@agoraqoficial.com.br" 
+                      placeholder="seu@agoraqoficial.com" 
                       className="pl-10"
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}

@@ -3,7 +3,7 @@ import { User, CommissionTable, AccessRequest, PlatformCredential, ExcelImportLo
 
 // Initial Data
 const INITIAL_USERS: User[] = [
-  { id: '1', name: 'Administrador Demo', email: 'agoraq@agoraqoficial.com.br', role: 'admin', status: 'Ativo', lastAccess: new Date().toISOString(), password: 'admin', saldo_acumulado: 0, saldo_pago: 0 },
+  { id: '1', name: 'Administrador Demo', email: 'agoraq@agoraqoficial.com', role: 'admin', status: 'Ativo', lastAccess: new Date().toISOString(), password: 'admin', saldo_acumulado: 0, saldo_pago: 0 },
   { id: '2', name: 'Supervisor Vendas', email: 'supervisor@agoraqoficial.com.br', role: 'supervisor', status: 'Ativo', lastAccess: new Date().toISOString(), password: 'sup', saldo_acumulado: 0, saldo_pago: 0 },
   { id: '3', name: 'Vendedor Exemplo', email: 'vendedor@agoraqoficial.com.br', role: 'vendedor', status: 'Ativo', lastAccess: new Date().toISOString(), password: 'vend', saldo_acumulado: 1500, saldo_pago: 500, pix_key: 'vendedor@pix.com' },
 ];
@@ -12,23 +12,23 @@ const INITIAL_BANKS: Bank[] = [
   { id: 'b1', nome_banco: 'Banco Pan', tipo_produto: 'Ambos', percentual_maximo: 15, status: 'Ativo', criado_em: new Date().toISOString() },
   { id: 'b2', nome_banco: 'Itaú', tipo_produto: 'Ambos', percentual_maximo: 12, status: 'Ativo', criado_em: new Date().toISOString() },
   { id: 'b3', nome_banco: 'BMG', tipo_produto: 'FGTS', percentual_maximo: 18, status: 'Ativo', criado_em: new Date().toISOString() },
-  { id: 'b4', nome_banco: 'PRATA', tipo_produto: 'Ambos', percentual_maximo: 0, status: 'Ativo', criado_em: new Date().toISOString() },
+  { id: 'b4', nome_banco: 'Prata', tipo_produto: 'Ambos', percentual_maximo: 0, status: 'Ativo', criado_em: new Date().toISOString() },
   { id: 'b5', nome_banco: 'C6', tipo_produto: 'Ambos', percentual_maximo: 0, status: 'Ativo', criado_em: new Date().toISOString() },
   { id: 'b6', nome_banco: 'HUB', tipo_produto: 'Ambos', percentual_maximo: 0, status: 'Ativo', criado_em: new Date().toISOString() },
-  { id: 'b7', nome_banco: 'PRESENÇA BANK', tipo_produto: 'Ambos', percentual_maximo: 0, status: 'Ativo', criado_em: new Date().toISOString() },
-  { id: 'b8', nome_banco: 'TAQUITADO', tipo_produto: 'Ambos', percentual_maximo: 0, status: 'Ativo', criado_em: new Date().toISOString() },
-  { id: 'b9', nome_banco: 'GRANAPIX', tipo_produto: 'Ambos', percentual_maximo: 0, status: 'Ativo', criado_em: new Date().toISOString() },
-  { id: 'b10', nome_banco: 'NOVO SAQUE', tipo_produto: 'Ambos', percentual_maximo: 0, status: 'Ativo', criado_em: new Date().toISOString() },
-  { id: 'b11', nome_banco: 'QUALIBANK', tipo_produto: 'Ambos', percentual_maximo: 0, status: 'Ativo', criado_em: new Date().toISOString() },
-  { id: 'b12', nome_banco: 'GRANDINO', tipo_produto: 'Ambos', percentual_maximo: 0, status: 'Ativo', criado_em: new Date().toISOString() },
-  { id: 'b13', nome_banco: 'DI +', tipo_produto: 'Ambos', percentual_maximo: 0, status: 'Ativo', criado_em: new Date().toISOString() },
-  { id: 'b14', nome_banco: 'UNNO', tipo_produto: 'Ambos', percentual_maximo: 0, status: 'Ativo', criado_em: new Date().toISOString() },
-  { id: 'b15', nome_banco: 'CREFAZ', tipo_produto: 'Ambos', percentual_maximo: 0, status: 'Ativo', criado_em: new Date().toISOString() },
-  { id: 'b16', nome_banco: 'CREFISA', tipo_produto: 'Ambos', percentual_maximo: 0, status: 'Ativo', criado_em: new Date().toISOString() },
+  { id: 'b7', nome_banco: 'Presença Bank', tipo_produto: 'Ambos', percentual_maximo: 0, status: 'Ativo', criado_em: new Date().toISOString() },
+  { id: 'b8', nome_banco: 'Taquitado', tipo_produto: 'Ambos', percentual_maximo: 0, status: 'Ativo', criado_em: new Date().toISOString() },
+  { id: 'b9', nome_banco: 'Granapix', tipo_produto: 'Ambos', percentual_maximo: 0, status: 'Ativo', criado_em: new Date().toISOString() },
+  { id: 'b10', nome_banco: 'Novo Saque', tipo_produto: 'Ambos', percentual_maximo: 0, status: 'Ativo', criado_em: new Date().toISOString() },
+  { id: 'b11', nome_banco: 'Qualibank', tipo_produto: 'Ambos', percentual_maximo: 0, status: 'Ativo', criado_em: new Date().toISOString() },
+  { id: 'b12', nome_banco: 'Grandino', tipo_produto: 'Ambos', percentual_maximo: 0, status: 'Ativo', criado_em: new Date().toISOString() },
+  { id: 'b13', nome_banco: 'DI+', tipo_produto: 'Ambos', percentual_maximo: 0, status: 'Ativo', criado_em: new Date().toISOString() },
+  { id: 'b14', nome_banco: 'Unno', tipo_produto: 'Ambos', percentual_maximo: 0, status: 'Ativo', criado_em: new Date().toISOString() },
+  { id: 'b15', nome_banco: 'Crefaz', tipo_produto: 'Ambos', percentual_maximo: 0, status: 'Ativo', criado_em: new Date().toISOString() },
+  { id: 'b16', nome_banco: 'Crefisa', tipo_produto: 'Ambos', percentual_maximo: 0, status: 'Ativo', criado_em: new Date().toISOString() },
   { id: 'b17', nome_banco: 'PAN', tipo_produto: 'Ambos', percentual_maximo: 0, status: 'Ativo', criado_em: new Date().toISOString() },
-  { id: 'b18', nome_banco: 'PH TECH', tipo_produto: 'Ambos', percentual_maximo: 0, status: 'Ativo', criado_em: new Date().toISOString() },
+  { id: 'b18', nome_banco: 'PH Tech', tipo_produto: 'Ambos', percentual_maximo: 0, status: 'Ativo', criado_em: new Date().toISOString() },
   { id: 'b19', nome_banco: 'V8', tipo_produto: 'Ambos', percentual_maximo: 0, status: 'Ativo', criado_em: new Date().toISOString() },
-  { id: 'b20', nome_banco: 'TOP MAIS', tipo_produto: 'Ambos', percentual_maximo: 0, status: 'Ativo', criado_em: new Date().toISOString() },
+  { id: 'b20', nome_banco: 'Top Mais', tipo_produto: 'Ambos', percentual_maximo: 0, status: 'Ativo', criado_em: new Date().toISOString() },
   { id: 'b21', nome_banco: 'DSV', tipo_produto: 'Ambos', percentual_maximo: 0, status: 'Ativo', criado_em: new Date().toISOString() },
 ];
 
@@ -77,8 +77,26 @@ const setStorage = <T>(key: string, data: T) => {
 // Database Service
 export const db = {
   users: {
-    getAll: () => getStorage<User[]>('users', INITIAL_USERS),
-    getById: (id: string) => getStorage<User[]>('users', INITIAL_USERS).find(u => u.id === id),
+    getAll: () => {
+      const users = getStorage<User[]>('users', INITIAL_USERS);
+      // Ensure admin email is always correct (migration fix)
+      const adminIndex = users.findIndex(u => u.id === '1');
+      if (adminIndex !== -1 && users[adminIndex].email !== 'agoraq@agoraqoficial.com') {
+        users[adminIndex].email = 'agoraq@agoraqoficial.com';
+        setStorage('users', users);
+      }
+      return users;
+    },
+    getById: (id: string) => {
+      const users = getStorage<User[]>('users', INITIAL_USERS);
+      // Ensure admin email is always correct (migration fix)
+      const adminIndex = users.findIndex(u => u.id === '1');
+      if (adminIndex !== -1 && users[adminIndex].email !== 'agoraq@agoraqoficial.com') {
+        users[adminIndex].email = 'agoraq@agoraqoficial.com';
+        setStorage('users', users);
+      }
+      return users.find(u => u.id === id);
+    },
     create: (user: Omit<User, 'id' | 'lastAccess'>) => {
       const users = getStorage<User[]>('users', INITIAL_USERS);
       const newUser = { ...user, id: uuidv4(), lastAccess: new Date().toISOString() };
