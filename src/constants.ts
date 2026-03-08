@@ -1,0 +1,21 @@
+export const BANK_OPTIONS = [
+  "Banco Pan",
+  "Itaú",
+  "BMG",
+  "C6 Bank",
+  "Bradesco",
+  "Santander",
+  "Safra",
+  "Daycoval",
+  "Facta",
+  "Ole",
+  "Mercantil",
+  "Banrisul",
+  "Paraná Banco",
+  "Master",
+  "Inbursa",
+  "Nubank",
+  "Inter",
+  "Original",
+  "Outros"
+];

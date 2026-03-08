@@ -1,0 +1,17 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+}
+
+:root {
+  --primary: #1e3a8a; /* Blue 900 */
+  --secondary: #10b981; /* Emerald 500 */
+}
+
+body {
+  font-family: var(--font-sans);
+  background-color: #f8fafc; /* Slate 50 */
+  color: #0f172a; /* Slate 900 */
+}
