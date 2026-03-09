@@ -1,66 +1,74 @@
 import emailjs from '@emailjs/browser';
 
-// These should ideally be in .env
-// VITE_EMAILJS_SERVICE_ID
-// VITE_EMAILJS_TEMPLATE_ID
-// VITE_EMAILJS_PUBLIC_KEY
-
+/**
+ * Serviço de E-mail utilizando EmailJS
+ * Configurado para compatibilidade total com Vite e ambientes de deploy como Netlify.
+ */
 export const emailService = {
   /**
-   * Initialize EmailJS (optional if you just pass public key in send)
-   */
-  init: () => {
-    // emailjs.init("YOUR_PUBLIC_KEY");
-  },
-
-  /**
-   * Send a password reset email
+   * Envia um e-mail de redefinição de senha
    */
   sendPasswordReset: async (email: string) => {
-    const env = import.meta.env as any;
-    const serviceId = env.VITE_EMAILJS_SERVICE_ID;
-    const templateId = env.VITE_EMAILJS_TEMPLATE_ID_RESET;
-    const publicKey = env.VITE_EMAILJS_PUBLIC_KEY;
+    const ambiente = import.meta.env;
+    const serviceID = ambiente.VITE_EMAILJS_SERVICE_ID;
+    const templateID = ambiente.VITE_EMAILJS_TEMPLATE_ID_RESET;
+    const publicKey = ambiente.VITE_EMAILJS_PUBLIC_KEY;
 
-    if (serviceId && templateId && publicKey) {
+    if (serviceID && templateID && publicKey) {
       try {
-        await emailjs.send(serviceId, templateId, {
+        const templateParams = {
           to_email: email,
-          reset_link: `${window.location.origin}/reset-password?token=demo123`, // Simulated link
-        }, publicKey);
-        return { success: true, message: 'E-mail enviado com sucesso via EmailJS.' };
+          reset_link: `${window.location.origin}/reset-password?token=demo${Date.now()}`,
+        };
+
+        await emailjs.send(
+          serviceID,
+          templateID,
+          templateParams,
+          publicKey
+        );
+        
+        return { success: true, message: 'E-mail de redefinição enviado com sucesso.' };
       } catch (error) {
         console.error('EmailJS Error:', error);
-        return { success: false, message: 'Erro ao enviar e-mail real. Verifique as configurações.' };
+        return { success: false, message: 'Erro ao enviar e-mail. Verifique as credenciais do EmailJS.' };
       }
     } else {
-      console.log('--- SIMULAÇÃO DE E-MAIL (RESET SENHA) ---');
-      console.log('Para:', email);
-      console.log('Link:', `${window.location.origin}/reset-password?token=demo123`);
-      console.log('-----------------------------------------');
+      // Fallback para modo demonstração
+      console.log('--- MODO DEMONSTRAÇÃO: RESET DE SENHA ---');
+      console.log('Destinatário:', email);
+      console.log('Variáveis ausentes:', { serviceID: !!serviceID, templateID: !!templateID, publicKey: !!publicKey });
       return { 
         success: true, 
-        message: 'Ambiente de demonstração: E-mail simulado (configure EmailJS para envio real).' 
+        message: 'Modo demonstração: E-mail simulado no console (configure as variáveis VITE_EMAILJS no Netlify/Vite).' 
       };
     }
   },
+
   /**
-   * Send access request confirmation to user
+   * Envia confirmação de solicitação de acesso
    */
   sendAccessRequestConfirmation: async (data: any) => {
-    const env = import.meta.env as any;
-    const serviceId = env.VITE_EMAILJS_SERVICE_ID;
-    const templateId = env.VITE_EMAILJS_TEMPLATE_ID_REQUEST;
-    const publicKey = env.VITE_EMAILJS_PUBLIC_KEY;
+    const ambiente = import.meta.env;
+    const serviceID = ambiente.VITE_EMAILJS_SERVICE_ID;
+    const templateID = ambiente.VITE_EMAILJS_TEMPLATE_ID_REQUEST;
+    const publicKey = ambiente.VITE_EMAILJS_PUBLIC_KEY;
 
-    if (serviceId && templateId && publicKey) {
+    if (serviceID && templateID && publicKey) {
       try {
-        await emailjs.send(serviceId, templateId, {
+        const templateParams = {
           to_name: data.name,
           to_email: data.email,
           request_type: data.type,
           bank: data.bank,
-        }, publicKey);
+        };
+
+        await emailjs.send(
+          serviceID,
+          templateID,
+          templateParams,
+          publicKey
+        );
         return { success: true };
       } catch (error) {
         console.error('EmailJS Error:', error);
@@ -71,23 +79,30 @@ export const emailService = {
   },
 
   /**
-   * Send credentials to user after approval
+   * Envia as credenciais de acesso após aprovação
    */
   sendCredentials: async (email: string, name: string, login: string, pass: string) => {
-    const env = import.meta.env as any;
-    const serviceId = env.VITE_EMAILJS_SERVICE_ID;
-    const templateId = env.VITE_EMAILJS_TEMPLATE_ID_CREDENTIALS;
-    const publicKey = env.VITE_EMAILJS_PUBLIC_KEY;
+    const ambiente = import.meta.env;
+    const serviceID = ambiente.VITE_EMAILJS_SERVICE_ID;
+    const templateID = ambiente.VITE_EMAILJS_TEMPLATE_ID_CREDENTIALS;
+    const publicKey = ambiente.VITE_EMAILJS_PUBLIC_KEY;
 
-    if (serviceId && templateId && publicKey) {
+    if (serviceID && templateID && publicKey) {
       try {
-        await emailjs.send(serviceId, templateId, {
+        const templateParams = {
           to_name: name,
           to_email: email,
           login_url: window.location.origin,
           user_login: login,
           user_pass: pass,
-        }, publicKey);
+        };
+
+        await emailjs.send(
+          serviceID,
+          templateID,
+          templateParams,
+          publicKey
+        );
         return { success: true };
       } catch (error) {
         console.error('EmailJS Error:', error);

@@ -2,9 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
-import { User, Lock, Camera, Save, AlertCircle } from 'lucide-react';
+import { User, Lock, Camera, Save, AlertCircle, Video, Download, Loader2 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { db } from '@/services/db';
+import { generateTutorialVideo } from '@/services/videoService';
 
 export default function Profile() {
   const { user, login } = useAuth();
@@ -17,6 +18,8 @@ export default function Profile() {
     confirmPassword: ''
   });
   const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
+  const [videoLoading, setVideoLoading] = useState(false);
+  const [videoUrl, setVideoUrl] = useState<string | null>(null);
 
   useEffect(() => {
     if (user) {
@@ -91,6 +94,53 @@ export default function Profile() {
       }
     } catch (error) {
       setMessage({ type: 'error', text: 'Ocorreu um erro ao salvar.' });
+    }
+  };
+
+  const handleGenerateVideo = async () => {
+    setVideoLoading(true);
+    setMessage(null);
+    try {
+      const url = await generateTutorialVideo();
+      if (url) {
+        setVideoUrl(url);
+        setMessage({ type: 'success', text: 'Vídeo tutorial gerado com sucesso! Clique no botão de download abaixo.' });
+      }
+    } catch (error: any) {
+      console.error(error);
+      if (error.message?.includes("API Key not found")) {
+        setMessage({ type: 'error', text: 'Chave de API não encontrada. Por favor, selecione uma chave de API paga nas configurações do AI Studio para gerar vídeos.' });
+      } else {
+        setMessage({ type: 'error', text: 'Erro ao gerar vídeo. Tente novamente mais tarde.' });
+      }
+    } finally {
+      setVideoLoading(false);
+    }
+  };
+
+  const handleDownloadVideo = async () => {
+    if (!videoUrl) return;
+    
+    try {
+      const apiKey = process.env.API_KEY || process.env.GEMINI_API_KEY;
+      const response = await fetch(videoUrl, {
+        headers: {
+          'x-goog-api-key': apiKey || '',
+        },
+      });
+      
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'tutorial-agoraq.mp4';
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (error) {
+      console.error("Download error:", error);
+      setMessage({ type: 'error', text: 'Erro ao baixar o vídeo.' });
     }
   };
 
@@ -206,6 +256,58 @@ export default function Profile() {
           </Button>
         </div>
       </form>
+
+      {/* Temporary Tutorial Video Section */}
+      <Card className="border-blue-200 bg-blue-50/30">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-blue-900">
+            <Video className="w-5 h-5" />
+            Vídeo Tutorial do Portal (Beta)
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-sm text-slate-600">
+            Gere um vídeo profissional de apresentação do Portal AgoraQ. 
+            Este processo pode levar alguns minutos.
+          </p>
+          
+          <div className="flex flex-wrap gap-3">
+            {!videoUrl ? (
+              <Button 
+                onClick={handleGenerateVideo} 
+                disabled={videoLoading}
+                className="bg-blue-600 hover:bg-blue-700"
+              >
+                {videoLoading ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Gerando Vídeo (Aguarde...)
+                  </>
+                ) : (
+                  <>
+                    <Video className="w-4 h-4 mr-2" />
+                    Gerar Vídeo Tutorial
+                  </>
+                )}
+              </Button>
+            ) : (
+              <Button 
+                onClick={handleDownloadVideo}
+                className="bg-emerald-600 hover:bg-emerald-700"
+              >
+                <Download className="w-4 h-4 mr-2" />
+                Baixar Vídeo Tutorial
+              </Button>
+            )}
+          </div>
+          
+          {videoLoading && (
+            <div className="text-xs text-blue-600 animate-pulse font-medium">
+              O modelo Veo está processando seu vídeo. Por favor, não feche esta aba.
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }
