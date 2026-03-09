@@ -19,7 +19,7 @@ import CRM from '@/pages/CRM';
 import AdminPanel from '@/pages/AdminPanel';
 import AdminAnnouncements from '@/pages/AdminAnnouncements';
 import Profile from '@/pages/Profile';
-
+import ResetPassword from '@/pages/ResetPassword';
 import RequestAccess from '@/pages/RequestAccess';
 
 const PrivateRoute = ({ children }: { children: React.ReactNode }) => {
@@ -59,6 +59,7 @@ export default function App() {
         <CommissionProvider>
           <Routes>
             <Route path="/login" element={<Login />} />
+            <Route path="/reset-password" element={<ResetPassword />} />
             <Route path="/solicitar-acesso" element={<RequestAccess />} />
             
             <Route path="/" element={<PrivateRoute><Dashboard /></PrivateRoute>} />

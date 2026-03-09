@@ -7,11 +7,22 @@ import {
   Search, Plus, Edit, Trash2, FileText, 
   ExternalLink, Download, Eye, X, Save, 
   Filter, Clock, CheckCircle, AlertCircle,
-  Video, FileDown, Link as LinkIcon
+  Video, FileDown, Link as LinkIcon,
+  Sparkles, Loader2, Play
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { db } from '@/services/db';
 import { AcademyContent, CommissionGroup } from '@/types';
+import { GoogleGenAI } from "@google/genai";
+
+declare global {
+  interface Window {
+    aistudio: {
+      hasSelectedApiKey: () => Promise<boolean>;
+      openSelectKey: () => Promise<void>;
+    };
+  }
+}
 
 export default function Academy() {
   const { user } = useAuth();
@@ -24,6 +35,13 @@ export default function Academy() {
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [isFormOpen, setIsFormOpen] = useState(false);
+  const [isGeneratingVideo, setIsGeneratingVideo] = useState(false);
+  const [isAIGenModalOpen, setIsAIGenModalOpen] = useState(false);
+  const [aiPrompt, setAiPrompt] = useState('');
+  const [generationProgress, setGenerationProgress] = useState('');
+  const [videoModalUrl, setVideoModalUrl] = useState<string | null>(null);
+  const [isVideoLoading, setIsVideoLoading] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [formData, setFormData] = useState<Partial<AcademyContent>>({
     categoria: 'Informativo',
@@ -99,21 +117,153 @@ export default function Academy() {
   };
 
   const handleDelete = (id: string) => {
-    if (confirm('Tem certeza que deseja excluir este conteúdo?')) {
-      db.academy.delete(id);
-      loadData();
-    }
+    db.academy.delete(id);
+    loadData();
   };
 
-  const handleView = (content: AcademyContent) => {
+  const handleView = async (content: AcademyContent) => {
     if (user) {
       db.academyViews.register(content.id, user.id);
       setUserViews(prev => [...new Set([...prev, content.id])]);
     }
     
     if (content.arquivo_url) {
-      window.open(content.arquivo_url, '_blank');
+      if (content.tipo_arquivo === 'video' && content.arquivo_url.includes('generativelanguage.googleapis.com')) {
+        // Handle Gemini video with headers
+        setVideoModalUrl(null); // Reset
+        setIsVideoLoading(true);
+        try {
+          const apiKey = process.env.API_KEY || process.env.GEMINI_API_KEY;
+          const response = await fetch(content.arquivo_url, {
+            method: 'GET',
+            headers: {
+              'x-goog-api-key': apiKey || '',
+            },
+          });
+          
+          if (!response.ok) throw new Error('Falha ao carregar vídeo');
+          
+          const blob = await response.blob();
+          const blobUrl = URL.createObjectURL(blob);
+          setVideoModalUrl(blobUrl);
+        } catch (error) {
+          console.error('Error loading video:', error);
+          alert('Não foi possível carregar o vídeo. Verifique sua conexão ou chave de API.');
+        } finally {
+          setIsVideoLoading(false);
+        }
+      } else {
+        window.open(content.arquivo_url, '_blank');
+      }
     }
+  };
+
+  const generateCustomTraining = async () => {
+    if (!aiPrompt.trim()) return;
+
+    try {
+      const hasKey = await window.aistudio.hasSelectedApiKey();
+      if (!hasKey) {
+        await window.aistudio.openSelectKey();
+      }
+
+      setIsGeneratingVideo(true);
+      setIsAIGenModalOpen(false);
+      setGenerationProgress('Analisando sua descrição e preparando roteiro...');
+
+      const apiKey = process.env.API_KEY || process.env.GEMINI_API_KEY;
+      if (!apiKey) {
+        throw new Error('Chave de API não encontrada. Por favor, selecione uma chave paga.');
+      }
+      const ai = new GoogleGenAI({ apiKey });
+      
+      setGenerationProgress('Gerando vídeo de treinamento personalizado (isso pode levar alguns minutos)...');
+      
+      let operation;
+      try {
+        operation = await ai.models.generateVideos({
+          model: 'veo-3.1-fast-generate-preview',
+          prompt: `A professional educational training video about: ${aiPrompt}. The video should be clear, informative, and visually engaging. Use a modern corporate aesthetic with clean typography and smooth transitions. Include relevant visual metaphors and clear text overlays in Portuguese to explain key concepts. The tone should be instructional and encouraging.`,
+          config: {
+            numberOfVideos: 1,
+            resolution: '1080p',
+            aspectRatio: '16:9'
+          }
+        });
+      } catch (err: any) {
+        if (err.message?.includes('Requested entity was not found')) {
+          await window.aistudio.openSelectKey();
+          throw new Error('A chave selecionada parece ser inválida. Por favor, selecione uma chave paga válida.');
+        }
+        throw err;
+      }
+
+      let attempts = 0;
+      while (!operation.done && attempts < 60) {
+        setGenerationProgress(`Processando treinamento... ${attempts * 10}s decorridos. Por favor, aguarde.`);
+        await new Promise(resolve => setTimeout(resolve, 10000));
+        operation = await ai.operations.getVideosOperation({ operation: operation });
+        attempts++;
+      }
+
+      if (!operation.done) {
+        throw new Error('A geração do treinamento demorou mais que o esperado.');
+      }
+
+      const downloadLink = operation.response?.generatedVideos?.[0]?.video?.uri;
+      if (!downloadLink) {
+        throw new Error('Não foi possível obter o link do vídeo gerado.');
+      }
+
+      const newTutorial = {
+        titulo: `Treinamento IA: ${aiPrompt.substring(0, 40)}${aiPrompt.length > 40 ? '...' : ''}`,
+        categoria: 'Treinamento' as any,
+        descricao: `Treinamento gerado automaticamente via IA baseado na descrição: "${aiPrompt}"`,
+        arquivo_url: downloadLink,
+        tipo_arquivo: 'video' as any,
+        visibilidade: 'todos' as any,
+        versao: '1.0',
+        criado_por: user?.id || 'sistema',
+        status: 'Ativo' as any
+      };
+
+      db.academy.create(newTutorial);
+      loadData();
+      setIsGeneratingVideo(false);
+      setGenerationProgress('');
+      setAiPrompt('');
+      alert('Treinamento gerado com sucesso!');
+
+    } catch (error: any) {
+      console.error('Erro ao gerar treinamento:', error);
+      setIsGeneratingVideo(false);
+      setGenerationProgress('');
+      alert(`Erro ao gerar treinamento: ${error.message}`);
+    }
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsUploading(true);
+    
+    // Simulate upload delay
+    await new Promise(resolve => setTimeout(resolve, 1500));
+
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const base64String = reader.result as string;
+      handleInputChange('arquivo_url', base64String);
+      
+      // Auto-detect file type
+      if (file.type.includes('pdf')) handleInputChange('tipo_arquivo', 'pdf');
+      else if (file.type.includes('video')) handleInputChange('tipo_arquivo', 'video');
+      else if (file.type.includes('word') || file.type.includes('officedocument')) handleInputChange('tipo_arquivo', 'doc');
+      
+      setIsUploading(false);
+    };
+    reader.readAsDataURL(file);
   };
 
   const filteredContents = contents.filter(c => {
@@ -151,13 +301,107 @@ export default function Academy() {
 
   return (
     <div className="space-y-6 min-h-screen bg-slate-950 -m-4 md:-m-8 p-4 md:p-8 text-slate-100">
+      {/* AI Generation Prompt Modal */}
+      {isAIGenModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 animate-in fade-in duration-200">
+          <Card className="w-full max-w-lg bg-slate-900 border-indigo-500/30 shadow-2xl">
+            <CardHeader className="border-b border-slate-800">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-white flex items-center gap-2">
+                  <Sparkles className="w-5 h-5 text-indigo-400" />
+                  Descrever Novo Treinamento
+                </CardTitle>
+                <Button variant="ghost" size="icon" className="text-slate-400" onClick={() => setIsAIGenModalOpen(false)}>
+                  <X className="w-4 h-4" />
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent className="p-6 space-y-4">
+              <p className="text-sm text-slate-400">
+                Descreva detalhadamente o que você deseja que o treinamento aborde. A IA criará um vídeo educativo completo com base na sua descrição.
+              </p>
+              <textarea 
+                className="w-full min-h-[150px] bg-slate-800 border-slate-700 rounded-lg p-3 text-white focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
+                placeholder="Ex: Treinamento sobre como abordar clientes para venda de FGTS, focando em quebrar as principais objeções e apresentando os benefícios da antecipação..."
+                value={aiPrompt}
+                onChange={(e) => setAiPrompt(e.target.value)}
+              />
+              <div className="flex justify-end gap-3 pt-2">
+                <Button variant="outline" className="border-slate-700 text-slate-300" onClick={() => setIsAIGenModalOpen(false)}>
+                  Cancelar
+                </Button>
+                <Button 
+                  className="bg-indigo-600 hover:bg-indigo-700 text-white"
+                  onClick={generateCustomTraining}
+                  disabled={!aiPrompt.trim()}
+                >
+                  <Sparkles className="w-4 h-4 mr-2" />
+                  Gerar Treinamento
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* Video Modal */}
+      { (videoModalUrl || isVideoLoading) && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4">
+          <div className="relative w-full max-w-5xl bg-slate-900 rounded-2xl overflow-hidden shadow-2xl border border-slate-800">
+            <div className="flex items-center justify-between p-4 border-b border-slate-800">
+              <h3 className="text-lg font-bold text-white">Visualizar Vídeo</h3>
+              <Button 
+                variant="ghost" 
+                size="icon" 
+                className="text-slate-400 hover:text-white" 
+                onClick={() => {
+                  if (videoModalUrl) URL.revokeObjectURL(videoModalUrl);
+                  setVideoModalUrl(null);
+                  setIsVideoLoading(false);
+                }}
+              >
+                <X className="w-5 h-5" />
+              </Button>
+            </div>
+            <div className="aspect-video bg-black flex items-center justify-center">
+              {isVideoLoading ? (
+                <div className="flex flex-col items-center gap-4">
+                  <Loader2 className="w-12 h-12 text-emerald-500 animate-spin" />
+                  <p className="text-slate-400 animate-pulse">Carregando vídeo de alta qualidade...</p>
+                </div>
+              ) : (
+                <video 
+                  src={videoModalUrl!} 
+                  controls 
+                  autoPlay 
+                  className="w-full h-full"
+                />
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
           <h1 className="text-2xl font-bold text-white">AgoraQ Academy</h1>
           <p className="text-slate-400">Central de treinamentos, informativos e roteiros.</p>
         </div>
-        {isAdmin && (
-          <Button className="bg-emerald-600 hover:bg-emerald-700 text-white border-none" onClick={() => {
+        <div className="flex flex-wrap gap-2">
+          {isAdmin && (
+            <>
+              <Button 
+                className="bg-indigo-600 hover:bg-indigo-700 text-white border-none" 
+                onClick={() => setIsAIGenModalOpen(true)}
+                disabled={isGeneratingVideo}
+              >
+                <Sparkles className="w-4 h-4 mr-2" />
+                Criar Treinamento IA
+              </Button>
+            </>
+          )}
+          {isAdmin && (
+            <Button className="bg-emerald-600 hover:bg-emerald-700 text-white border-none" onClick={() => {
             setEditingId(null);
             setFormData({
               categoria: 'Informativo',
@@ -173,8 +417,29 @@ export default function Academy() {
           </Button>
         )}
       </div>
+    </div>
 
       {/* Filters */}
+      {isGeneratingVideo && (
+        <Card className="bg-indigo-900/20 border-indigo-500/30 border-dashed animate-pulse mb-6">
+          <CardContent className="p-8 flex flex-col items-center justify-center text-center space-y-4">
+            <div className="relative">
+              <div className="absolute inset-0 bg-indigo-500 blur-xl opacity-20 animate-pulse"></div>
+              <Loader2 className="w-12 h-12 text-indigo-400 animate-spin relative z-10" />
+            </div>
+            <div className="space-y-2">
+              <h3 className="text-xl font-bold text-white">Gerando Tutorial com IA</h3>
+              <p className="text-indigo-300 max-w-md mx-auto">
+                {generationProgress}
+              </p>
+              <p className="text-xs text-indigo-400/70 italic">
+                A geração de vídeo de alta qualidade pode levar até 2-3 minutos. Não feche esta página.
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       <Card className="bg-slate-900 border-slate-800">
         <CardContent className="p-4">
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -268,7 +533,28 @@ export default function Academy() {
                 </div>
                 <div className="space-y-2">
                   <label className="text-sm font-medium text-slate-300">URL do Arquivo ou Link <span className="text-red-500">*</span></label>
-                  <Input required className="bg-slate-800 border-slate-700 text-white" value={formData.arquivo_url || ''} onChange={e => handleInputChange('arquivo_url', e.target.value)} placeholder="https://..." />
+                  <div className="flex gap-2">
+                    <Input required className="bg-slate-800 border-slate-700 text-white flex-1" value={formData.arquivo_url || ''} onChange={e => handleInputChange('arquivo_url', e.target.value)} placeholder="https://..." />
+                    <div className="relative">
+                      <input 
+                        type="file" 
+                        id="file-upload" 
+                        className="hidden" 
+                        onChange={handleFileUpload}
+                        accept=".pdf,.doc,.docx,.mp4,.mov"
+                      />
+                      <Button 
+                        type="button" 
+                        variant="outline" 
+                        className="border-slate-700 text-slate-300 hover:bg-slate-800"
+                        onClick={() => document.getElementById('file-upload')?.click()}
+                        disabled={isUploading}
+                      >
+                        {isUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileDown className="w-4 h-4" />}
+                      </Button>
+                    </div>
+                  </div>
+                  <p className="text-[10px] text-slate-500">Você pode colar um link ou fazer upload de um arquivo local.</p>
                 </div>
                 <div className="space-y-2">
                   <label className="text-sm font-medium text-slate-300">Versão</label>

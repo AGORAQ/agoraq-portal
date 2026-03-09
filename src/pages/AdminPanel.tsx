@@ -25,7 +25,9 @@ import {
   AlertTriangle,
   DollarSign,
   ArrowRight,
-  Bot
+  Bot,
+  Key,
+  RefreshCw
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { db } from '@/services/db';
@@ -169,7 +171,7 @@ export default function AdminPanel() {
       db.users.update(editingUser.id, formData);
       alert('Usuário atualizado com sucesso!');
     } else {
-      const password = formData.password || '123456'; // Default if empty, but form should require it
+      const password = formData.password || '123456';
       
       db.users.create({
         name: formData.name || '',
@@ -191,9 +193,13 @@ export default function AdminPanel() {
       );
 
       if (emailResult.success) {
-        alert(`Usuário criado com sucesso!\n\nAs credenciais foram enviadas para: ${formData.email}`);
+        if (emailResult.simulated) {
+          alert(`Usuário criado com sucesso!\n\nNota: O sistema está em MODO DEMO. O e-mail para ${formData.email} foi SIMULADO no console. Configure o EmailJS para envio real.`);
+        } else {
+          alert(`Usuário criado com sucesso!\n\nAs credenciais foram enviadas para: ${formData.email}`);
+        }
       } else {
-        alert(`Usuário criado, mas houve um erro ao enviar o e-mail.\n\nVerifique as configurações do EmailJS.`);
+        alert(`Usuário criado, mas houve um erro ao enviar o e-mail.\n\nVerifique as configurações do EmailJS no menu de configurações.`);
       }
     }
     loadData();
@@ -227,14 +233,36 @@ export default function AdminPanel() {
             <CardContent className="space-y-6">
               
               <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg">
+                <h3 className="font-medium mb-2">Status da Configuração de E-mail</h3>
+                <div className="space-y-2 mb-4">
+                  <div className="flex items-center gap-2 text-sm">
+                    {import.meta.env.VITE_EMAILJS_SERVICE_ID ? (
+                      <CheckCircle className="w-4 h-4 text-green-600" />
+                    ) : (
+                      <XCircle className="w-4 h-4 text-red-600" />
+                    )}
+                    <span>Service ID: {import.meta.env.VITE_EMAILJS_SERVICE_ID ? 'Configurado' : 'Não configurado'}</span>
+                  </div>
+                  <div className="flex items-center gap-2 text-sm">
+                    {import.meta.env.VITE_EMAILJS_PUBLIC_KEY ? (
+                      <CheckCircle className="w-4 h-4 text-green-600" />
+                    ) : (
+                      <XCircle className="w-4 h-4 text-red-600" />
+                    )}
+                    <span>Public Key: {import.meta.env.VITE_EMAILJS_PUBLIC_KEY ? 'Configurado' : 'Não configurado'}</span>
+                  </div>
+                </div>
+                
                 <h3 className="font-medium mb-2">Teste de E-mail (EmailJS)</h3>
                 <p className="text-sm text-slate-500 mb-4">
                   Verifique se as chaves de API estão configuradas corretamente enviando um e-mail de teste.
                 </p>
-                <Button onClick={handleTestEmail} variant="outline">
-                  <Mail className="w-4 h-4 mr-2" />
-                  Enviar E-mail de Teste
-                </Button>
+                <div className="flex gap-2">
+                  <Button onClick={handleTestEmail} variant="outline">
+                    <Mail className="w-4 h-4 mr-2" />
+                    Enviar E-mail de Teste
+                  </Button>
+                </div>
               </div>
 
               <div className="space-y-4">
@@ -304,26 +332,54 @@ export default function AdminPanel() {
     }
   };
 
-  const handleApproveRequest = (req: AccessRequest) => {
+  const handleApproveRequest = async (req: AccessRequest) => {
+    const password = '123'; // Default password
+    
     // Approve request: Create user and update request status
     db.users.create({
       name: req.name,
       email: req.email,
       role: 'vendedor',
       status: 'Ativo',
-      password: '123', // Default password
+      password: password,
       fgtsGroup: req.fgtsGroup,
       cltGroup: req.cltGroup
     });
+    
     db.requests.updateStatus(req.id, 'Aprovado');
+    
+    // Send credentials via email
+    const emailResult = await emailService.sendCredentials(
+      req.email,
+      req.name,
+      req.email,
+      password
+    );
+
     loadData();
-    alert(`Solicitação aprovada!\n\nUsuário criado e credenciais enviadas para: ${req.email}`);
+    
+    if (emailResult.success) {
+      if (emailResult.simulated) {
+        alert(`Solicitação aprovada!\n\nUsuário criado. Nota: E-mail para ${req.email} SIMULADO (Modo Demo). Configure EmailJS para envio real.`);
+      } else {
+        alert(`Solicitação aprovada!\n\nUsuário criado e credenciais enviadas para: ${req.email}`);
+      }
+    } else {
+      alert(`Solicitação aprovada e usuário criado, mas houve um erro ao enviar o e-mail.\n\nVerifique as configurações do EmailJS.`);
+    }
   };
 
   const handleRejectRequest = (id: string) => {
     if (confirm('Rejeitar esta solicitação?')) {
       db.requests.updateStatus(id, 'Rejeitado');
       loadData();
+    }
+  };
+
+  const handleResetPassword = async (email: string) => {
+    if (confirm(`Deseja enviar um e-mail de redefinição de senha para ${email}?`)) {
+      const result = await emailService.sendPasswordReset(email);
+      alert(result.message);
     }
   };
 
@@ -992,6 +1048,9 @@ export default function AdminPanel() {
                           </td>
                           <td className="px-4 py-3 text-right">
                             <div className="flex justify-end gap-2">
+                              <Button variant="ghost" size="icon" className="h-8 w-8 text-amber-600" onClick={() => handleResetPassword(u.email)} title="Enviar Reset de Senha">
+                                <Key className="w-4 h-4" />
+                              </Button>
                               <Button variant="ghost" size="icon" className="h-8 w-8 text-blue-600" onClick={() => handleEdit(u)} title="Editar Usuário">
                                 <Edit className="w-4 h-4" />
                               </Button>

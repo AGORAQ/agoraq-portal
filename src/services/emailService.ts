@@ -17,9 +17,10 @@ export const emailService = {
    * Send a password reset email
    */
   sendPasswordReset: async (email: string) => {
-    const serviceId = import.meta.env.VITE_EMAILJS_SERVICE_ID;
-    const templateId = import.meta.env.VITE_EMAILJS_TEMPLATE_ID_RESET;
-    const publicKey = import.meta.env.VITE_EMAILJS_PUBLIC_KEY;
+    const env = import.meta.env as any;
+    const serviceId = env.VITE_EMAILJS_SERVICE_ID;
+    const templateId = env.VITE_EMAILJS_TEMPLATE_ID_RESET;
+    const publicKey = env.VITE_EMAILJS_PUBLIC_KEY;
 
     if (serviceId && templateId && publicKey) {
       try {
@@ -33,21 +34,24 @@ export const emailService = {
         return { success: false, message: 'Erro ao enviar e-mail real. Verifique as configurações.' };
       }
     } else {
-      console.log('EmailJS not configured. Simulating email to:', email);
+      console.log('--- SIMULAÇÃO DE E-MAIL (RESET SENHA) ---');
+      console.log('Para:', email);
+      console.log('Link:', `${window.location.origin}/reset-password?token=demo123`);
+      console.log('-----------------------------------------');
       return { 
         success: true, 
         message: 'Ambiente de demonstração: E-mail simulado (configure EmailJS para envio real).' 
       };
     }
   },
-
   /**
    * Send access request confirmation to user
    */
   sendAccessRequestConfirmation: async (data: any) => {
-    const serviceId = import.meta.env.VITE_EMAILJS_SERVICE_ID;
-    const templateId = import.meta.env.VITE_EMAILJS_TEMPLATE_ID_REQUEST;
-    const publicKey = import.meta.env.VITE_EMAILJS_PUBLIC_KEY;
+    const env = import.meta.env as any;
+    const serviceId = env.VITE_EMAILJS_SERVICE_ID;
+    const templateId = env.VITE_EMAILJS_TEMPLATE_ID_REQUEST;
+    const publicKey = env.VITE_EMAILJS_PUBLIC_KEY;
 
     if (serviceId && templateId && publicKey) {
       try {
@@ -70,9 +74,10 @@ export const emailService = {
    * Send credentials to user after approval
    */
   sendCredentials: async (email: string, name: string, login: string, pass: string) => {
-    const serviceId = import.meta.env.VITE_EMAILJS_SERVICE_ID;
-    const templateId = import.meta.env.VITE_EMAILJS_TEMPLATE_ID_CREDENTIALS;
-    const publicKey = import.meta.env.VITE_EMAILJS_PUBLIC_KEY;
+    const env = import.meta.env as any;
+    const serviceId = env.VITE_EMAILJS_SERVICE_ID;
+    const templateId = env.VITE_EMAILJS_TEMPLATE_ID_CREDENTIALS;
+    const publicKey = env.VITE_EMAILJS_PUBLIC_KEY;
 
     if (serviceId && templateId && publicKey) {
       try {
