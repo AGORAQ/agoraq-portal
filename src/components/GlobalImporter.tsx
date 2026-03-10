@@ -14,13 +14,13 @@ import {
   RefreshCw,
   History
 } from 'lucide-react';
-import { parseFile, parseFromUrl, validateCommissions, NormalizedData } from '@/lib/importer';
+import { parseFile, parseFromUrl, validateCommissions, validateLeads, NormalizedData } from '@/lib/importer';
 import { useAuth } from '@/context/AuthContext';
 import { db } from '@/services/db';
 import { Input } from '@/components/ui/Input';
 
 interface GlobalImporterProps {
-  type: 'comissoes' | 'vendas';
+  type: 'comissoes' | 'vendas' | 'leads';
   onImportComplete: () => void;
   onClose: () => void;
 }
@@ -63,6 +63,8 @@ export default function GlobalImporter({ type, onImportComplete, onClose }: Glob
       let validationErrors: string[] = [];
       if (type === 'comissoes') {
         validationErrors = validateCommissions(result.data);
+      } else if (type === 'leads') {
+        validationErrors = validateLeads(result.data);
       }
       
       setPreview(result.data);
@@ -79,6 +81,8 @@ export default function GlobalImporter({ type, onImportComplete, onClose }: Glob
     let validationErrors: string[] = [];
     if (type === 'comissoes') {
       validationErrors = validateCommissions(result.data);
+    } else if (type === 'leads') {
+      validationErrors = validateLeads(result.data);
     }
     
     setPreview(result.data);
@@ -106,6 +110,8 @@ export default function GlobalImporter({ type, onImportComplete, onClose }: Glob
       } else if (type === 'vendas' && user) {
         // Implement sales import if needed
         preview.forEach(sale => db.sales.create(sale, user));
+      } else if (type === 'leads') {
+        db.leads.import(preview);
       }
 
       // Log the import

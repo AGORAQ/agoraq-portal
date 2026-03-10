@@ -79,6 +79,24 @@ const COLUMN_SYNONYMS: { [key: string]: string } = {
   'categoria': 'grupo_comissao',
   'grupo_comissao': 'grupo_comissao',
 
+  // Leads
+  'nome': 'name',
+  'name': 'name',
+  'contato': 'name',
+  
+  'telefone': 'phone',
+  'celular': 'phone',
+  'phone': 'phone',
+  'whatsapp': 'phone',
+  
+  'email': 'email',
+  'e-mail': 'email',
+  
+  'cidade': 'city',
+  'city': 'city',
+  'município': 'city',
+  'municipio': 'city',
+
   // Sales
   'valor da venda': 'valor_venda',
   'valor venda': 'valor_venda',
@@ -87,7 +105,6 @@ const COLUMN_SYNONYMS: { [key: string]: string } = {
   
   'cliente': 'cliente',
   'nome do cliente': 'cliente',
-  'nome': 'cliente',
   
   'data': 'data',
   'data da venda': 'data',
@@ -193,7 +210,18 @@ export const parseFile = async (file: File): Promise<ImportResult> => {
 
 export const parseFromUrl = async (url: string): Promise<ImportResult> => {
   try {
-    const response = await fetch(url);
+    let targetUrl = url.trim();
+    
+    // Auto-convert Google Sheets links to CSV if possible
+    if (targetUrl.includes('docs.google.com/spreadsheets') && !targetUrl.includes('output=csv')) {
+      if (targetUrl.includes('/edit')) {
+        targetUrl = targetUrl.replace(/\/edit.*$/, '/export?format=csv');
+      } else if (targetUrl.includes('/pubhtml')) {
+        targetUrl = targetUrl.replace('/pubhtml', '/pub?output=csv');
+      }
+    }
+
+    const response = await fetch(targetUrl);
     if (!response.ok) throw new Error(`Falha ao buscar URL: ${response.statusText}`);
     
     const arrayBuffer = await response.arrayBuffer();
@@ -218,6 +246,21 @@ export const validateCommissions = (data: NormalizedData[]): string[] => {
     ['percentual_total_empresa', 'comissao_master', 'comissao_ouro', 'comissao_prata', 'comissao_plus'].forEach(field => {
       if (row[field] !== undefined && row[field] !== null && typeof row[field] !== 'number') {
         errors.push(`Linha ${index + 2}: '${field}' deve ser um número.`);
+      }
+    });
+  });
+  
+  return errors;
+};
+
+export const validateLeads = (data: NormalizedData[]): string[] => {
+  const errors: string[] = [];
+  const requiredFields = ['name', 'phone'];
+  
+  data.forEach((row, index) => {
+    requiredFields.forEach(field => {
+      if (row[field] === undefined || row[field] === null || row[field] === '') {
+        errors.push(`Linha ${index + 2}: Campo obrigatório '${field}' ausente.`);
       }
     });
   });

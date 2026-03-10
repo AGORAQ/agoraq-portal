@@ -66,6 +66,11 @@ const INITIAL_SALES = [
   { id: '4', date: '2024-03-04', proposal: '123459', client: 'Fernanda Costa', cpf: '999.888.777-66', phone: '(31) 96666-6666', bank: 'C6 Bank', table: 'Refinanciamento', value: 8900.00, commission: 0.09, companyCommission: 0.14, bankCommission: 0.17, status: 'Em Análise', seller: 'Carlos Vendedor' },
 ];
 
+const INITIAL_LEADS = [
+  { id: '1', name: 'José Silva', phone: '(11) 91234-5678', email: 'jose@email.com', city: 'São Paulo', status: 'Novo', createdAt: new Date().toISOString() },
+  { id: '2', name: 'Maria Oliveira', phone: '(21) 98765-4321', email: 'maria@email.com', city: 'Rio de Janeiro', status: 'Novo', createdAt: new Date().toISOString() },
+];
+
 const INITIAL_REQUESTS: AccessRequest[] = [
   { id: '1', usuario_id: '3', name: 'João Silva', email: 'joao@email.com', bank: 'Banco Pan', banco_nome: 'Banco Pan', sellerName: 'Vendedor Exemplo', cpf: '111.222.333-44', status: 'Pendente', createdAt: new Date().toISOString(), data_criacao: new Date().toISOString(), fgtsGroup: 'DIAMANTE', cltGroup: 'Fortuna 8D' },
   { id: '2', usuario_id: '3', name: 'Maria Santos', email: 'maria@email.com', bank: 'Itaú', banco_nome: 'Itaú', sellerName: 'Ana Vendedora', cpf: '555.666.777-88', status: 'Aprovado', createdAt: new Date().toISOString(), data_criacao: new Date().toISOString(), fgtsGroup: 'OURO', cltGroup: 'Líder CLT' },
@@ -352,6 +357,30 @@ export const db = {
       const sales = getStorage<any[]>('sales', INITIAL_SALES);
       const filtered = sales.filter(s => s.id !== id);
       setStorage('sales', filtered);
+    }
+  },
+
+  leads: {
+    getAll: () => getStorage<any[]>('leads', INITIAL_LEADS),
+    create: (lead: any) => {
+      const leads = getStorage<any[]>('leads', INITIAL_LEADS);
+      const newLead = { ...lead, id: uuidv4(), createdAt: new Date().toISOString(), status: lead.status || 'Novo' };
+      leads.push(newLead);
+      setStorage('leads', leads);
+      return newLead;
+    },
+    import: (leadsData: any[]) => {
+      const leads = getStorage<any[]>('leads', INITIAL_LEADS);
+      const now = new Date().toISOString();
+      const newLeads = leadsData.map(l => ({
+        ...l,
+        id: uuidv4(),
+        createdAt: now,
+        status: l.status || 'Novo'
+      }));
+      leads.push(...newLeads);
+      setStorage('leads', leads);
+      return newLeads;
     }
   },
 
