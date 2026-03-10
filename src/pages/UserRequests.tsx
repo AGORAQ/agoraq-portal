@@ -8,7 +8,6 @@ import { useAuth } from '@/context/AuthContext';
 import { db } from '@/services/db';
 import { AccessRequest, CommissionGroup } from '@/types';
 import { BANK_OPTIONS } from '@/constants';
-import { emailService } from '@/services/emailService';
 
 export default function UserRequests() {
   const { user } = useAuth();
@@ -29,6 +28,7 @@ export default function UserRequests() {
   // Commission Groups State
   const [fgtsGroups, setFgtsGroups] = useState<CommissionGroup[]>([]);
   const [cltGroups, setCltGroups] = useState<CommissionGroup[]>([]);
+  const [othersGroups, setOthersGroups] = useState<CommissionGroup[]>([]);
 
   // Form State
   const [formData, setFormData] = useState<Partial<AccessRequest>>({
@@ -51,12 +51,26 @@ export default function UserRequests() {
 
   const [selectedRequest, setSelectedRequest] = useState<AccessRequest | null>(null);
   const [adminObservation, setAdminObservation] = useState('');
+  
+  // Approval Modal State
+  const [isApprovalModalOpen, setIsApprovalModalOpen] = useState(false);
+  const [approvalFormData, setApprovalFormData] = useState({
+    login: '',
+    senha: '',
+    link_acesso: '',
+    observation: ''
+  });
 
   const refreshRequests = () => {
-    setRequests(db.requests.getAll());
+    if (isAdmin) {
+      setRequests(db.requests.getAll());
+    } else if (user?.id) {
+      setRequests(db.requests.getByUser(user.id));
+    }
     const allGroups = db.commissionGroups.getAll();
     setFgtsGroups(allGroups.filter(g => g.type === 'FGTS' && g.status === 'Ativo'));
     setCltGroups(allGroups.filter(g => g.type === 'CLT' && g.status === 'Ativo'));
+    setOthersGroups(allGroups.filter(g => g.type === 'Outros' && g.status === 'Ativo'));
     const allBanks = db.bancos.getAll();
     setAvailableBanks(allBanks.map(b => b.nome_banco));
   };
@@ -127,9 +141,11 @@ export default function UserRequests() {
     const fullAddress = `${formData.street}, ${formData.number} - ${formData.neighborhood}, ${formData.city} - ${formData.state}, ${formData.cep}`;
 
     db.requests.create({
+      usuario_id: user?.id || '',
       name: formData.name!,
       email: formData.email!,
       bank: formData.bank!,
+      banco_nome: formData.bank!,
       sellerName: formData.sellerName!,
       cpf: formData.cpf!,
       rg: formData.rg || '',
@@ -153,6 +169,7 @@ export default function UserRequests() {
       observation: formData.observation || '',
       fgtsGroup: formData.fgtsGroup,
       cltGroup: formData.cltGroup,
+      othersGroup: formData.othersGroup,
       tipo_solicitacao: 'novo_usuario'
     });
 
@@ -193,9 +210,11 @@ export default function UserRequests() {
     }
 
     db.requests.create({
+      usuario_id: user?.id || '',
       name: user?.name || 'Vendedor',
       email: user?.email || '',
       bank: resetFormData.bank,
+      banco_nome: resetFormData.bank,
       sellerName: user?.name || '',
       cpf: '', // Not needed for reset? Or fetch from user profile
       tipo_solicitacao: 'reset_senha',
@@ -221,16 +240,40 @@ export default function UserRequests() {
     if (newStatus === 'Finalizado' || newStatus === 'Aprovado') {
       const req = requests.find(r => r.id === id);
       if (req) {
-        // Generate a temporary password or use a default one for demo
-        const tempPass = 'mudar123'; 
-        await emailService.sendCredentials(req.email, req.name, req.email, tempPass);
-        alert(`Status atualizado. E-mail de credenciais enviado para ${req.email} (Simulado se não configurado).`);
+        alert(`Status atualizado para ${newStatus}. O usuário deve ser informado manualmente ou via Admin Panel.`);
       }
     }
 
     setAdminObservation('');
     refreshRequests();
     if (selectedRequest) setSelectedRequest(null);
+  };
+
+  const handleApprove = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedRequest) return;
+
+    // 1. Create the credential
+    db.credentials.create({
+      usuario_id: selectedRequest.usuario_id,
+      banco_nome: selectedRequest.banco_nome,
+      login: approvalFormData.login,
+      senha: approvalFormData.senha,
+      link_acesso: approvalFormData.link_acesso,
+      status: 'Ativo',
+      criado_por_admin: user?.id || '',
+      observation: approvalFormData.observation
+    });
+
+    // 2. Update request status to 'Finalizado' (or 'Aprovado')
+    db.requests.updateStatus(selectedRequest.id, 'Finalizado', approvalFormData.observation, user?.id);
+
+    // 3. Cleanup
+    setIsApprovalModalOpen(false);
+    setSelectedRequest(null);
+    setApprovalFormData({ login: '', senha: '', link_acesso: '', observation: '' });
+    refreshRequests();
+    alert('Credencial cadastrada e solicitação finalizada com sucesso!');
   };
 
   const handleAddBank = () => {
@@ -280,6 +323,9 @@ export default function UserRequests() {
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Solicitação Usuário Banco</h1>
           <p className="text-slate-500">Gerencie acessos e senhas dos bancos parceiros.</p>
+          <div className="mt-1 text-xs text-slate-400">
+            Dúvidas ou problemas? Suporte: <a href="https://wa.me/5517991280211" target="_blank" rel="noreferrer" className="text-blue-600 hover:underline hover:text-blue-700">(17) 99128-0211</a>
+          </div>
         </div>
         <div className="flex gap-2">
           <Button variant="outline" className="border-blue-200 text-blue-700 hover:bg-blue-50" onClick={() => setIsResetFormOpen(true)}>
@@ -534,6 +580,19 @@ export default function UserRequests() {
                       ))}
                     </select>
                   </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Outros Produtos</label>
+                    <select 
+                      className="flex h-10 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-900"
+                      value={formData.othersGroup || ''} 
+                      onChange={e => handleInputChange('othersGroup', e.target.value)}
+                    >
+                      <option value="">Selecionar Grupo Outros</option>
+                      {othersGroups.map(group => (
+                        <option key={group.id} value={group.name}>{group.name}</option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
               </div>
 
@@ -699,6 +758,10 @@ export default function UserRequests() {
                         <label className="text-xs font-medium text-slate-500 uppercase">Tabela CLT</label>
                         <p className="font-medium text-emerald-700">{selectedRequest.cltGroup || '-'}</p>
                       </div>
+                      <div>
+                        <label className="text-xs font-medium text-slate-500 uppercase">Outros Produtos</label>
+                        <p className="font-medium text-emerald-700">{selectedRequest.othersGroup || '-'}</p>
+                      </div>
                     </div>
                   </div>
                 )}
@@ -792,9 +855,19 @@ export default function UserRequests() {
                         </Button>
                         <Button 
                           className="bg-emerald-600 hover:bg-emerald-700 text-white" 
-                          onClick={() => updateStatus(selectedRequest.id, 'Finalizado')}
+                          onClick={() => {
+                            if (selectedRequest.tipo_solicitacao === 'reset_senha') {
+                              updateStatus(selectedRequest.id, 'Finalizado');
+                            } else {
+                              setApprovalFormData({
+                                ...approvalFormData,
+                                link_acesso: selectedRequest.bank === 'Banco Pan' ? 'https://contas.bancopan.com.br/' : ''
+                              });
+                              setIsApprovalModalOpen(true);
+                            }
+                          }}
                         >
-                          {selectedRequest.tipo_solicitacao === 'reset_senha' ? 'Senha Atualizada' : 'Finalizar Criação'}
+                          {selectedRequest.tipo_solicitacao === 'reset_senha' ? 'Senha Atualizada' : 'Aprovar e Cadastrar'}
                         </Button>
                       </div>
                     </div>
@@ -805,6 +878,71 @@ export default function UserRequests() {
                   <Button variant="outline" onClick={() => setSelectedRequest(null)}>Fechar</Button>
                 </div>
               </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* Approval Modal */}
+      {isApprovalModalOpen && selectedRequest && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <Card className="w-full max-w-md shadow-2xl animate-in zoom-in-95 duration-200">
+            <CardHeader className="flex flex-row items-center justify-between bg-slate-50 rounded-t-xl border-b">
+              <CardTitle>Cadastrar Credenciais - {selectedRequest.bank}</CardTitle>
+              <Button variant="ghost" size="icon" onClick={() => setIsApprovalModalOpen(false)}>
+                <X className="w-4 h-4" />
+              </Button>
+            </CardHeader>
+            <CardContent className="p-6">
+              <form onSubmit={handleApprove} className="space-y-4">
+                <div className="bg-blue-50 p-3 rounded text-xs text-blue-800 mb-4">
+                  Vendedor: <strong>{selectedRequest.sellerName}</strong><br/>
+                  Banco: <strong>{selectedRequest.bank}</strong>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Login / Usuário <span className="text-red-500">*</span></label>
+                  <Input 
+                    required 
+                    value={approvalFormData.login} 
+                    onChange={e => setApprovalFormData({...approvalFormData, login: e.target.value})}
+                    placeholder="Digite o login de acesso"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Senha <span className="text-red-500">*</span></label>
+                  <Input 
+                    required 
+                    type="text"
+                    value={approvalFormData.senha} 
+                    onChange={e => setApprovalFormData({...approvalFormData, senha: e.target.value})}
+                    placeholder="Digite a senha temporária"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Link de Acesso</label>
+                  <Input 
+                    value={approvalFormData.link_acesso} 
+                    onChange={e => setApprovalFormData({...approvalFormData, link_acesso: e.target.value})}
+                    placeholder="https://..."
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Observação (Opcional)</label>
+                  <textarea 
+                    className="flex min-h-[60px] w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm"
+                    value={approvalFormData.observation}
+                    onChange={e => setApprovalFormData({...approvalFormData, observation: e.target.value})}
+                    placeholder="Instruções adicionais..."
+                  />
+                </div>
+                <div className="flex justify-end gap-2 pt-4">
+                  <Button type="button" variant="outline" onClick={() => setIsApprovalModalOpen(false)}>Cancelar</Button>
+                  <Button type="submit" className="bg-emerald-600 hover:bg-emerald-700 text-white">
+                    <Save className="w-4 h-4 mr-2" />
+                    Finalizar e Ativar
+                  </Button>
+                </div>
+              </form>
             </CardContent>
           </Card>
         </div>

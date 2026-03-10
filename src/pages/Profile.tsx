@@ -60,7 +60,7 @@ export default function Profile() {
         return;
       }
       // In a real app, we would verify currentPassword with backend
-      if (formData.currentPassword !== user.password) {
+      if (!db.utils.comparePassword(formData.currentPassword, user.password)) {
          setMessage({ type: 'error', text: 'Senha atual incorreta.' });
          return;
       }

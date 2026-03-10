@@ -57,7 +57,6 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     { icon: Table2, label: 'Tabela de Comissão', path: '/comissoes' },
     { icon: DollarSign, label: 'Vendas', path: '/vendas' },
     { icon: Database, label: 'CRM', path: '/crm' },
-    { icon: Calculator, label: 'Simulador', path: '/simulador' },
     { icon: Wallet, label: 'Financeiro', path: '/financeiro' },
     { icon: BarChart3, label: 'Relatório Financeiro', path: '/admin/financeiro', adminOnly: true },
     { icon: GraduationCap, label: 'AgoraQ Academy', path: '/academy' },

@@ -1,13 +1,14 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { CommissionTable } from '@/types';
 import { db } from '@/services/db';
+import { useAuth } from './AuthContext';
 
 interface CommissionContextType {
   commissions: CommissionTable[];
-  addCommission: (commission: Omit<CommissionTable, 'id' | 'updatedAt' | 'status'>) => void;
+  addCommission: (commission: Omit<CommissionTable, 'id' | 'data_criacao' | 'data_atualizacao' | 'status'>) => void;
   updateCommission: (id: string, updates: Partial<CommissionTable>) => void;
   deleteCommission: (id: string) => void;
-  importCommissions: (newCommissions: Omit<CommissionTable, 'id' | 'updatedAt'>[]) => void;
+  importCommissions: (newCommissions: Omit<CommissionTable, 'id' | 'data_criacao' | 'data_atualizacao'>[]) => void;
   refreshCommissions: () => void;
 }
 
@@ -15,18 +16,23 @@ const CommissionContext = createContext<CommissionContextType | undefined>(undef
 
 export function CommissionProvider({ children }: { children: React.ReactNode }) {
   const [commissions, setCommissions] = useState<CommissionTable[]>([]);
+  const { user } = useAuth();
 
   const refreshCommissions = () => {
-    setCommissions(db.commissions.getAll());
+    const userGroup = user?.grupo_comissao || user?.fgtsGroup || user?.cltGroup;
+    setCommissions(db.commissions.getAll(user?.role, userGroup));
   };
 
   useEffect(() => {
-    refreshCommissions();
-  }, []);
+    if (user) {
+      refreshCommissions();
+    }
+  }, [user]);
 
-  const addCommission = (commission: Omit<CommissionTable, 'id' | 'updatedAt' | 'status'>) => {
+  const addCommission = (commission: Omit<CommissionTable, 'id' | 'data_criacao' | 'data_atualizacao' | 'status'>) => {
+    if (!user) return;
     try {
-      db.commissions.create({ ...commission, status: 'Ativo' });
+      db.commissions.create({ ...commission, status: 'Ativo' }, user.role, user.id);
       refreshCommissions();
     } catch (error: any) {
       alert(error.message);
@@ -34,8 +40,9 @@ export function CommissionProvider({ children }: { children: React.ReactNode }) 
   };
 
   const updateCommission = (id: string, updates: Partial<CommissionTable>) => {
+    if (!user) return;
     try {
-      db.commissions.update(id, updates);
+      db.commissions.update(id, updates, user.role, user.id);
       refreshCommissions();
     } catch (error: any) {
       alert(error.message);
@@ -43,21 +50,27 @@ export function CommissionProvider({ children }: { children: React.ReactNode }) 
   };
 
   const deleteCommission = (id: string) => {
+    if (!user) return;
     if (confirm('Tem certeza que deseja excluir esta tabela?')) {
-      db.commissions.delete(id);
-      refreshCommissions();
+      try {
+        db.commissions.delete(id, user.role, user.id);
+        refreshCommissions();
+      } catch (error: any) {
+        alert(error.message);
+      }
     }
   };
 
-  const importCommissions = (newCommissions: Omit<CommissionTable, 'id' | 'updatedAt'>[]) => {
+  const importCommissions = (newCommissions: Omit<CommissionTable, 'id' | 'data_criacao' | 'data_atualizacao'>[]) => {
+    if (!user) return;
     try {
-      const imported = db.commissions.import(newCommissions);
+      const imported = db.commissions.import(newCommissions, user.role, user.id);
       
       // Log the import
       db.logs.add({
-        user: 'Sistema', // Ideally get from auth context if available here, or pass as arg
+        user: user.name,
         linesProcessed: newCommissions.length,
-        errorsFound: 0, // db.commissions.import throws on error, so if we are here, 0 errors in the batch (or it's all-or-nothing)
+        errorsFound: 0,
         fileName: 'Importação Excel'
       });
 
@@ -67,9 +80,9 @@ export function CommissionProvider({ children }: { children: React.ReactNode }) 
       alert(error.message);
       // Log the error
       db.logs.add({
-        user: 'Sistema',
+        user: user.name,
         linesProcessed: newCommissions.length,
-        errorsFound: newCommissions.length, // Assuming all failed if one failed in this simple implementation
+        errorsFound: newCommissions.length,
         fileName: 'Falha na Importação'
       });
     }

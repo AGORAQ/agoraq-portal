@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Badge } from '@/components/ui/Badge';
+import { useAuth } from '@/context/AuthContext';
 import { 
   Calculator, 
   DollarSign, 
@@ -19,6 +20,9 @@ import { Bank, CommissionGroup, CommissionTable } from '@/types';
 import { formatCurrency } from '@/lib/utils';
 
 export default function Simulator() {
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'admin' || user?.role === 'supervisor';
+  
   const [banks, setBanks] = useState<Bank[]>([]);
   const [groups, setGroups] = useState<CommissionGroup[]>([]);
   const [tables, setTables] = useState<CommissionTable[]>([]);
@@ -31,26 +35,28 @@ export default function Simulator() {
   useEffect(() => {
     setBanks(db.bancos.getAll());
     setGroups(db.commissionGroups.getAll());
-    setTables(db.commissions.getAll());
-  }, []);
+    
+    const userGroup = user?.grupo_comissao || user?.fgtsGroup || user?.cltGroup;
+    setTables(db.commissions.getAll(user?.role, userGroup));
+  }, [user]);
 
   const filteredGroups = groups.filter(g => g.banco_id === selectedBank);
   const filteredTables = tables.filter(t => {
     const bankName = banks.find(b => b.id === selectedBank)?.nome_banco;
     const groupName = groups.find(g => g.id === selectedGroup)?.name;
-    return t.bank === bankName && t.group === groupName;
+    return (t.banco === bankName || t.bank === bankName) && (t.grupo_comissao === groupName || t.group === groupName);
   });
 
   const table = tables.find(t => t.id === selectedTable);
   const value = parseFloat(saleValue) || 0;
 
   const results = table ? {
-    vendedor: (table.sellerPercent / 100) * value,
-    empresa: (table.totalCommission / 100) * value,
-    lucro: ((table.totalCommission - table.sellerPercent) / 100) * value,
-    percentualVendedor: table.sellerPercent,
-    percentualEmpresa: table.totalCommission,
-    percentualLucro: table.totalCommission - table.sellerPercent
+    vendedor: (table.percentual_vendedor / 100) * value,
+    empresa: (table.percentual_total_empresa / 100) * value,
+    lucro: ((table.percentual_total_empresa - table.percentual_vendedor) / 100) * value,
+    percentualVendedor: table.percentual_vendedor,
+    percentualEmpresa: table.percentual_total_empresa,
+    percentualLucro: table.percentual_total_empresa - table.percentual_vendedor
   } : null;
 
   return (
@@ -114,7 +120,7 @@ export default function Simulator() {
                 disabled={!selectedGroup}
               >
                 <option value="">Selecione uma tabela...</option>
-                {filteredTables.map(t => <option key={t.id} value={t.id}>{t.name} ({t.totalCommission}%)</option>)}
+                {filteredTables.map(t => <option key={t.id} value={t.id}>{t.nome_tabela} ({t.percentual_vendedor}%)</option>)}
               </select>
             </div>
 
@@ -147,7 +153,7 @@ export default function Simulator() {
         <div className="lg:col-span-2 space-y-6">
           {results ? (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <Card className="bg-slate-900 border-slate-800 shadow-xl overflow-hidden">
+              <Card className={`bg-slate-900 border-slate-800 shadow-xl overflow-hidden ${!isAdmin ? 'md:col-span-2' : ''}`}>
                 <div className="h-2 bg-emerald-500"></div>
                 <CardHeader>
                   <CardTitle className="text-white flex items-center gap-2">
@@ -165,28 +171,30 @@ export default function Simulator() {
                 </CardContent>
               </Card>
 
-              <Card className="bg-slate-900 border-slate-800 shadow-xl overflow-hidden">
-                <div className="h-2 bg-blue-500"></div>
-                <CardHeader>
-                  <CardTitle className="text-white flex items-center gap-2">
-                    <Building2 className="w-5 h-5 text-blue-400" />
-                    Comissão Empresa
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="text-4xl font-bold text-white">{formatCurrency(results.empresa)}</div>
-                  <div className="flex items-center gap-2 text-blue-400 bg-blue-900/10 px-3 py-1 rounded-full w-fit text-sm font-medium">
-                    <ArrowRight className="w-4 h-4" />
-                    {results.percentualEmpresa}% repassado pelo banco
-                  </div>
-                  <div className="pt-4 border-t border-slate-800">
-                    <div className="flex justify-between items-center">
-                      <span className="text-slate-400 text-sm">Lucro Líquido Empresa:</span>
-                      <span className="text-emerald-400 font-bold">{formatCurrency(results.lucro)} ({results.percentualLucro}%)</span>
+              {isAdmin && (
+                <Card className="bg-slate-900 border-slate-800 shadow-xl overflow-hidden">
+                  <div className="h-2 bg-blue-500"></div>
+                  <CardHeader>
+                    <CardTitle className="text-white flex items-center gap-2">
+                      <Building2 className="w-5 h-5 text-blue-400" />
+                      Comissão Empresa
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="text-4xl font-bold text-white">{formatCurrency(results.empresa)}</div>
+                    <div className="flex items-center gap-2 text-blue-400 bg-blue-900/10 px-3 py-1 rounded-full w-fit text-sm font-medium">
+                      <ArrowRight className="w-4 h-4" />
+                      {results.percentualEmpresa}% repassado pelo banco
                     </div>
-                  </div>
-                </CardContent>
-              </Card>
+                    <div className="pt-4 border-t border-slate-800">
+                      <div className="flex justify-between items-center">
+                        <span className="text-slate-400 text-sm">Lucro Líquido Empresa:</span>
+                        <span className="text-emerald-400 font-bold">{formatCurrency(results.lucro)} ({results.percentualLucro}%)</span>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
 
               <Card className="md:col-span-2 bg-slate-900 border-slate-800 shadow-xl">
                 <CardHeader>
@@ -200,16 +208,18 @@ export default function Simulator() {
                     </div>
                     <div className="flex justify-between py-2 border-b border-slate-800">
                       <span className="text-slate-400">Tabela Aplicada</span>
-                      <span className="text-white font-medium">{table.name}</span>
+                      <span className="text-white font-medium">{table.nome_tabela || table.name}</span>
                     </div>
                     <div className="flex justify-between py-2 border-b border-slate-800">
                       <span className="text-slate-400">Valor da Venda</span>
                       <span className="text-white font-medium">{formatCurrency(value)}</span>
                     </div>
-                    <div className="flex justify-between py-2 pt-4">
-                      <span className="text-lg font-bold text-white">Total Comissões</span>
-                      <span className="text-lg font-bold text-emerald-400">{formatCurrency(results.empresa)}</span>
-                    </div>
+                    {isAdmin && (
+                      <div className="flex justify-between py-2 pt-4">
+                        <span className="text-lg font-bold text-white">Total Comissões</span>
+                        <span className="text-lg font-bold text-emerald-400">{formatCurrency(results.empresa)}</span>
+                      </div>
+                    )}
                   </div>
                 </CardContent>
               </Card>

@@ -121,6 +121,9 @@ export default function RequestAccess() {
           <CardTitle className="text-2xl font-bold text-slate-900">Solicitar Acesso</CardTitle>
           <CardDescription>
             Preencha o formulário abaixo para solicitar seu cadastro na plataforma.
+            <div className="mt-2 text-xs text-slate-500">
+              Dúvidas? Suporte: <a href="https://wa.me/5517991280211" target="_blank" rel="noreferrer" className="text-blue-600 hover:underline">(17) 99128-0211</a>
+            </div>
           </CardDescription>
         </CardHeader>
         <CardContent className="p-8">

@@ -1,11 +1,15 @@
 import { v4 as uuidv4 } from 'uuid';
+import bcrypt from 'bcryptjs';
 import { User, CommissionTable, AccessRequest, PlatformCredential, ExcelImportLog, CommissionGroup, AcademyContent, AcademyView, Bank, PaymentRequest, Announcement } from '@/types';
 
-// Initial Data
+// Password Hashing Helper
+const hashPassword = (password: string) => bcrypt.hashSync(password, 10);
+
+// Initial Data (Passwords are hashed)
 const INITIAL_USERS: User[] = [
-  { id: '1', name: 'Administrador Demo', email: 'agoraq@agoraqoficial.com', role: 'admin', status: 'Ativo', lastAccess: new Date().toISOString(), password: 'admin', saldo_acumulado: 0, saldo_pago: 0 },
-  { id: '2', name: 'Supervisor Vendas', email: 'supervisor@agoraqoficial.com.br', role: 'supervisor', status: 'Ativo', lastAccess: new Date().toISOString(), password: 'sup', saldo_acumulado: 0, saldo_pago: 0 },
-  { id: '3', name: 'Vendedor Exemplo', email: 'vendedor@agoraqoficial.com.br', role: 'vendedor', status: 'Ativo', lastAccess: new Date().toISOString(), password: 'vend', saldo_acumulado: 1500, saldo_pago: 500, pix_key: 'vendedor@pix.com' },
+  { id: '1', name: 'Administrador Demo', email: 'agoraq@agoraqoficial.com', role: 'admin', status: 'Ativo', lastAccess: new Date().toISOString(), password: hashPassword('admin'), saldo_acumulado: 0, saldo_pago: 0, grupo_comissao: 'MASTER' },
+  { id: '2', name: 'Supervisor Vendas', email: 'supervisor@agoraqoficial.com.br', role: 'supervisor', status: 'Ativo', lastAccess: new Date().toISOString(), password: hashPassword('sup'), saldo_acumulado: 0, saldo_pago: 0, grupo_comissao: 'MASTER' },
+  { id: '3', name: 'Vendedor Exemplo', email: 'vendedor@agoraqoficial.com.br', role: 'vendedor', status: 'Ativo', lastAccess: new Date().toISOString(), password: hashPassword('vend'), saldo_acumulado: 1500, saldo_pago: 500, pix_key: 'vendedor@pix.com', grupo_comissao: 'MASTER' },
 ];
 
 const INITIAL_BANKS: Bank[] = [
@@ -33,8 +37,26 @@ const INITIAL_BANKS: Bank[] = [
 ];
 
 const INITIAL_COMMISSIONS: CommissionTable[] = [
-  { id: '1', name: 'INSS Normal', bank: 'Banco Pan', product: 'Empréstimo Consignado', term: '84x', range: 'R$ 1.000 - R$ 50.000', totalCommission: 12, maxPercent: 12, sellerPercent: 12, status: 'Ativo', updatedAt: new Date().toISOString() },
-  { id: '2', name: 'Portabilidade', bank: 'Itaú', product: 'Portabilidade', term: '72x', range: 'Qualquer valor', totalCommission: 6, maxPercent: 6, sellerPercent: 6, status: 'Ativo', updatedAt: new Date().toISOString() },
+  { 
+    id: '1', 
+    banco: 'Banco Pan', 
+    produto: 'Empréstimo Consignado', 
+    operacao: 'INSS Normal',
+    parcelas: '84x',
+    codigo_tabela: 'PAN_INSS_01',
+    nome_tabela: 'INSS Normal', 
+    faixa_valor_min: 1000,
+    faixa_valor_max: 50000,
+    percentual_total_empresa: 12, 
+    comissao_master: 10,
+    comissao_ouro: 9,
+    comissao_prata: 8,
+    comissao_plus: 7,
+    status: 'Ativo', 
+    criado_por: 'sistema',
+    data_criacao: new Date().toISOString(),
+    data_atualizacao: new Date().toISOString(),
+  },
 ];
 
 const INITIAL_SALES = [
@@ -45,8 +67,8 @@ const INITIAL_SALES = [
 ];
 
 const INITIAL_REQUESTS: AccessRequest[] = [
-  { id: '1', name: 'João Silva', email: 'joao@email.com', bank: 'Banco Pan', sellerName: 'Vendedor Exemplo', cpf: '111.222.333-44', status: 'Pendente', createdAt: new Date().toISOString(), fgtsGroup: 'DIAMANTE', cltGroup: 'Fortuna 8D' },
-  { id: '2', name: 'Maria Santos', email: 'maria@email.com', bank: 'Itaú', sellerName: 'Ana Vendedora', cpf: '555.666.777-88', status: 'Aprovado', createdAt: new Date().toISOString(), fgtsGroup: 'OURO', cltGroup: 'Líder CLT' },
+  { id: '1', usuario_id: '3', name: 'João Silva', email: 'joao@email.com', bank: 'Banco Pan', banco_nome: 'Banco Pan', sellerName: 'Vendedor Exemplo', cpf: '111.222.333-44', status: 'Pendente', createdAt: new Date().toISOString(), data_criacao: new Date().toISOString(), fgtsGroup: 'DIAMANTE', cltGroup: 'Fortuna 8D' },
+  { id: '2', usuario_id: '3', name: 'Maria Santos', email: 'maria@email.com', bank: 'Itaú', banco_nome: 'Itaú', sellerName: 'Ana Vendedora', cpf: '555.666.777-88', status: 'Aprovado', createdAt: new Date().toISOString(), data_criacao: new Date().toISOString(), fgtsGroup: 'OURO', cltGroup: 'Líder CLT' },
 ];
 
 const INITIAL_COMMISSION_GROUPS: CommissionGroup[] = [
@@ -119,7 +141,9 @@ export const db = {
     },
     create: (user: Omit<User, 'id' | 'lastAccess'>) => {
       const users = getStorage<User[]>('users', INITIAL_USERS);
-      const newUser = { ...user, id: uuidv4(), lastAccess: new Date().toISOString() };
+      // Hash password if provided
+      const password = user.password ? hashPassword(user.password) : hashPassword('123456');
+      const newUser = { ...user, password, id: uuidv4(), lastAccess: new Date().toISOString() };
       users.push(newUser);
       setStorage('users', users);
       return newUser;
@@ -128,7 +152,11 @@ export const db = {
       const users = getStorage<User[]>('users', INITIAL_USERS);
       const index = users.findIndex(u => u.id === id);
       if (index !== -1) {
-        users[index] = { ...users[index], ...updates };
+        const finalUpdates = { ...updates };
+        if (updates.password) {
+          finalUpdates.password = hashPassword(updates.password);
+        }
+        users[index] = { ...users[index], ...finalUpdates };
         setStorage('users', users);
         return users[index];
       }
@@ -142,62 +170,172 @@ export const db = {
   },
 
   commissions: {
-    getAll: () => getStorage<CommissionTable[]>('commissions', INITIAL_COMMISSIONS),
-    create: (comm: Omit<CommissionTable, 'id' | 'updatedAt'>) => {
-      // Validation: Seller Percent <= Max Percent
-      if (comm.sellerPercent > comm.maxPercent) {
-        throw new Error('O percentual do vendedor não pode ser maior que o percentual máximo da tabela.');
-      }
+    getAll: (role: string = 'vendedor', userGroup?: string) => {
       const commissions = getStorage<CommissionTable[]>('commissions', INITIAL_COMMISSIONS);
-      const newComm = { ...comm, id: uuidv4(), updatedAt: new Date().toISOString() };
+      
+      if (role === 'admin' || role === 'supervisor') {
+        return commissions;
+      }
+
+      // Filter by group for sellers and hide sensitive fields
+      return commissions
+        .map(c => {
+          let sellerCommission = 0;
+          if (userGroup === 'MASTER') sellerCommission = c.comissao_master;
+          else if (userGroup === 'OURO') sellerCommission = c.comissao_ouro;
+          else if (userGroup === 'PRATA') sellerCommission = c.comissao_prata;
+          else if (userGroup === 'PLUS') sellerCommission = c.comissao_plus;
+
+          return {
+            id: c.id,
+            banco: c.banco,
+            produto: c.produto,
+            operacao: c.operacao,
+            parcelas: c.parcelas,
+            codigo_tabela: c.codigo_tabela,
+            nome_tabela: c.nome_tabela,
+            faixa_valor_min: c.faixa_valor_min,
+            faixa_valor_max: c.faixa_valor_max,
+            percentual_vendedor: sellerCommission,
+            status: c.status,
+          };
+        }) as any[];
+    },
+    create: (comm: Omit<CommissionTable, 'id' | 'data_criacao' | 'data_atualizacao'>, userRole: string, userId: string) => {
+      if (userRole !== 'admin') {
+        throw new Error('Acesso negado. Apenas administradores podem criar tabelas.');
+      }
+
+      const commissions = getStorage<CommissionTable[]>('commissions', INITIAL_COMMISSIONS);
+      
+      if (commissions.some(c => c.codigo_tabela === comm.codigo_tabela)) {
+        throw new Error(`O código de tabela ${comm.codigo_tabela} já existe.`);
+      }
+
+      const now = new Date().toISOString();
+      const newComm: CommissionTable = { 
+        ...comm, 
+        id: uuidv4(), 
+        data_criacao: now, 
+        data_atualizacao: now,
+      };
       commissions.push(newComm);
       setStorage('commissions', commissions);
       return newComm;
     },
-    update: (id: string, updates: Partial<CommissionTable>) => {
+    update: (id: string, updates: Partial<CommissionTable>, userRole: string, userId: string) => {
+      if (userRole !== 'admin') {
+        throw new Error('Acesso negado. Apenas administradores podem atualizar tabelas.');
+      }
       const commissions = getStorage<CommissionTable[]>('commissions', INITIAL_COMMISSIONS);
       const index = commissions.findIndex(c => c.id === id);
       if (index !== -1) {
         const currentComm = commissions[index];
-        const updatedComm = { ...currentComm, ...updates, updatedAt: new Date().toISOString() };
-        
-        // Validation
-        if (updatedComm.sellerPercent > updatedComm.maxPercent) {
-          throw new Error('O percentual do vendedor não pode ser maior que o percentual máximo da tabela.');
-        }
-        
+        const updatedComm = { ...currentComm, ...updates };
+
+        updatedComm.data_atualizacao = new Date().toISOString();
         commissions[index] = updatedComm;
         setStorage('commissions', commissions);
         return updatedComm;
       }
       return null;
     },
-    delete: (id: string) => {
+    delete: (id: string, userRole: string, userId: string) => {
+      if (userRole !== 'admin') {
+        db.logs.addSecurityLog({
+          userId,
+          action: 'UNAUTHORIZED_DELETE_COMMISSION',
+          resource: `commissions/${id}`,
+          details: 'Tentativa de exclusão de tabela por não-admin'
+        });
+        throw new Error('Acesso negado. Apenas administradores podem excluir tabelas.');
+      }
       const commissions = getStorage<CommissionTable[]>('commissions', INITIAL_COMMISSIONS);
       const filtered = commissions.filter(c => c.id !== id);
       setStorage('commissions', filtered);
     },
-    import: (comms: Omit<CommissionTable, 'id' | 'updatedAt'>[]) => {
+    import: (comms: Omit<CommissionTable, 'id' | 'data_criacao' | 'data_atualizacao'>[], userRole: string, userId: string) => {
+      if (userRole !== 'admin') {
+        db.logs.addSecurityLog({
+          userId,
+          action: 'UNAUTHORIZED_IMPORT_COMMISSION',
+          resource: 'commissions/import',
+          details: 'Tentativa de importação de tabelas por não-admin'
+        });
+        throw new Error('Acesso negado. Apenas administradores podem importar tabelas.');
+      }
       const commissions = getStorage<CommissionTable[]>('commissions', INITIAL_COMMISSIONS);
+      const now = new Date().toISOString();
+      
       const newComms = comms.map(c => {
-        if (c.sellerPercent > c.maxPercent) {
-          throw new Error(`Erro na importação: O percentual do vendedor (${c.sellerPercent}%) não pode ser maior que o máximo (${c.maxPercent}%) na tabela ${c.name}.`);
-        }
-        return { ...c, id: uuidv4(), updatedAt: new Date().toISOString() };
+        return { 
+          ...c, 
+          id: uuidv4(), 
+          data_criacao: now, 
+          data_atualizacao: now,
+        };
       });
-      commissions.push(...newComms);
+      
+      // Filter out duplicates (code + group combination)
+      const existingKeys = new Set(commissions.map(c => `${c.codigo_tabela}_${c.grupo_comissao}`));
+      const filteredNewComms = newComms.filter(c => !existingKeys.has(`${c.codigo_tabela}_${c.grupo_comissao}`));
+      
+      commissions.push(...filteredNewComms);
       setStorage('commissions', commissions);
-      return newComms;
+      return filteredNewComms;
     }
   },
 
   sales: {
     getAll: () => getStorage<any[]>('sales', INITIAL_SALES),
-    create: (sale: any) => {
+    create: (sale: any, user: User) => {
       const sales = getStorage<any[]>('sales', INITIAL_SALES);
-      const newSale = { ...sale, id: uuidv4() };
+      const commissions = getStorage<CommissionTable[]>('commissions', INITIAL_COMMISSIONS);
+      
+      // Automatic Commission Calculation based on seller's group
+      const userGroup = user.grupo_comissao;
+      const table = commissions.find(c => 
+        c.banco === sale.bank && 
+        c.operacao === sale.operacao &&
+        sale.value >= c.faixa_valor_min &&
+        sale.value <= c.faixa_valor_max
+      );
+
+      let sellerCommissionPercent = 0;
+      let companyCommissionPercent = 0;
+      let bankCommissionPercent = 0;
+
+      if (table) {
+        if (userGroup === 'MASTER') sellerCommissionPercent = table.comissao_master;
+        else if (userGroup === 'OURO') sellerCommissionPercent = table.comissao_ouro;
+        else if (userGroup === 'PRATA') sellerCommissionPercent = table.comissao_prata;
+        else if (userGroup === 'PLUS') sellerCommissionPercent = table.comissao_plus;
+        
+        bankCommissionPercent = table.percentual_total_empresa;
+        companyCommissionPercent = bankCommissionPercent - sellerCommissionPercent;
+      }
+
+      const newSale = { 
+        ...sale, 
+        id: uuidv4(),
+        commission: (sale.value * sellerCommissionPercent) / 100,
+        companyCommission: (sale.value * companyCommissionPercent) / 100,
+        bankCommission: (sale.value * bankCommissionPercent) / 100,
+        table: table ? table.nome_tabela : sale.table,
+        seller: user.name
+      };
+      
       sales.push(newSale);
       setStorage('sales', sales);
+
+      // Update user balance
+      const users = getStorage<User[]>('users', INITIAL_USERS);
+      const userIndex = users.findIndex(u => u.id === user.id);
+      if (userIndex !== -1) {
+        users[userIndex].saldo_acumulado = (users[userIndex].saldo_acumulado || 0) + newSale.commission;
+        setStorage('users', users);
+      }
+
       return newSale;
     },
     update: (id: string, updates: any) => {
@@ -219,13 +357,16 @@ export const db = {
 
   requests: {
     getAll: () => getStorage<AccessRequest[]>('access_requests', INITIAL_REQUESTS),
+    getByUser: (userId: string) => getStorage<AccessRequest[]>('access_requests', INITIAL_REQUESTS).filter(r => r.usuario_id === userId),
     create: (req: Omit<AccessRequest, 'id' | 'createdAt' | 'status'>) => {
       const requests = getStorage<AccessRequest[]>('access_requests', INITIAL_REQUESTS);
+      const now = new Date().toISOString();
       const newReq: AccessRequest = { 
         ...req, 
         id: uuidv4(), 
-        createdAt: new Date().toISOString(), 
-        status: 'Aguardando Documentos', // Default status for new requests
+        createdAt: now, 
+        data_criacao: now,
+        status: 'Pendente', // Default status for new requests
         tipo_solicitacao: req.tipo_solicitacao || 'novo_usuario'
       };
       requests.push(newReq);
@@ -239,7 +380,7 @@ export const db = {
         requests[index].status = status;
         if (adminObservation) requests[index].observacao_admin = adminObservation;
         if (adminId) requests[index].criado_por_admin = adminId;
-        if (status === 'Finalizado' || status === 'Recusado') {
+        if (status === 'Finalizado' || status === 'Aprovado' || status === 'Recusado') {
           requests[index].data_finalizacao = new Date().toISOString();
         }
         setStorage('access_requests', requests);
@@ -251,9 +392,22 @@ export const db = {
 
   credentials: {
     getAll: () => getStorage<PlatformCredential[]>('credentials', []),
-    create: (cred: Omit<PlatformCredential, 'id' | 'updatedAt'>) => {
+    getByUser: (userId: string) => getStorage<PlatformCredential[]>('credentials', []).filter(c => c.usuario_id === userId),
+    create: (cred: Omit<PlatformCredential, 'id' | 'data_criacao' | 'data_atualizacao'>) => {
       const credentials = getStorage<PlatformCredential[]>('credentials', []);
-      const newCred = { ...cred, id: uuidv4(), updatedAt: new Date().toISOString() };
+      const now = new Date().toISOString();
+      const newCred: PlatformCredential = { 
+        ...cred, 
+        id: uuidv4(), 
+        data_criacao: now, 
+        data_atualizacao: now,
+        // Map old fields if provided for backward compatibility
+        bank: cred.banco_nome,
+        link: cred.link_acesso,
+        username: cred.login,
+        password: cred.senha,
+        updatedAt: now
+      };
       credentials.push(newCred);
       setStorage('credentials', credentials);
       return newCred;
@@ -262,7 +416,21 @@ export const db = {
       const credentials = getStorage<PlatformCredential[]>('credentials', []);
       const index = credentials.findIndex(c => c.id === id);
       if (index !== -1) {
-        credentials[index] = { ...credentials[index], ...updates, updatedAt: new Date().toISOString() };
+        const now = new Date().toISOString();
+        const updated = { 
+          ...credentials[index], 
+          ...updates, 
+          data_atualizacao: now,
+          updatedAt: now
+        };
+        
+        // Sync old fields
+        if (updates.banco_nome) updated.bank = updates.banco_nome;
+        if (updates.link_acesso) updated.link = updates.link_acesso;
+        if (updates.login) updated.username = updates.login;
+        if (updates.senha) updated.password = updates.senha;
+
+        credentials[index] = updated;
         setStorage('credentials', credentials);
         return credentials[index];
       }
@@ -282,6 +450,22 @@ export const db = {
       const newLog = { ...log, id: uuidv4(), date: new Date().toISOString() };
       logs.push(newLog);
       setStorage('import_logs', logs);
+      return newLog;
+    },
+    getSecurityLogs: () => getStorage<any[]>('security_logs', []),
+    addSecurityLog: (log: { userId: string; action: string; resource: string; details?: string }) => {
+      const logs = getStorage<any[]>('security_logs', []);
+      const newLog = { ...log, id: uuidv4(), date: new Date().toISOString() };
+      logs.push(newLog);
+      setStorage('security_logs', logs);
+      return newLog;
+    },
+    getImportLogs: () => getStorage<any[]>('log_importacoes', []),
+    addImportLog: (log: any) => {
+      const logs = getStorage<any[]>('log_importacoes', []);
+      const newLog = { ...log, id: uuidv4(), data: new Date().toISOString() };
+      logs.push(newLog);
+      setStorage('log_importacoes', logs);
       return newLog;
     }
   },
@@ -342,8 +526,18 @@ export const db = {
       const requests = getStorage<PaymentRequest[]>('payment_requests', []);
       const index = requests.findIndex(r => r.id === id);
       if (index !== -1) {
+        const oldStatus = requests[index].status;
         requests[index] = { ...requests[index], ...updates };
         setStorage('payment_requests', requests);
+
+        if (oldStatus !== 'Pago' && updates.status === 'Pago') {
+          const users = getStorage<User[]>('users', INITIAL_USERS);
+          const userIndex = users.findIndex(u => u.id === requests[index].usuario_id);
+          if (userIndex !== -1) {
+            users[userIndex].saldo_pago = (users[userIndex].saldo_pago || 0) + requests[index].valor;
+            setStorage('users', users);
+          }
+        }
         return requests[index];
       }
       return null;
@@ -479,6 +673,19 @@ export const db = {
       const announcements = getStorage<Announcement[]>('announcements', []);
       const filtered = announcements.filter(a => a.id !== id);
       setStorage('announcements', filtered);
+    }
+  },
+  utils: {
+    generatePassword: (length: number = 10) => {
+      const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*";
+      let retVal = "";
+      for (let i = 0, n = charset.length; i < length; ++i) {
+        retVal += charset.charAt(Math.floor(Math.random() * n));
+      }
+      return retVal;
+    },
+    comparePassword: (password: string, hash: string) => {
+      return bcrypt.compareSync(password, hash);
     }
   }
 };

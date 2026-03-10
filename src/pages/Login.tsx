@@ -4,8 +4,7 @@ import { useAuth } from '@/context/AuthContext';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/Card';
-import { Lock, Mail, AlertCircle } from 'lucide-react';
-import { emailService } from '@/services/emailService';
+import { Lock, Mail, AlertCircle, ShieldAlert } from 'lucide-react';
 
 import Logo from '@/components/Logo';
 
@@ -45,26 +44,9 @@ export default function Login() {
     }
   };
 
-  const handleForgotPassword = async (e: React.FormEvent) => {
+  const handleForgotPassword = (e: React.FormEvent) => {
     e.preventDefault();
-    setError('');
-    setSuccessMessage('');
-    setLoading(true);
-
-    try {
-      // Use emailService to send (or simulate) email
-      const result = await emailService.sendPasswordReset(email);
-      
-      setSuccessMessage(result.message);
-      
-      if (result.message.includes('simulado')) {
-        // Additional visual feedback for demo mode if needed
-      }
-    } catch (err) {
-      setError('Erro ao processar solicitação.');
-    } finally {
-      setLoading(false);
-    }
+    // No email service, just show instructions
   };
 
   return (
@@ -90,45 +72,35 @@ export default function Login() {
           </CardHeader>
           <CardContent>
             {isForgotPassword ? (
-              <form onSubmit={handleForgotPassword} className="space-y-4">
-                {successMessage && (
-                  <div className="bg-green-50 text-green-600 p-3 rounded-md text-sm flex items-center gap-2">
-                    <AlertCircle className="w-4 h-4" />
-                    {successMessage}
-                  </div>
-                )}
-                
-                <div className="space-y-2">
-                  <div className="relative">
-                    <Mail className="absolute left-3 top-3 h-5 w-5 text-slate-400" />
-                    <Input 
-                      type="email" 
-                      placeholder="seu@agoraqoficial.com" 
-                      className="pl-10"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      required
-                    />
+              <div className="space-y-6">
+                <div className="bg-blue-50 border border-blue-200 p-4 rounded-lg flex gap-3">
+                  <ShieldAlert className="w-5 h-5 text-blue-600 shrink-0" />
+                  <div className="text-sm text-blue-800">
+                    <p className="font-bold mb-1">Recuperação de Acesso:</p>
+                    <p>Por motivos de segurança, a redefinição de senha deve ser solicitada diretamente ao seu <strong>Administrador</strong> ou <strong>Supervisor</strong>.</p>
+                    <div className="mt-3 pt-3 border-t border-blue-100">
+                      <p className="font-semibold">Suporte AgoraQ:</p>
+                      <a 
+                        href="https://wa.me/5517991280211" 
+                        target="_blank" 
+                        rel="noreferrer"
+                        className="text-blue-700 hover:underline flex items-center gap-1 mt-1"
+                      >
+                        (17) 99128-0211 (WhatsApp)
+                      </a>
+                    </div>
                   </div>
                 </div>
 
-                <Button type="submit" className="w-full bg-blue-900 hover:bg-blue-800 text-white font-bold py-2" disabled={loading}>
-                  {loading ? 'Enviando...' : 'Enviar Instruções'}
-                </Button>
-                
                 <Button 
                   type="button" 
-                  variant="ghost" 
-                  className="w-full text-slate-600"
-                  onClick={() => {
-                    setIsForgotPassword(false);
-                    setSuccessMessage('');
-                    setError('');
-                  }}
+                  variant="outline" 
+                  className="w-full"
+                  onClick={() => setIsForgotPassword(false)}
                 >
                   Voltar para Login
                 </Button>
-              </form>
+              </div>
             ) : (
               <form onSubmit={handleSubmit} className="space-y-4">
                 {error && (

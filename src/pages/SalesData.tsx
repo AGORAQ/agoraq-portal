@@ -10,15 +10,19 @@ import { useCommission } from '@/context/CommissionContext';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { db } from '@/services/db';
 import { Sale, PaymentRequest } from '@/types';
+import GlobalImporter from '@/components/GlobalImporter';
 
 export default function SalesData() {
   const { user } = useAuth();
   const { commissions } = useCommission();
-  const isAdmin = user?.role === 'admin' || user?.role === 'supervisor';
+  const isAdmin = user?.role === 'admin';
+  const isSupervisor = user?.role === 'supervisor';
+  const isManagement = isAdmin || isSupervisor;
 
   const [sales, setSales] = useState<Sale[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [isFormOpen, setIsFormOpen] = useState(false);
+  const [isGlobalImporterOpen, setIsGlobalImporterOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<'list' | 'financial'>('list');
   
   // Filters
@@ -26,6 +30,8 @@ export default function SalesData() {
   const [endDate, setEndDate] = useState('');
   const [statusFilter, setStatusFilter] = useState('Todos');
   const [sellerFilter, setSellerFilter] = useState('Todos');
+  const [bankFilter, setBankFilter] = useState('Todos');
+  const [productFilter, setProductFilter] = useState('Todos');
 
   // PIX Request State
   const [isPixModalOpen, setIsPixModalOpen] = useState(false);
@@ -42,7 +48,8 @@ export default function SalesData() {
     cpf: '',
     phone: '',
     bank: '',
-    table: '',
+    product: '',
+    operacao: '',
     value: '',
     status: 'Pendente' as Sale['status'],
     seller: user?.name || ''
@@ -81,11 +88,13 @@ export default function SalesData() {
   }, [user]);
 
   // Derived state for available tables based on selected bank
-  const availableBanks = Array.from(new Set(commissions.map(c => c.bank)));
-  const availableTables = commissions.filter(c => c.bank === formData.bank);
+  const availableBanks = Array.from(new Set(commissions.map(c => c.banco || c.bank)));
+  const availableTables = commissions.filter(c => (c.banco || c.bank) === formData.bank);
   
-  // Get unique sellers for filter
+  // Get unique values for filters
   const uniqueSellers = Array.from(new Set(sales.map(s => s.seller))).filter(Boolean).sort();
+  const uniqueBanksInSales = Array.from(new Set(sales.map(s => s.bank))).filter(Boolean).sort();
+  const uniqueProductsInSales = Array.from(new Set(sales.map(s => s.product))).filter(Boolean).sort();
 
   // Daily Goal Logic
   const [dailyGoal, setDailyGoal] = useState<number>(0);
@@ -125,28 +134,14 @@ export default function SalesData() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!user) return;
     
-    // Find commission rate based on selected table (simplified logic)
-    const selectedCommission = commissions.find(c => c.bank === formData.bank && c.name === formData.table);
-    // Parse percentage string to number (e.g., "12%" -> 0.12) or use number directly if stored as number
-    // In CommissionTable type, sellerPercent is number (e.g. 12 for 12%)
-    const commRate = selectedCommission ? (selectedCommission.sellerPercent / 100) : 0;
-    const companyCommRate = selectedCommission ? (selectedCommission.totalCommission / 100) : 0;
-    // Bank commission is usually the difference or a specific rate, but let's approximate or use what we have
-    // Let's assume bank commission is the rest? Or just a mock value if not in table.
-    // The previous code had mock logic: (commRate || 0) + 0.08
-    const bankCommRate = (commRate || 0) + 0.08; 
-
-    const newSale = {
+    const saleData = {
       ...formData,
-      seller: user?.name || 'Vendedor', // Ensure seller is set
       value: parseFloat(formData.value) || 0,
-      commission: commRate || 0,
-      companyCommission: companyCommRate || 0,
-      bankCommission: bankCommRate || 0,
     };
 
-    db.sales.create(newSale);
+    const newSale = db.sales.create(saleData, user);
     refreshData();
     setIsFormOpen(false);
 
@@ -185,7 +180,8 @@ export default function SalesData() {
       cpf: '',
       phone: '',
       bank: '',
-      table: '',
+      product: '',
+      operacao: '',
       value: '',
       status: 'Pendente',
       seller: user?.name || ''
@@ -196,12 +192,15 @@ export default function SalesData() {
     const matchesSearch = 
       sale.client.toLowerCase().includes(searchTerm.toLowerCase()) ||
       sale.proposal.includes(searchTerm) ||
-      sale.bank.toLowerCase().includes(searchTerm.toLowerCase());
+      sale.bank.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (sale.product && sale.product.toLowerCase().includes(searchTerm.toLowerCase()));
     
     const matchesStatus = statusFilter === 'Todos' || sale.status === statusFilter;
+    const matchesBank = bankFilter === 'Todos' || sale.bank === bankFilter;
+    const matchesProduct = productFilter === 'Todos' || sale.product === productFilter;
     
-    // Restrict visibility: Admins see all (filtered by selection), Sellers see only their own
-    const matchesSeller = isAdmin 
+    // Restrict visibility: Management see all (filtered by selection), Sellers see only their own
+    const matchesSeller = isManagement 
       ? (sellerFilter === 'Todos' || sale.seller === sellerFilter)
       : sale.seller === user?.name;
     
@@ -211,7 +210,7 @@ export default function SalesData() {
     
     const matchesDate = (!start || saleDate >= start) && (!end || saleDate <= end);
 
-    return matchesSearch && matchesStatus && matchesDate && matchesSeller;
+    return matchesSearch && matchesStatus && matchesBank && matchesProduct && matchesDate && matchesSeller;
   });
 
   const handleExport = () => {
@@ -243,14 +242,16 @@ export default function SalesData() {
   };
 
   const totalSales = filteredSales.reduce((acc, curr) => acc + curr.value, 0);
-  const totalCommission = filteredSales.reduce((acc, curr) => acc + (curr.value * curr.commission), 0);
-  const totalCompanyCommission = filteredSales.reduce((acc, curr) => acc + (curr.value * (curr.companyCommission || 0)), 0);
-  const totalBankCommission = filteredSales.reduce((acc, curr) => acc + (curr.value * (curr.bankCommission || 0)), 0);
-  const totalProfit = totalCompanyCommission - totalCommission;
+  const totalCommission = filteredSales.reduce((acc, curr) => acc + (curr.commission || 0), 0);
+  
+  // Strategic metrics - only for management
+  const totalCompanyCommission = isManagement ? filteredSales.reduce((acc, curr) => acc + (curr.companyCommission || 0), 0) : 0;
+  const totalBankCommission = isManagement ? filteredSales.reduce((acc, curr) => acc + (curr.bankCommission || 0), 0) : 0;
+  const totalProfit = totalCompanyCommission;
 
   // Chart Data Preparation
   const chartData = [
-    { name: 'Faturado', value: totalCompanyCommission },
+    { name: 'Faturado', value: totalBankCommission },
     { name: 'Pago Vendedor', value: totalCommission },
     { name: 'Lucro Líquido', value: totalProfit },
   ];
@@ -356,7 +357,7 @@ export default function SalesData() {
           <p className="text-slate-500">Controle de produção e comissionamento.</p>
         </div>
         <div className="flex gap-2">
-          {isAdmin && (
+          {isManagement && (
             <div className="flex bg-slate-100 p-1 rounded-lg mr-2">
               <button
                 onClick={() => setActiveTab('list')}
@@ -373,10 +374,17 @@ export default function SalesData() {
             </div>
           )}
           
-          {!isAdmin && (
+          {!isManagement && (
             <Button className="bg-emerald-600 hover:bg-emerald-700 mr-2" onClick={() => setIsPixModalOpen(true)}>
               <Wallet className="w-4 h-4 mr-2" />
               Solicitar PIX ({formatCurrency(totalCommission)})
+            </Button>
+          )}
+
+          {isManagement && (
+            <Button variant="outline" className="text-emerald-600 border-emerald-200 hover:bg-emerald-50 mr-2" onClick={() => setIsGlobalImporterOpen(true)}>
+              <Download className="w-4 h-4 mr-2" />
+              Importar Vendas
             </Button>
           )}
 
@@ -387,7 +395,7 @@ export default function SalesData() {
         </div>
       </div>
 
-      {isAdmin && pendingPixCount > 0 && (
+      {isManagement && pendingPixCount > 0 && (
         <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 flex items-center gap-3 text-amber-800 animate-in fade-in slide-in-from-top-4 duration-500">
           <BellRing className="h-5 w-5 text-amber-600" />
           <div className="flex-1">
@@ -399,7 +407,7 @@ export default function SalesData() {
         </div>
       )}
 
-      {isAdmin && showPixRequestsList && (
+      {isManagement && showPixRequestsList && (
         <Card className="border-amber-200 shadow-md mb-6 animate-in fade-in slide-in-from-top-2">
           <CardHeader className="bg-amber-50/50 pb-3">
             <CardTitle className="text-lg text-amber-900">Pedidos de Saque Pendentes</CardTitle>
@@ -508,6 +516,16 @@ export default function SalesData() {
         </div>
       )}
 
+      {/* Global Importer Modal */}
+      {isGlobalImporterOpen && (
+        <GlobalImporter 
+          type="vendas" 
+          onImportComplete={() => {
+            setSales(db.sales.getAll());
+          }} 
+          onClose={() => setIsGlobalImporterOpen(false)} 
+        />
+      )}
       {isFormOpen && (
         <Card className="border-blue-200 shadow-lg">
           <CardHeader className="flex flex-row items-center justify-between bg-slate-50 rounded-t-xl border-b">
@@ -552,26 +570,42 @@ export default function SalesData() {
                     onChange={e => handleInputChange('bank', e.target.value)}
                   >
                     <option value="">Selecione o Banco</option>
-                    {availableBanks.map(bank => (
+                    {Array.from(new Set(commissions.map(c => c.banco).filter(Boolean))).map(bank => (
                       <option key={bank} value={bank}>{bank}</option>
                     ))}
                   </select>
                 </div>
                 <div className="space-y-2">
-                  <label className="text-sm font-medium">Tabela de Comissão</label>
+                  <label className="text-sm font-medium">Produto</label>
                   <select 
                     className="flex h-10 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-900 focus-visible:ring-offset-2"
                     required
-                    value={formData.table}
-                    onChange={e => handleInputChange('table', e.target.value)}
+                    value={formData.product || ''}
+                    onChange={e => handleInputChange('product', e.target.value)}
                     disabled={!formData.bank}
                   >
-                    <option value="">Selecione a Tabela</option>
-                    {availableTables.map(table => (
-                      <option key={table.id} value={table.name}>
-                        {table.name} - {table.product} ({table.sellerPercent}%)
-                      </option>
+                    <option value="">Selecione o Produto</option>
+                    {Array.from(new Set(commissions.filter(c => c.banco === formData.bank).map(c => c.produto).filter(Boolean))).map(prod => (
+                      <option key={prod} value={prod}>{prod}</option>
                     ))}
+                  </select>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Operação</label>
+                  <select 
+                    className="flex h-10 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-900 focus-visible:ring-offset-2"
+                    required
+                    value={formData.operacao || ''}
+                    onChange={e => handleInputChange('operacao', e.target.value)}
+                    disabled={!formData.product}
+                  >
+                    <option value="">Selecione a Operação</option>
+                    {commissions
+                      .filter(c => c.banco === formData.bank && c.produto === formData.product)
+                      .map(c => (
+                        <option key={c.id} value={c.operacao}>{c.operacao} ({c.parcelas})</option>
+                      ))
+                    }
                   </select>
                 </div>
               </div>
@@ -587,14 +621,14 @@ export default function SalesData() {
         </Card>
       )}
 
-      {activeTab === 'financial' && isAdmin ? (
+      {activeTab === 'financial' && isManagement ? (
         <div className="space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <Card className="bg-blue-50 border-blue-100">
               <CardContent className="p-6 flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-medium text-blue-600 mb-1">Faturamento Total</p>
-                  <h3 className="text-2xl font-bold text-blue-900">{formatCurrency(totalCompanyCommission)}</h3>
+                  <p className="text-sm font-medium text-blue-600 mb-1">Faturamento Total (Banco)</p>
+                  <h3 className="text-2xl font-bold text-blue-900">{formatCurrency(totalBankCommission)}</h3>
                 </div>
                 <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center text-blue-600">
                   <TrendingUp className="w-6 h-6" />
@@ -604,7 +638,7 @@ export default function SalesData() {
             <Card className="bg-emerald-50 border-emerald-100">
               <CardContent className="p-6 flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-medium text-emerald-600 mb-1">A Pagar (Vendedores)</p>
+                  <p className="text-sm font-medium text-emerald-600 mb-1">Comissão Vendedores</p>
                   <h3 className="text-2xl font-bold text-emerald-900">{formatCurrency(totalCommission)}</h3>
                 </div>
                 <div className="w-12 h-12 bg-emerald-100 rounded-full flex items-center justify-center text-emerald-600">
@@ -615,7 +649,7 @@ export default function SalesData() {
             <Card className="bg-indigo-50 border-indigo-100">
               <CardContent className="p-6 flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-medium text-indigo-600 mb-1">Lucro Líquido</p>
+                  <p className="text-sm font-medium text-indigo-600 mb-1">Lucro Líquido Empresa</p>
                   <h3 className="text-2xl font-bold text-indigo-900">{formatCurrency(totalProfit)}</h3>
                 </div>
                 <div className="w-12 h-12 bg-indigo-100 rounded-full flex items-center justify-center text-indigo-600">
@@ -697,7 +731,29 @@ export default function SalesData() {
                   <option value="Cancelada">Cancelada</option>
                 </select>
 
-                {isAdmin && (
+                <select 
+                  className="h-10 w-full md:w-auto rounded-md border border-slate-200 bg-white px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-900 focus-visible:ring-offset-2"
+                  value={bankFilter}
+                  onChange={(e) => setBankFilter(e.target.value)}
+                >
+                  <option value="Todos">Todos Bancos</option>
+                  {uniqueBanksInSales.map(bank => (
+                    <option key={bank} value={bank}>{bank}</option>
+                  ))}
+                </select>
+
+                <select 
+                  className="h-10 w-full md:w-auto rounded-md border border-slate-200 bg-white px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-900 focus-visible:ring-offset-2"
+                  value={productFilter}
+                  onChange={(e) => setProductFilter(e.target.value)}
+                >
+                  <option value="Todos">Todos Produtos</option>
+                  {uniqueProductsInSales.map(prod => (
+                    <option key={prod} value={prod}>{prod}</option>
+                  ))}
+                </select>
+
+                {isManagement && (
                   <select 
                     className="h-10 w-full md:w-auto rounded-md border border-slate-200 bg-white px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-900 focus-visible:ring-offset-2"
                     value={sellerFilter}
@@ -723,7 +779,7 @@ export default function SalesData() {
                     <th className="px-4 py-3 whitespace-nowrap">Banco / Tabela</th>
                     <th className="px-4 py-3 whitespace-nowrap">Vendedor</th>
                     <th className="px-4 py-3 whitespace-nowrap text-right">Valor Venda</th>
-                    {isAdmin && (
+                    {isManagement && (
                       <>
                         <th className="px-4 py-3 whitespace-nowrap text-right text-slate-600">Com. Banco</th>
                         <th className="px-4 py-3 whitespace-nowrap text-right text-blue-700">Com. Empresa</th>
@@ -741,7 +797,7 @@ export default function SalesData() {
                     // Calculate running total for the filtered list
                     const runningTotal = filteredSales
                       .slice(0, index + 1)
-                      .reduce((acc, curr) => acc + (curr.value * curr.commission), 0);
+                      .reduce((acc, curr) => acc + (curr.commission || 0), 0);
                     
                     return (
                     <tr key={sale.id} className="border-b hover:bg-slate-50/50 transition-colors">
@@ -761,21 +817,21 @@ export default function SalesData() {
                       <td className="px-4 py-3 whitespace-nowrap text-right font-medium">
                         {formatCurrency(sale.value)}
                       </td>
-                      {isAdmin && (
+                      {isManagement && (
                         <>
                           <td className="px-4 py-3 whitespace-nowrap text-right text-slate-600 font-medium">
-                            {((sale.bankCommission || 0) * 100).toFixed(0)}%
+                            {formatCurrency(sale.bankCommission)}
                           </td>
                           <td className="px-4 py-3 whitespace-nowrap text-right text-blue-700 font-medium">
-                            {(sale.companyCommission * 100).toFixed(0)}% ({formatCurrency(sale.value * sale.companyCommission)})
+                            {formatCurrency(sale.companyCommission)}
                           </td>
                         </>
                       )}
                       <td className="px-4 py-3 whitespace-nowrap text-right text-emerald-700 font-medium">
-                        {(sale.commission * 100).toFixed(0)}% ({formatCurrency(sale.value * sale.commission)})
+                        {formatCurrency(sale.commission)}
                       </td>
                       <td className="px-4 py-3 whitespace-nowrap text-right font-bold text-emerald-600">
-                        {formatCurrency(sale.value * sale.commission)}
+                        {formatCurrency(sale.commission)}
                       </td>
                       <td className="px-4 py-3 whitespace-nowrap text-right text-slate-400 text-xs">
                         {formatCurrency(runningTotal)}

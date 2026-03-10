@@ -15,7 +15,6 @@ import {
   X, 
   CheckCircle, 
   XCircle, 
-  Mail, 
   Users, 
   FileText, 
   Link as LinkIcon, 
@@ -27,11 +26,18 @@ import {
   ArrowRight,
   Bot,
   Key,
-  RefreshCw
+  RefreshCw,
+  Copy,
+  Check,
+  Eye,
+  EyeOff,
+  ChevronRight,
+  LayoutDashboard,
+  Bell,
+  LogOut
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { db } from '@/services/db';
-import { emailService } from '@/services/emailService';
 import { User, CommissionGroup, AccessRequest, Bank, CommissionTable } from '@/types';
 
 export default function AdminPanel() {
@@ -39,6 +45,40 @@ export default function AdminPanel() {
   const location = useLocation();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<'users' | 'requests' | 'commission_groups' | 'integrations' | 'contract' | 'settings' | 'banks' | 'ai_training'>('users');
+
+  // Sidebar Helper Components
+  const SidebarItem = ({ id, icon: Icon, label, badge, active, onClick }: { id: string, icon: any, label: string, badge?: number, active: boolean, onClick: () => void }) => (
+    <button
+      onClick={onClick}
+      className={`w-full flex items-center justify-between px-4 py-3 text-sm font-medium rounded-xl transition-all duration-200 ${
+        active 
+          ? 'bg-blue-600 text-white shadow-lg shadow-blue-200 translate-x-1' 
+          : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+      }`}
+    >
+      <div className="flex items-center gap-3">
+        <Icon className={`w-5 h-5 ${active ? 'text-white' : 'text-slate-400'}`} />
+        {label}
+      </div>
+      <div className="flex items-center gap-2">
+        {badge !== undefined && badge > 0 && (
+          <Badge variant="destructive" className="h-5 min-w-[20px] px-1 flex items-center justify-center rounded-full text-[10px] bg-red-500 border-none">
+            {badge}
+          </Badge>
+        )}
+        <ChevronRight className={`w-4 h-4 transition-transform ${active ? 'rotate-90 opacity-100' : 'opacity-0'}`} />
+      </div>
+    </button>
+  );
+
+  const SidebarCategory = ({ label, children }: { label: string, children: React.ReactNode }) => (
+    <div className="space-y-1 mb-6">
+      <h3 className="px-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3">{label}</h3>
+      <div className="space-y-1">
+        {children}
+      </div>
+    </div>
+  );
   
   // Banks State
   const [banks, setBanks] = useState<Bank[]>([]);
@@ -54,7 +94,7 @@ export default function AdminPanel() {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [formData, setFormData] = useState<Partial<User>>({
-    name: '', email: '', role: 'vendedor', status: 'Ativo', fgtsGroup: '', cltGroup: '', password: ''
+    name: '', email: '', role: 'vendedor', status: 'Ativo', grupo_comissao: 'PLUS', password: ''
   });
 
   // Commission Groups State
@@ -79,6 +119,20 @@ export default function AdminPanel() {
   // Settings State
   const [canvaLink, setCanvaLink] = useState('https://www.canva.com/');
   const [aiSystemPrompt, setAiSystemPrompt] = useState('');
+
+  // Password Modal State
+  const [passwordModal, setPasswordModal] = useState<{
+    isOpen: boolean;
+    password: '';
+    userName: '';
+    type: 'create' | 'reset';
+  }>({
+    isOpen: false,
+    password: '',
+    userName: '',
+    type: 'create'
+  });
+  const [copied, setCopied] = useState(false);
 
   const loadData = () => {
     setUsers(db.users.getAll());
@@ -171,125 +225,38 @@ export default function AdminPanel() {
       db.users.update(editingUser.id, formData);
       alert('Usuário atualizado com sucesso!');
     } else {
-      const password = formData.password || '123456';
+      // Generate a strong random password
+      const generatedPassword = db.utils.generatePassword(12);
       
-      db.users.create({
+      const newUser = db.users.create({
         name: formData.name || '',
         email: formData.email || '',
         role: formData.role as any,
         status: formData.status as any,
-        password: password,
-        fgtsGroup: formData.fgtsGroup,
-        cltGroup: formData.cltGroup,
+        password: generatedPassword,
+        grupo_comissao: formData.grupo_comissao as any,
         bancos_permitidos: formData.bancos_permitidos
       });
-      
-      // Send credentials via email
-      const emailResult = await emailService.sendCredentials(
-        formData.email || '',
-        formData.name || '',
-        formData.email || '',
-        password
-      );
 
-      if (emailResult.success) {
-        if (emailResult.simulated) {
-          alert(`Usuário criado com sucesso!\n\nNota: O sistema está em MODO DEMO. O e-mail para ${formData.email} foi SIMULADO no console. Configure o EmailJS para envio real.`);
-        } else {
-          alert(`Usuário criado com sucesso!\n\nAs credenciais foram enviadas para: ${formData.email}`);
-        }
-      } else {
-        alert(`Usuário criado, mas houve um erro ao enviar o e-mail.\n\nVerifique as configurações do EmailJS no menu de configurações.`);
+      if (newUser) {
+        setPasswordModal({
+          isOpen: true,
+          password: generatedPassword as any,
+          userName: newUser.name,
+          type: 'create'
+        });
       }
     }
     loadData();
     setIsFormOpen(false);
     setEditingUser(null);
-    setFormData({ name: '', email: '', role: 'vendedor', status: 'Ativo', fgtsGroup: '', cltGroup: '', password: '' });
+    setFormData({ name: '', email: '', role: 'vendedor', status: 'Ativo', grupo_comissao: 'PLUS', password: '' });
   };
-
-  // ... (existing code)
 
   const handleTestEmail = async () => {
-    const email = prompt("Digite um e-mail para receber o teste:");
-    if (email) {
-      alert("Enviando e-mail de teste...");
-      const result = await emailService.sendPasswordReset(email); // Reusing reset template for test
-      alert(result.message);
-    }
+    alert("O serviço de e-mail foi desativado. As senhas agora são geradas localmente.");
   };
 
-  // ... (render code)
-
-      {activeTab === 'settings' && (
-        <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Settings className="w-5 h-5 text-blue-600" />
-                Configurações do Dashboard
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              
-              <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg">
-                <h3 className="font-medium mb-2">Status da Configuração de E-mail</h3>
-                <div className="space-y-2 mb-4">
-                  <div className="flex items-center gap-2 text-sm">
-                    {import.meta.env.VITE_EMAILJS_SERVICE_ID ? (
-                      <CheckCircle className="w-4 h-4 text-green-600" />
-                    ) : (
-                      <XCircle className="w-4 h-4 text-red-600" />
-                    )}
-                    <span>Service ID: {import.meta.env.VITE_EMAILJS_SERVICE_ID ? 'Configurado' : 'Não configurado'}</span>
-                  </div>
-                  <div className="flex items-center gap-2 text-sm">
-                    {import.meta.env.VITE_EMAILJS_PUBLIC_KEY ? (
-                      <CheckCircle className="w-4 h-4 text-green-600" />
-                    ) : (
-                      <XCircle className="w-4 h-4 text-red-600" />
-                    )}
-                    <span>Public Key: {import.meta.env.VITE_EMAILJS_PUBLIC_KEY ? 'Configurado' : 'Não configurado'}</span>
-                  </div>
-                </div>
-                
-                <h3 className="font-medium mb-2">Teste de E-mail (EmailJS)</h3>
-                <p className="text-sm text-slate-500 mb-4">
-                  Verifique se as chaves de API estão configuradas corretamente enviando um e-mail de teste.
-                </p>
-                <div className="flex gap-2">
-                  <Button onClick={handleTestEmail} variant="outline">
-                    <Mail className="w-4 h-4 mr-2" />
-                    Enviar E-mail de Teste
-                  </Button>
-                </div>
-              </div>
-
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Link do Canva (Foto WhatsApp)</label>
-                  <Input 
-                    placeholder="https://www.canva.com/..." 
-                    value={canvaLink}
-                    onChange={(e) => setCanvaLink(e.target.value)}
-                  />
-                  <p className="text-xs text-slate-500">
-                    Este é o link que será aberto quando o vendedor clicar no card "Foto WhatsApp" no Dashboard.
-                  </p>
-                </div>
-
-                <div className="pt-4 flex justify-end">
-                  <Button onClick={handleSaveSettings} className="bg-blue-900 hover:bg-blue-800">
-                    <Save className="w-4 h-4 mr-2" />
-                    Salvar Configurações
-                  </Button>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      )}
-  
   const handleBankSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!bankFormData.nome_banco) return;
@@ -315,7 +282,7 @@ export default function AdminPanel() {
     
     db.commissionGroups.create({
       name: groupFormData.name,
-      type: groupFormData.type as 'FGTS' | 'CLT',
+      type: groupFormData.type as 'FGTS' | 'CLT' | 'Outros',
       banco_id: groupFormData.banco_id,
       status: groupFormData.status as 'Ativo' | 'Inativo'
     });
@@ -333,39 +300,28 @@ export default function AdminPanel() {
   };
 
   const handleApproveRequest = async (req: AccessRequest) => {
-    const password = '123'; // Default password
+    const generatedPassword = db.utils.generatePassword(12);
     
     // Approve request: Create user and update request status
-    db.users.create({
+    const newUser = db.users.create({
       name: req.name,
       email: req.email,
       role: 'vendedor',
       status: 'Ativo',
-      password: password,
-      fgtsGroup: req.fgtsGroup,
-      cltGroup: req.cltGroup
+      password: generatedPassword,
+      grupo_comissao: 'PLUS' // Default group for new requests
     });
     
-    db.requests.updateStatus(req.id, 'Aprovado');
-    
-    // Send credentials via email
-    const emailResult = await emailService.sendCredentials(
-      req.email,
-      req.name,
-      req.email,
-      password
-    );
-
-    loadData();
-    
-    if (emailResult.success) {
-      if (emailResult.simulated) {
-        alert(`Solicitação aprovada!\n\nUsuário criado. Nota: E-mail para ${req.email} SIMULADO (Modo Demo). Configure EmailJS para envio real.`);
-      } else {
-        alert(`Solicitação aprovada!\n\nUsuário criado e credenciais enviadas para: ${req.email}`);
-      }
-    } else {
-      alert(`Solicitação aprovada e usuário criado, mas houve um erro ao enviar o e-mail.\n\nVerifique as configurações do EmailJS.`);
+    if (newUser) {
+      db.requests.updateStatus(req.id, 'Aprovado');
+      loadData();
+      
+      setPasswordModal({
+        isOpen: true,
+        password: generatedPassword as any,
+        userName: newUser.name,
+        type: 'create'
+      });
     }
   };
 
@@ -376,10 +332,23 @@ export default function AdminPanel() {
     }
   };
 
-  const handleResetPassword = async (email: string) => {
-    if (confirm(`Deseja enviar um e-mail de redefinição de senha para ${email}?`)) {
-      const result = await emailService.sendPasswordReset(email);
-      alert(result.message);
+  const handleResetPassword = async (userToReset: User) => {
+    if (confirm(`Deseja gerar uma nova senha para ${userToReset.name}?`)) {
+      const newPassword = db.utils.generatePassword(12);
+      
+      const updatedUser = db.users.update(userToReset.id, {
+        password: newPassword
+      });
+
+      if (updatedUser) {
+        setPasswordModal({
+          isOpen: true,
+          password: newPassword as any,
+          userName: updatedUser.name,
+          type: 'reset'
+        });
+        loadData();
+      }
     }
   };
 
@@ -389,135 +358,120 @@ export default function AdminPanel() {
   );
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900">Administração do Sistema</h1>
-          <p className="text-slate-500">Gerencie usuários e solicitações de acesso.</p>
+    <div className="min-h-screen bg-slate-50/50 -m-4 md:-m-8 p-4 md:p-8">
+      <div className="max-w-[1600px] mx-auto">
+        {/* Header Section */}
+        <div className="mb-8 flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+          <div className="flex items-center gap-4">
+            <div className="h-12 w-12 bg-blue-900 rounded-xl flex items-center justify-center text-white shadow-inner">
+              <Shield className="w-6 h-6" />
+            </div>
+            <div>
+              <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Painel de Administração</h1>
+              <p className="text-slate-500 text-sm">Controle total sobre usuários, comissões e configurações do sistema.</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            <div className="hidden sm:flex flex-col items-end mr-2">
+              <span className="text-sm font-bold text-slate-900">{user?.name}</span>
+              <span className="text-xs text-slate-500 uppercase tracking-wider">Administrador Master</span>
+            </div>
+            <div className="h-10 w-10 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center overflow-hidden">
+              <UserIcon className="w-5 h-5 text-slate-400" />
+            </div>
+          </div>
         </div>
-      </div>
 
-      {/* Tabs */}
-      <div className="flex space-x-1 bg-slate-100 p-1 rounded-lg w-fit">
-        <button
-          onClick={() => setActiveTab('users')}
-          className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${
-            activeTab === 'users' 
-              ? 'bg-white text-blue-700 shadow-sm' 
-              : 'text-slate-600 hover:text-slate-900'
-          }`}
-        >
-          <div className="flex items-center gap-2">
-            <Users className="w-4 h-4" />
-            Usuários do Sistema
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+          {/* Sidebar Navigation */}
+          <div className="lg:col-span-3 sticky top-6">
+            <Card className="border-none shadow-none bg-transparent">
+              <CardContent className="p-0">
+                <SidebarCategory label="Gestão de Pessoas">
+                  <SidebarItem 
+                    id="users" 
+                    icon={Users} 
+                    label="Usuários do Sistema" 
+                    active={activeTab === 'users'} 
+                    onClick={() => setActiveTab('users')} 
+                  />
+                  <SidebarItem 
+                    id="requests" 
+                    icon={FileText} 
+                    label="Solicitações de Acesso" 
+                    badge={accessRequests.filter(r => r.status === 'Pendente').length} 
+                    active={activeTab === 'requests'} 
+                    onClick={() => setActiveTab('requests')} 
+                  />
+                </SidebarCategory>
+                
+                <SidebarCategory label="Comissões e Bancos">
+                  <SidebarItem 
+                    id="banks" 
+                    icon={Building2} 
+                    label="Bancos Parceiros" 
+                    active={activeTab === 'banks'} 
+                    onClick={() => setActiveTab('banks')} 
+                  />
+                  <SidebarItem 
+                    id="commission_groups" 
+                    icon={DollarSign} 
+                    label="Grupos de Comissão" 
+                    active={activeTab === 'commission_groups'} 
+                    onClick={() => setActiveTab('commission_groups')} 
+                  />
+                </SidebarCategory>
+
+                <SidebarCategory label="Configurações">
+                  <SidebarItem 
+                    id="settings" 
+                    icon={Settings} 
+                    label="Configurações Gerais" 
+                    active={activeTab === 'settings'} 
+                    onClick={() => setActiveTab('settings')} 
+                  />
+                  <SidebarItem 
+                    id="contract" 
+                    icon={FileText} 
+                    label="Contrato Digital" 
+                    active={activeTab === 'contract'} 
+                    onClick={() => setActiveTab('contract')} 
+                  />
+                </SidebarCategory>
+
+                <SidebarCategory label="Avançado">
+                  <SidebarItem 
+                    id="integrations" 
+                    icon={LinkIcon} 
+                    label="Integrações API" 
+                    active={activeTab === 'integrations'} 
+                    onClick={() => setActiveTab('integrations')} 
+                  />
+                  <SidebarItem 
+                    id="ai_training" 
+                    icon={Bot} 
+                    label="Treinamento da IA" 
+                    active={activeTab === 'ai_training'} 
+                    onClick={() => setActiveTab('ai_training')} 
+                  />
+                </SidebarCategory>
+              </CardContent>
+            </Card>
           </div>
-        </button>
-        <button
-          onClick={() => setActiveTab('requests')}
-          className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${
-            activeTab === 'requests' 
-              ? 'bg-white text-blue-700 shadow-sm' 
-              : 'text-slate-600 hover:text-slate-900'
-          }`}
-        >
-          <div className="flex items-center gap-2">
-            <FileText className="w-4 h-4" />
-            Solicitações de Cadastro
-            {accessRequests.filter(r => r.status === 'Pendente').length > 0 && (
-              <Badge variant="destructive" className="ml-1 h-5 w-5 p-0 flex items-center justify-center rounded-full text-[10px]">
-                {accessRequests.filter(r => r.status === 'Pendente').length}
-              </Badge>
-            )}
-          </div>
-        </button>
-        <button
-          onClick={() => setActiveTab('banks')}
-          className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${
-            activeTab === 'banks' 
-              ? 'bg-white text-blue-700 shadow-sm' 
-              : 'text-slate-600 hover:text-slate-900'
-          }`}
-        >
-          <div className="flex items-center gap-2">
-            <Building2 className="w-4 h-4" />
-            Configuração por Banco
-          </div>
-        </button>
-        <button
-          onClick={() => setActiveTab('commission_groups')}
-          className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${
-            activeTab === 'commission_groups' 
-              ? 'bg-white text-blue-700 shadow-sm' 
-              : 'text-slate-600 hover:text-slate-900'
-          }`}
-        >
-          <div className="flex items-center gap-2">
-            <Users className="w-4 h-4" />
-            Grupos de Comissões
-          </div>
-        </button>
-        <button
-          onClick={() => setActiveTab('integrations')}
-          className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${
-            activeTab === 'integrations' 
-              ? 'bg-white text-blue-700 shadow-sm' 
-              : 'text-slate-600 hover:text-slate-900'
-          }`}
-        >
-          <div className="flex items-center gap-2">
-            <LinkIcon className="w-4 h-4" />
-            Integrações
-          </div>
-        </button>
-        <button
-          onClick={() => setActiveTab('contract')}
-          className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${
-            activeTab === 'contract' 
-              ? 'bg-white text-blue-700 shadow-sm' 
-              : 'text-slate-600 hover:text-slate-900'
-          }`}
-        >
-          <div className="flex items-center gap-2">
-            <FileText className="w-4 h-4" />
-            Contrato de Serviço
-          </div>
-        </button>
-        <button
-          onClick={() => setActiveTab('settings')}
-          className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${
-            activeTab === 'settings' 
-              ? 'bg-white text-blue-700 shadow-sm' 
-              : 'text-slate-600 hover:text-slate-900'
-          }`}
-        >
-          <div className="flex items-center gap-2">
-            <Settings className="w-4 h-4" />
-            Configurações
-          </div>
-        </button>
-        <button
-          onClick={() => setActiveTab('ai_training')}
-          className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${
-            activeTab === 'ai_training' 
-              ? 'bg-white text-blue-700 shadow-sm' 
-              : 'text-slate-600 hover:text-slate-900'
-          }`}
-        >
-          <div className="flex items-center gap-2">
-            <Bot className="w-4 h-4" />
-            Treinamento IA
-          </div>
-        </button>
-        <button
-          onClick={() => navigate('/admin/avisos')}
-          className="px-4 py-2 text-sm font-medium rounded-md transition-colors text-slate-600 hover:text-slate-900"
-        >
-          <div className="flex items-center gap-2">
-            <AlertTriangle className="w-4 h-4" />
-            Avisos e Notificações
-          </div>
-        </button>
-      </div>
+
+          {/* Main Content Area */}
+          <div className="lg:col-span-9 space-y-6">
+            {/* Tab Content Header */}
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-2 text-slate-400 text-sm">
+                <LayoutDashboard className="w-4 h-4" />
+                <span>Admin</span>
+                <ChevronRight className="w-3 h-3" />
+                <span className="text-blue-600 font-medium capitalize">
+                  {activeTab.replace('_', ' ')}
+                </span>
+              </div>
+            </div>
 
       {activeTab === 'ai_training' && (
         <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4">
@@ -596,6 +550,7 @@ export default function AdminPanel() {
                       >
                         <option value="FGTS">FGTS</option>
                         <option value="CLT">CLT</option>
+                        <option value="Outros">Outros</option>
                         <option value="Ambos">Ambos</option>
                       </select>
                     </div>
@@ -686,7 +641,7 @@ export default function AdminPanel() {
                 </div>
               </CardHeader>
               <CardContent className="p-6">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
                   <div className="space-y-4">
                     <h4 className="font-bold text-slate-900 flex items-center gap-2">
                       <Badge className="bg-blue-600">FGTS</Badge>
@@ -710,6 +665,22 @@ export default function AdminPanel() {
                     </h4>
                     <div className="space-y-2">
                       {commissionGroups.filter(g => g.banco_id === selectedBankForConfig && g.type === 'CLT').map(g => (
+                        <div key={g.id} className="flex items-center justify-between p-3 bg-white rounded-lg border border-slate-200 shadow-sm">
+                          <span className="font-medium">{g.name}</span>
+                          <Button variant="ghost" size="icon" className="text-red-600 h-8 w-8" onClick={() => handleDeleteGroup(g.id)}>
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="space-y-4">
+                    <h4 className="font-bold text-slate-900 flex items-center gap-2">
+                      <Badge className="bg-amber-600">Outros</Badge>
+                      Grupos Vinculados
+                    </h4>
+                    <div className="space-y-2">
+                      {commissionGroups.filter(g => g.banco_id === selectedBankForConfig && g.type === 'Outros').map(g => (
                         <div key={g.id} className="flex items-center justify-between p-3 bg-white rounded-lg border border-slate-200 shadow-sm">
                           <span className="font-medium">{g.name}</span>
                           <Button variant="ghost" size="icon" className="text-red-600 h-8 w-8" onClick={() => handleDeleteGroup(g.id)}>
@@ -847,15 +818,10 @@ export default function AdminPanel() {
                     
                     {!editingUser && (
                       <div className="space-y-2">
-                        <label className="text-sm font-medium">Senha Inicial</label>
-                        <Input 
-                          type="text" 
-                          required 
-                          placeholder="Defina uma senha provisória"
-                          value={formData.password || ''} 
-                          onChange={e => handleInputChange('password', e.target.value)} 
-                        />
-                        <p className="text-xs text-slate-500">O usuário poderá alterar esta senha no primeiro acesso.</p>
+                        <label className="text-sm font-medium">Senha</label>
+                        <div className="p-3 bg-slate-50 border border-slate-200 rounded-md text-slate-500 text-sm italic">
+                          A senha será gerada automaticamente e exibida após salvar.
+                        </div>
                       </div>
                     )}
                     <div className="space-y-2">
@@ -882,6 +848,20 @@ export default function AdminPanel() {
                       </select>
                     </div>
                     <div className="space-y-2">
+                      <label className="text-sm font-medium">Grupo de Comissão</label>
+                      <select 
+                        className="flex h-10 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm"
+                        value={formData.grupo_comissao}
+                        onChange={e => handleInputChange('grupo_comissao', e.target.value)}
+                        required
+                      >
+                        <option value="MASTER">MASTER</option>
+                        <option value="OURO">OURO</option>
+                        <option value="PRATA">PRATA</option>
+                        <option value="PLUS">PLUS</option>
+                      </select>
+                    </div>
+                    <div className="space-y-2">
                       <label className="text-sm font-medium">Banco</label>
                       <select 
                         className="flex h-10 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm"
@@ -890,9 +870,7 @@ export default function AdminPanel() {
                           const bankId = e.target.value;
                           setFormData(prev => ({ 
                             ...prev, 
-                            bancos_permitidos: [bankId],
-                            fgtsGroup: '',
-                            cltGroup: ''
+                            bancos_permitidos: [bankId]
                           }));
                         }}
                       >
@@ -902,46 +880,12 @@ export default function AdminPanel() {
                         ))}
                       </select>
                     </div>
-                    <div className="space-y-2">
-                      <label className="text-sm font-medium">Tabela FGTS</label>
-                      <select 
-                        className="flex h-10 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm disabled:opacity-50"
-                        value={formData.fgtsGroup || ''}
-                        onChange={e => handleInputChange('fgtsGroup', e.target.value)}
-                        disabled={!formData.bancos_permitidos?.[0]}
-                      >
-                        <option value="">Nenhum</option>
-                        {commissionGroups
-                          .filter(g => g.type === 'FGTS' && g.banco_id === formData.bancos_permitidos?.[0])
-                          .map(g => (
-                            <option key={g.id} value={g.name}>{g.name}</option>
-                          ))
-                        }
-                      </select>
-                    </div>
-                    <div className="space-y-2">
-                      <label className="text-sm font-medium">Tabela CLT</label>
-                      <select 
-                        className="flex h-10 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm disabled:opacity-50"
-                        value={formData.cltGroup || ''}
-                        onChange={e => handleInputChange('cltGroup', e.target.value)}
-                        disabled={!formData.bancos_permitidos?.[0]}
-                      >
-                        <option value="">Nenhum</option>
-                        {commissionGroups
-                          .filter(g => g.type === 'CLT' && g.banco_id === formData.bancos_permitidos?.[0])
-                          .map(g => (
-                            <option key={g.id} value={g.name}>{g.name}</option>
-                          ))
-                        }
-                      </select>
-                    </div>
                   </div>
                   <div className="flex justify-end gap-2 pt-4">
                     <Button type="button" variant="outline" onClick={() => setIsFormOpen(false)}>Cancelar</Button>
                     <Button type="submit" className="bg-blue-900 hover:bg-blue-800">
                       <Save className="w-4 h-4 mr-2" />
-                      Salvar e Enviar Acesso
+                      {editingUser ? 'Salvar Alterações' : 'Criar Usuário e Gerar Senha'}
                     </Button>
                   </div>
                 </form>
@@ -1048,7 +992,7 @@ export default function AdminPanel() {
                           </td>
                           <td className="px-4 py-3 text-right">
                             <div className="flex justify-end gap-2">
-                              <Button variant="ghost" size="icon" className="h-8 w-8 text-amber-600" onClick={() => handleResetPassword(u.email)} title="Enviar Reset de Senha">
+                              <Button variant="ghost" size="icon" className="h-8 w-8 text-amber-600" onClick={() => handleResetPassword(u)} title="Resetar Senha">
                                 <Key className="w-4 h-4" />
                               </Button>
                               <Button variant="ghost" size="icon" className="h-8 w-8 text-blue-600" onClick={() => handleEdit(u)} title="Editar Usuário">
@@ -1117,6 +1061,7 @@ export default function AdminPanel() {
                       >
                         <option value="FGTS">FGTS</option>
                         <option value="CLT">CLT</option>
+                        <option value="Outros">Outros</option>
                       </select>
                     </div>
                     <div className="space-y-2">
@@ -1393,6 +1338,71 @@ export default function AdminPanel() {
           </Card>
         </div>
       )}
+      {/* Password Display Modal */}
+      {passwordModal.isOpen && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[100] p-4 animate-in fade-in duration-200">
+          <Card className="w-full max-w-md shadow-2xl border-blue-200">
+            <CardHeader className="bg-slate-50 rounded-t-xl border-b">
+              <CardTitle className="flex items-center gap-2 text-blue-900">
+                <Key className="w-5 h-5" />
+                {passwordModal.type === 'create' ? 'Usuário Criado com Sucesso!' : 'Senha Resetada com Sucesso!'}
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-6 space-y-6">
+              <div className="text-center space-y-2">
+                <p className="text-slate-600">
+                  A senha para <strong>{passwordModal.userName}</strong> foi gerada:
+                </p>
+                <div className="relative group">
+                  <div className="bg-slate-100 p-4 rounded-lg font-mono text-2xl font-bold tracking-wider text-blue-900 border-2 border-dashed border-blue-200 select-all">
+                    {passwordModal.password}
+                  </div>
+                  <Button 
+                    variant="secondary" 
+                    size="sm" 
+                    className="mt-4 w-full bg-blue-600 hover:bg-blue-700 text-white"
+                    onClick={() => {
+                      navigator.clipboard.writeText(passwordModal.password);
+                      setCopied(true);
+                      setTimeout(() => setCopied(false), 2000);
+                    }}
+                  >
+                    {copied ? (
+                      <>
+                        <Check className="w-4 h-4 mr-2" />
+                        Copiado!
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="w-4 h-4 mr-2" />
+                        Copiar Senha
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </div>
+
+              <div className="bg-amber-50 border border-amber-200 p-4 rounded-lg flex gap-3">
+                <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0" />
+                <div className="text-sm text-amber-800">
+                  <p className="font-bold mb-1">Aviso de Segurança:</p>
+                  <p>Envie esta senha ao usuário de forma segura. Por segurança, ela não será exibida novamente.</p>
+                </div>
+              </div>
+
+              <Button 
+                className="w-full bg-slate-900 hover:bg-slate-800" 
+                onClick={() => setPasswordModal({ ...passwordModal, isOpen: false })}
+              >
+                Entendido, já salvei a senha
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

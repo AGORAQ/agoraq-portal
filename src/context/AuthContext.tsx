@@ -37,7 +37,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     
     const foundUser = users.find(u => 
       u.email.toLowerCase() === normalizedEmail && 
-      (password ? u.password === password : true)
+      (password ? db.utils.comparePassword(password, u.password) : true)
     );
     
     if (foundUser) {

@@ -11,7 +11,6 @@ import Credentials from '@/pages/Credentials';
 import Commissions from '@/pages/Commissions';
 import Academy from '@/pages/Academy';
 import Finance from '@/pages/Finance';
-import Simulator from '@/pages/Simulator';
 import PaymentAlerts from '@/pages/PaymentAlerts';
 import FinancialReport from '@/pages/FinancialReport';
 import Support from '@/pages/Support';
@@ -68,7 +67,6 @@ export default function App() {
             <Route path="/comissoes" element={<PrivateRoute><Commissions /></PrivateRoute>} />
             <Route path="/academy" element={<PrivateRoute><Academy /></PrivateRoute>} />
             <Route path="/financeiro" element={<PrivateRoute><Finance /></PrivateRoute>} />
-            <Route path="/simulador" element={<PrivateRoute><Simulator /></PrivateRoute>} />
             <Route path="/suporte" element={<PrivateRoute><Support /></PrivateRoute>} />
             <Route path="/crm" element={<PrivateRoute><CRM /></PrivateRoute>} />
             <Route path="/vendas" element={<PrivateRoute><SalesData /></PrivateRoute>} />

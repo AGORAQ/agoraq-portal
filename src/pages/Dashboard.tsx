@@ -46,6 +46,10 @@ export default function Dashboard() {
   const [bankDistribution, setBankDistribution] = React.useState<{ name: string; value: number }[]>([]);
   const [projection, setProjection] = React.useState({ total: 0, company: 0, seller: 0 });
 
+  const isAdmin = user?.role === 'admin';
+  const isSupervisor = user?.role === 'supervisor';
+  const isManagement = isAdmin || isSupervisor;
+
   React.useEffect(() => {
     const settings = db.settings.get();
     if (settings.canvaLink) {
@@ -57,8 +61,8 @@ export default function Dashboard() {
     if (savedGoal) setMonthlyGoal(Number(savedGoal));
 
     const allSales = db.sales.getAll();
-    // Filter sales if user is not admin
-    const filteredSales = user?.role === 'admin' ? allSales : allSales.filter(s => s.sellerId === user?.id);
+    // Filter sales if user is not management
+    const filteredSales = isManagement ? allSales : allSales.filter(s => s.seller === user?.name);
     
     setSales(filteredSales);
     setRequests(db.requests.getAll());
@@ -159,8 +163,8 @@ export default function Dashboard() {
   const remainingDays = daysInMonth - currentDay;
   const neededPerDay = remainingDays > 0 ? Math.max(0, (monthlyGoal - monthTotal) / remainingDays) : 0;
 
-  const totalCommissionsValue = sales.reduce((acc, curr) => acc + ((Number(curr.value) || 0) * (Number(curr.sellerCommission) || 0.05)), 0);
-  const totalProfitValue = sales.reduce((acc, curr) => acc + ((Number(curr.value) || 0) * (Number(curr.companyCommission) || 0.05)), 0);
+  const totalCommissionsValue = sales.reduce((acc, curr) => acc + ((Number(curr.value) || 0) * (Number(curr.commission) || 0)), 0);
+  const totalProfitValue = sales.reduce((acc, curr) => acc + ((Number(curr.value) || 0) * (Number(curr.companyCommission) || 0)), 0);
   const pendingRequestsCount = requests.filter(r => r.status === 'Pendente').length;
 
   return (
@@ -205,18 +209,18 @@ export default function Dashboard() {
           <p className="text-slate-500">Visão geral do seu desempenho hoje.</p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" asChild>
-            <a href="https://wa.me/55SEUNUMERO" target="_blank" rel="noopener noreferrer">
+          <a href="https://wa.me/5517991280211" target="_blank" rel="noopener noreferrer">
+            <Button variant="outline">
               <HeadphonesIcon className="w-4 h-4 mr-2" />
               Suporte
-            </a>
-          </Button>
-          <Button className="bg-blue-900 hover:bg-blue-800" asChild>
-            <Link to="/vendas">
+            </Button>
+          </a>
+          <Link to="/vendas">
+            <Button className="bg-blue-900 hover:bg-blue-800">
               <Plus className="w-4 h-4 mr-2" />
               Nova Venda
-            </Link>
-          </Button>
+            </Button>
+          </Link>
         </div>
       </div>
 
@@ -251,20 +255,22 @@ export default function Dashboard() {
             </div>
           </CardContent>
         </Card>
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between space-y-0 pb-2">
-              <p className="text-sm font-medium text-slate-500">Lucro Empresa</p>
-              <TrendingUp className="h-4 w-4 text-emerald-500" />
-            </div>
-            <div className="flex items-center justify-between">
-              <div className="text-2xl font-bold text-slate-900">{formatCurrency(totalProfitValue)}</div>
-              <div className="flex items-center text-xs text-emerald-500 font-medium bg-emerald-50 px-2 py-1 rounded-full">
-                Líquido
+        {isManagement && (
+          <Card>
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between space-y-0 pb-2">
+                <p className="text-sm font-medium text-slate-500">Lucro Empresa</p>
+                <TrendingUp className="h-4 w-4 text-emerald-500" />
               </div>
-            </div>
-          </CardContent>
-        </Card>
+              <div className="flex items-center justify-between">
+                <div className="text-2xl font-bold text-slate-900">{formatCurrency(totalProfitValue)}</div>
+                <div className="flex items-center text-xs text-emerald-500 font-medium bg-emerald-50 px-2 py-1 rounded-full">
+                  Líquido
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
         <Card className="cursor-pointer hover:border-blue-300 transition-colors" onClick={() => {
           setTempGoal(monthlyGoal.toString());
           setIsGoalModalOpen(true);
@@ -436,7 +442,7 @@ export default function Dashboard() {
           </CardContent>
         </Card>
         
-        <Card className="bg-slate-800 text-white border-none hover:bg-slate-700 transition-colors cursor-pointer" onClick={() => window.open('https://wa.me/55SEUNUMERO', '_blank')}>
+        <Card className="bg-slate-800 text-white border-none hover:bg-slate-700 transition-colors cursor-pointer" onClick={() => window.open('https://wa.me/5517991280211', '_blank')}>
           <CardContent className="p-6 flex items-center gap-4">
             <div className="p-3 bg-white/10 rounded-lg">
               <HeadphonesIcon className="w-6 h-6" />
