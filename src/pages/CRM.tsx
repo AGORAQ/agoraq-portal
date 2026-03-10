@@ -269,89 +269,41 @@ export default function CRM() {
         {activeTab === 'leads' && (
           <Card>
             <CardHeader>
-              <CardTitle>Meus Leads Capturados</CardTitle>
+              <CardTitle><span>Meus Leads Capturados</span></CardTitle>
             </CardHeader>
             <CardContent>
               <div className="overflow-x-auto rounded-lg border">
                 <table className="w-full text-sm text-left">
                   <thead className="bg-slate-50 border-b text-slate-500 uppercase text-[10px] font-bold">
                     <tr>
-                      <th className="px-4 py-3">Nome</th>
-                      <th className="px-4 py-3">Telefone</th>
-                      <th className="px-4 py-3">Email</th>
-                      <th className="px-4 py-3">Cidade</th>
-                      <th className="px-4 py-3">Status</th>
-                      <th className="px-4 py-3">Data</th>
+                      <th className="px-4 py-3"><span>Nome</span></th>
+                      <th className="px-4 py-3"><span>Telefone</span></th>
+                      <th className="px-4 py-3"><span>Email</span></th>
+                      <th className="px-4 py-3"><span>Cidade</span></th>
+                      <th className="px-4 py-3"><span>Status</span></th>
+                      <th className="px-4 py-3"><span>Data</span></th>
                     </tr>
                   </thead>
                   <tbody className="divide-y">
                     {leads.length > 0 ? leads.map((lead) => (
                       <tr key={lead.id} className="hover:bg-slate-50 transition-colors">
-                        <td className="px-4 py-3 font-medium text-slate-900">{lead.name}</td>
-                        <td className="px-4 py-3">{lead.phone}</td>
-                        <td className="px-4 py-3 text-slate-500">{lead.email}</td>
-                        <td className="px-4 py-3 text-slate-500">{lead.city}</td>
+                        <td className="px-4 py-3 font-medium text-slate-900"><span>{lead.name}</span></td>
+                        <td className="px-4 py-3"><span>{lead.phone}</span></td>
+                        <td className="px-4 py-3 text-slate-500"><span>{lead.email}</span></td>
+                        <td className="px-4 py-3 text-slate-500"><span>{lead.city}</span></td>
                         <td className="px-4 py-3">
                           <Badge className={lead.status === 'Novo' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-700'}>
-                            {lead.status}
+                            <span>{lead.status}</span>
                           </Badge>
                         </td>
                         <td className="px-4 py-3 text-slate-400 text-xs">
-                          {new Date(lead.createdAt).toLocaleDateString()}
+                          <span>{new Date(lead.createdAt).toLocaleDateString()}</span>
                         </td>
                       </tr>
                     )) : (
                       <tr>
                         <td colSpan={6} className="px-4 py-12 text-center text-slate-400">
-                          Nenhum lead capturado ainda.
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {activeTab === 'leads' && (
-          <Card>
-            <CardHeader>
-              <CardTitle>Meus Leads Capturados</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="overflow-x-auto rounded-lg border">
-                <table className="w-full text-sm text-left">
-                  <thead className="bg-slate-50 border-b text-slate-500 uppercase text-[10px] font-bold">
-                    <tr>
-                      <th className="px-4 py-3">Nome</th>
-                      <th className="px-4 py-3">Telefone</th>
-                      <th className="px-4 py-3">Email</th>
-                      <th className="px-4 py-3">Cidade</th>
-                      <th className="px-4 py-3">Status</th>
-                      <th className="px-4 py-3">Data</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y">
-                    {leads.length > 0 ? leads.map((lead) => (
-                      <tr key={lead.id} className="hover:bg-slate-50 transition-colors">
-                        <td className="px-4 py-3 font-medium text-slate-900">{lead.name}</td>
-                        <td className="px-4 py-3">{lead.phone}</td>
-                        <td className="px-4 py-3 text-slate-500">{lead.email}</td>
-                        <td className="px-4 py-3 text-slate-500">{lead.city}</td>
-                        <td className="px-4 py-3">
-                          <Badge className={lead.status === 'Novo' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-700'}>
-                            {lead.status}
-                          </Badge>
-                        </td>
-                        <td className="px-4 py-3 text-slate-400 text-xs">
-                          {new Date(lead.createdAt).toLocaleDateString()}
-                        </td>
-                      </tr>
-                    )) : (
-                      <tr>
-                        <td colSpan={6} className="px-4 py-12 text-center text-slate-400">
-                          Nenhum lead capturado ainda.
+                          <span>Nenhum lead capturado ainda.</span>
                         </td>
                       </tr>
                     )}

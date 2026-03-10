@@ -380,40 +380,40 @@ export default function Commissions() {
               <thead className="text-xs text-slate-500 uppercase bg-slate-50 border-b">
                 <tr>
                   <th className="px-4 py-3 cursor-pointer hover:bg-slate-100" onClick={() => requestSort('banco')}>
-                    <div className="flex items-center gap-1">Banco <ArrowUpDown className="w-3 h-3" /></div>
+                    <div className="flex items-center gap-1"><span>Banco</span> <ArrowUpDown className="w-3 h-3" /></div>
                   </th>
-                  <th className="px-4 py-3">Produto</th>
-                  <th className="px-4 py-3">Operação</th>
-                  <th className="px-4 py-3">Parcelas</th>
-                  {isAdmin && <th className="px-4 py-3 text-center">Empresa (%)</th>}
-                  {isAdmin && <th className="px-4 py-3 text-center">MASTER (%)</th>}
-                  {isAdmin && <th className="px-4 py-3 text-center">OURO (%)</th>}
-                  {isAdmin && <th className="px-4 py-3 text-center">PRATA (%)</th>}
-                  {isAdmin && <th className="px-4 py-3 text-center">PLUS (%)</th>}
+                  <th className="px-4 py-3"><span>Produto</span></th>
+                  <th className="px-4 py-3"><span>Operação</span></th>
+                  <th className="px-4 py-3"><span>Parcelas</span></th>
+                  {isAdmin && <th className="px-4 py-3 text-center"><span>Empresa (%)</span></th>}
+                  {isAdmin && <th className="px-4 py-3 text-center"><span>MASTER (%)</span></th>}
+                  {isAdmin && <th className="px-4 py-3 text-center"><span>OURO (%)</span></th>}
+                  {isAdmin && <th className="px-4 py-3 text-center"><span>PRATA (%)</span></th>}
+                  {isAdmin && <th className="px-4 py-3 text-center"><span>PLUS (%)</span></th>}
                   {!isAdmin && (
                     <th className="px-4 py-3 text-center bg-emerald-50/50 cursor-pointer hover:bg-emerald-100/50" onClick={() => requestSort('percentual_vendedor')}>
-                      <div className="flex items-center justify-center gap-1">Minha Comissão (%) <ArrowUpDown className="w-3 h-3" /></div>
+                      <div className="flex items-center justify-center gap-1"><span>Minha Comissão (%)</span> <ArrowUpDown className="w-3 h-3" /></div>
                     </th>
                   )}
-                  {canEdit && <th className="px-4 py-3 text-center">Ações</th>}
+                  {canEdit && <th className="px-4 py-3 text-center"><span>Ações</span></th>}
                 </tr>
               </thead>
               <tbody>
                 {filteredCommissions.map((comm) => (
                   <tr key={comm.id} className={`border-b hover:bg-slate-50/50 transition-colors ${comm.status === 'Inativo' ? 'opacity-60 bg-slate-50' : ''}`}>
-                    <td className="px-4 py-3 font-medium text-slate-900">{comm.banco}</td>
-                    <td className="px-4 py-3">{comm.produto}</td>
+                    <td className="px-4 py-3 font-medium text-slate-900"><span>{comm.banco}</span></td>
+                    <td className="px-4 py-3"><span>{comm.produto}</span></td>
                     <td className="px-4 py-3">
-                      <div className="font-medium">{comm.operacao}</div>
-                      <div className="text-[10px] text-slate-400">Faixa: R$ {comm.faixa_valor_min} - R$ {comm.faixa_valor_max}</div>
+                      <div className="font-medium"><span>{comm.operacao}</span></div>
+                      <div className="text-[10px] text-slate-400"><span>Faixa: R$ {comm.faixa_valor_min} - R$ {comm.faixa_valor_max}</span></div>
                     </td>
-                    <td className="px-4 py-3 text-slate-500">{comm.parcelas}</td>
-                    {isAdmin && <td className="px-4 py-3 text-center text-slate-600">{comm.percentual_total_empresa}%</td>}
-                    {isAdmin && <td className="px-4 py-3 text-center text-slate-600">{comm.comissao_master}%</td>}
-                    {isAdmin && <td className="px-4 py-3 text-center text-slate-600">{comm.comissao_ouro}%</td>}
-                    {isAdmin && <td className="px-4 py-3 text-center text-slate-600">{comm.comissao_prata}%</td>}
-                    {isAdmin && <td className="px-4 py-3 text-center text-slate-600">{comm.comissao_plus}%</td>}
-                    {!isAdmin && <td className="px-4 py-3 text-center font-bold text-emerald-600 bg-emerald-50/30">{comm.percentual_vendedor}%</td>}
+                    <td className="px-4 py-3 text-slate-500"><span>{comm.parcelas}</span></td>
+                    {isAdmin && <td className="px-4 py-3 text-center text-slate-600"><span>{comm.percentual_total_empresa}%</span></td>}
+                    {isAdmin && <td className="px-4 py-3 text-center text-slate-600"><span>{comm.comissao_master}%</span></td>}
+                    {isAdmin && <td className="px-4 py-3 text-center text-slate-600"><span>{comm.comissao_ouro}%</span></td>}
+                    {isAdmin && <td className="px-4 py-3 text-center text-slate-600"><span>{comm.comissao_prata}%</span></td>}
+                    {isAdmin && <td className="px-4 py-3 text-center text-slate-600"><span>{comm.comissao_plus}%</span></td>}
+                    {!isAdmin && <td className="px-4 py-3 text-center font-bold text-emerald-600 bg-emerald-50/30"><span>{comm.percentual_vendedor}%</span></td>}
                     {canEdit && (
                       <td className="px-4 py-3 text-center">
                         <div className="flex items-center justify-center gap-1">
@@ -431,7 +431,7 @@ export default function Commissions() {
                 {filteredCommissions.length === 0 && (
                   <tr>
                     <td colSpan={10} className="px-4 py-8 text-center text-slate-500">
-                      Nenhuma tabela encontrada para os filtros aplicados.
+                      <span>Nenhuma tabela encontrada para os filtros aplicados.</span>
                     </td>
                   </tr>
                 )}

@@ -282,7 +282,7 @@ export default function GlobalImporter({ type, onImportComplete, onClose }: Glob
                     <thead className="bg-slate-100 border-b">
                       <tr>
                         {preview.length > 0 && Object.keys(preview[0]).slice(0, 6).map(h => (
-                          <th key={h} className="px-3 py-2 font-bold text-slate-600 uppercase">{h}</th>
+                          <th key={h} className="px-3 py-2 font-bold text-slate-600 uppercase"><span>{h}</span></th>
                         ))}
                       </tr>
                     </thead>
@@ -291,7 +291,7 @@ export default function GlobalImporter({ type, onImportComplete, onClose }: Glob
                         <tr key={i} className="border-b last:border-0">
                           {Object.values(row).slice(0, 6).map((val, j) => (
                             <td key={j} className="px-3 py-2 text-slate-600 truncate max-w-[120px]">
-                              {typeof val === 'number' ? val.toLocaleString('pt-BR') : String(val)}
+                              <span>{typeof val === 'number' ? val.toLocaleString('pt-BR') : String(val)}</span>
                             </td>
                           ))}
                         </tr>
@@ -300,7 +300,7 @@ export default function GlobalImporter({ type, onImportComplete, onClose }: Glob
                   </table>
                   {preview.length > 5 && (
                     <div className="p-2 text-center bg-slate-50 text-[10px] text-slate-400 border-t">
-                      Exibindo 5 de {preview.length} registros...
+                      <span>Exibindo 5 de {preview.length} registros...</span>
                     </div>
                   )}
                 </div>
