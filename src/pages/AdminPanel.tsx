@@ -208,7 +208,7 @@ export default function AdminPanel() {
 
   const handleEdit = (userToEdit: User) => {
     setEditingUser(userToEdit);
-    setFormData(userToEdit);
+    setFormData({ ...userToEdit, password: '' });
     setIsFormOpen(true);
   };
 
@@ -222,18 +222,22 @@ export default function AdminPanel() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (editingUser) {
-      db.users.update(editingUser.id, formData);
+      const updates = { ...formData };
+      if (!updates.password) {
+        delete updates.password;
+      }
+      db.users.update(editingUser.id, updates);
       alert('Usuário atualizado com sucesso!');
     } else {
-      // Generate a strong random password
-      const generatedPassword = db.utils.generatePassword(12);
+      // Use provided password or generate one
+      const finalPassword = formData.password || db.utils.generatePassword(12);
       
       const newUser = db.users.create({
         name: formData.name || '',
         email: formData.email || '',
         role: formData.role as any,
         status: formData.status as any,
-        password: generatedPassword,
+        password: finalPassword,
         grupo_comissao: formData.grupo_comissao as any,
         bancos_permitidos: formData.bancos_permitidos
       });
@@ -241,7 +245,7 @@ export default function AdminPanel() {
       if (newUser) {
         setPasswordModal({
           isOpen: true,
-          password: generatedPassword as any,
+          password: finalPassword as any,
           userName: newUser.name,
           type: 'create'
         });
@@ -300,7 +304,12 @@ export default function AdminPanel() {
   };
 
   const handleApproveRequest = async (req: AccessRequest) => {
-    const generatedPassword = db.utils.generatePassword(12);
+    let finalPassword = db.utils.generatePassword(12);
+    const manualPassword = prompt(`Defina uma senha para ${req.name} (ou deixe em branco para gerar automaticamente):`);
+    
+    if (manualPassword !== null && manualPassword !== '') {
+      finalPassword = manualPassword;
+    }
     
     // Approve request: Create user and update request status
     const newUser = db.users.create({
@@ -308,7 +317,7 @@ export default function AdminPanel() {
       email: req.email,
       role: 'vendedor',
       status: 'Ativo',
-      password: generatedPassword,
+      password: finalPassword,
       grupo_comissao: 'PLUS' // Default group for new requests
     });
     
@@ -318,7 +327,7 @@ export default function AdminPanel() {
       
       setPasswordModal({
         isOpen: true,
-        password: generatedPassword as any,
+        password: finalPassword as any,
         userName: newUser.name,
         type: 'create'
       });
@@ -333,9 +342,9 @@ export default function AdminPanel() {
   };
 
   const handleResetPassword = async (userToReset: User) => {
-    if (confirm(`Deseja gerar uma nova senha para ${userToReset.name}?`)) {
-      const newPassword = db.utils.generatePassword(12);
-      
+    const newPassword = prompt(`Digite a nova senha para ${userToReset.name}:`);
+    
+    if (newPassword) {
       const updatedUser = db.users.update(userToReset.id, {
         password: newPassword
       });
@@ -816,14 +825,15 @@ export default function AdminPanel() {
                       <Input type="email" required value={formData.email} onChange={e => handleInputChange('email', e.target.value)} />
                     </div>
                     
-                    {!editingUser && (
-                      <div className="space-y-2">
-                        <label className="text-sm font-medium">Senha</label>
-                        <div className="p-3 bg-slate-50 border border-slate-200 rounded-md text-slate-500 text-sm italic">
-                          A senha será gerada automaticamente e exibida após salvar.
-                        </div>
-                      </div>
-                    )}
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium">Senha {editingUser ? '(Deixe em branco para manter)' : ''}</label>
+                      <Input 
+                        type="text" 
+                        placeholder={editingUser ? "Nova senha..." : "Defina uma senha ou deixe em branco para gerar"} 
+                        value={formData.password || ''} 
+                        onChange={e => handleInputChange('password', e.target.value)} 
+                      />
+                    </div>
                     <div className="space-y-2">
                       <label className="text-sm font-medium">Perfil de Acesso</label>
                       <select 
