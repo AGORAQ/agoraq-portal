@@ -234,7 +234,7 @@ export const parseFromUrl = async (url: string): Promise<ImportResult> => {
 
 export const validateCommissions = (data: NormalizedData[]): string[] => {
   const errors: string[] = [];
-  const requiredFields = ['banco', 'produto', 'operacao', 'parcelas', 'percentual_total_empresa', 'comissao_master', 'comissao_ouro', 'comissao_prata', 'comissao_plus'];
+  const requiredFields = ['banco', 'produto', 'nome_tabela', 'percentual_total_empresa', 'comissao_master', 'comissao_ouro'];
   
   data.forEach((row, index) => {
     requiredFields.forEach(field => {
@@ -244,7 +244,7 @@ export const validateCommissions = (data: NormalizedData[]): string[] => {
     });
     
     ['percentual_total_empresa', 'comissao_master', 'comissao_ouro', 'comissao_prata', 'comissao_plus'].forEach(field => {
-      if (row[field] !== undefined && row[field] !== null && typeof row[field] !== 'number') {
+      if (row[field] !== undefined && row[field] !== null && row[field] !== '' && typeof row[field] !== 'number') {
         errors.push(`Linha ${index + 2}: '${field}' deve ser um número.`);
       }
     });

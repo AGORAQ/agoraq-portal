@@ -52,8 +52,8 @@ export default function AdminPanel() {
       onClick={onClick}
       className={`w-full flex items-center justify-between px-4 py-3 text-sm font-medium rounded-xl transition-all duration-200 ${
         active 
-          ? 'bg-blue-600 text-white shadow-lg shadow-blue-200 translate-x-1' 
-          : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+          ? 'bg-blue-900 text-white shadow-md' 
+          : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900 hover:pl-5'
       }`}
     >
       <div className="flex items-center gap-3">
@@ -83,6 +83,7 @@ export default function AdminPanel() {
   // Banks State
   const [banks, setBanks] = useState<Bank[]>([]);
   const [isBankFormOpen, setIsBankFormOpen] = useState(false);
+  const [editingBank, setEditingBank] = useState<Bank | null>(null);
   const [bankFormData, setBankFormData] = useState<Partial<Bank>>({
     nome_banco: '', tipo_produto: 'Ambos', percentual_maximo: 15, status: 'Ativo'
   });
@@ -265,16 +266,35 @@ export default function AdminPanel() {
     e.preventDefault();
     if (!bankFormData.nome_banco) return;
     
-    db.bancos.create({
-      nome_banco: bankFormData.nome_banco,
-      tipo_produto: bankFormData.tipo_produto as any,
-      percentual_maximo: bankFormData.percentual_maximo || 15,
-      status: bankFormData.status as any
-    });
+    if (editingBank) {
+      db.bancos.update(editingBank.id, {
+        nome_banco: bankFormData.nome_banco,
+        tipo_produto: bankFormData.tipo_produto as any,
+        percentual_maximo: bankFormData.percentual_maximo || 15,
+        status: bankFormData.status as any
+      });
+      alert('Banco atualizado com sucesso!');
+    } else {
+      db.bancos.create({
+        nome_banco: bankFormData.nome_banco,
+        tipo_produto: bankFormData.tipo_produto as any,
+        percentual_maximo: bankFormData.percentual_maximo || 15,
+        status: bankFormData.status as any
+      });
+      alert('Banco cadastrado com sucesso!');
+    }
     
     loadData();
     setIsBankFormOpen(false);
+    setEditingBank(null);
     setBankFormData({ nome_banco: '', tipo_produto: 'Ambos', percentual_maximo: 15, status: 'Ativo' });
+  };
+
+  const handleDeleteBank = (id: string) => {
+    if (confirm('Tem certeza que deseja remover este banco? Todos os grupos vinculados também serão afetados.')) {
+      db.bancos.delete(id);
+      loadData();
+    }
   };
 
   const handleGroupSubmit = (e: React.FormEvent) => {
@@ -391,11 +411,10 @@ export default function AdminPanel() {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-8 items-start">
           {/* Sidebar Navigation */}
-          <div className="lg:col-span-3 sticky top-6">
-            <Card className="border-none shadow-none bg-transparent">
-              <CardContent className="p-0">
+          <div className="lg:col-span-1 space-y-2">
+            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm sticky top-24">
                 <SidebarCategory label="Gestão de Pessoas">
                   <SidebarItem 
                     id="users" 
@@ -464,12 +483,11 @@ export default function AdminPanel() {
                     onClick={() => setActiveTab('ai_training')} 
                   />
                 </SidebarCategory>
-              </CardContent>
-            </Card>
-          </div>
+              </div>
+            </div>
 
-          {/* Main Content Area */}
-          <div className="lg:col-span-9 space-y-6">
+            {/* Main Content Area */}
+            <div className="lg:col-span-3 space-y-6">
             {/* Tab Content Header */}
             <div className="flex items-center justify-between mb-2">
               <div className="flex items-center gap-2 text-slate-400 text-sm">
@@ -529,7 +547,11 @@ export default function AdminPanel() {
         <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4">
           <div className="flex justify-between items-center">
             <h2 className="text-lg font-bold text-slate-900">Bancos e Comissões</h2>
-            <Button className="bg-blue-900 hover:bg-blue-800" onClick={() => setIsBankFormOpen(true)}>
+            <Button className="bg-blue-900 hover:bg-blue-800" onClick={() => {
+              setEditingBank(null);
+              setBankFormData({ nome_banco: '', tipo_produto: 'Ambos', percentual_maximo: 15, status: 'Ativo' });
+              setIsBankFormOpen(true);
+            }}>
               <Plus className="w-4 h-4 mr-2" />
               Novo Banco
             </Button>
@@ -538,7 +560,7 @@ export default function AdminPanel() {
           {isBankFormOpen && (
             <Card className="border-blue-200 shadow-lg">
               <CardHeader className="flex flex-row items-center justify-between bg-slate-50 rounded-t-xl border-b">
-                <CardTitle>Cadastrar Novo Banco</CardTitle>
+                <CardTitle>{editingBank ? 'Editar Banco' : 'Cadastrar Novo Banco'}</CardTitle>
                 <Button variant="ghost" size="icon" onClick={() => setIsBankFormOpen(false)}>
                   <X className="w-4 h-4" />
                 </Button>
@@ -596,8 +618,31 @@ export default function AdminPanel() {
               <Card key={bank.id} className={`cursor-pointer transition-all border-2 ${selectedBankForConfig === bank.id ? 'border-blue-600 bg-blue-50/30' : 'border-slate-200 hover:border-blue-300'}`} onClick={() => setSelectedBankForConfig(bank.id)}>
                 <CardContent className="p-6">
                   <div className="flex justify-between items-start mb-4">
-                    <div className="p-2 bg-blue-100 rounded-lg text-blue-600">
-                      <Building2 className="w-6 h-6" />
+                    <div className="flex gap-2">
+                      <div className="p-2 bg-blue-100 rounded-lg text-blue-600">
+                        <Building2 className="w-6 h-6" />
+                      </div>
+                      <div className="flex flex-col">
+                        <Button variant="ghost" size="icon" className="h-6 w-6 text-blue-600" onClick={(e) => {
+                          e.stopPropagation();
+                          setEditingBank(bank);
+                          setBankFormData({
+                            nome_banco: bank.nome_banco,
+                            tipo_produto: bank.tipo_produto,
+                            percentual_maximo: bank.percentual_maximo,
+                            status: bank.status
+                          });
+                          setIsBankFormOpen(true);
+                        }}>
+                          <Edit className="w-3 h-3" />
+                        </Button>
+                        <Button variant="ghost" size="icon" className="h-6 w-6 text-red-600" onClick={(e) => {
+                          e.stopPropagation();
+                          handleDeleteBank(bank.id);
+                        }}>
+                          <Trash2 className="w-3 h-3" />
+                        </Button>
+                      </div>
                     </div>
                     <Badge variant={bank.status === 'Ativo' ? 'success' : 'secondary'}>{bank.status}</Badge>
                   </div>
@@ -794,7 +839,8 @@ export default function AdminPanel() {
 
       {activeTab === 'users' && (
         <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4">
-          <div className="flex justify-end">
+          <div className="flex justify-between items-center">
+            <h2 className="text-xl font-bold text-slate-900">Usuários do Sistema</h2>
             <Button className="bg-blue-900 hover:bg-blue-800" onClick={() => {
               setEditingUser(null);
               setFormData({ name: '', email: '', role: 'vendedor', status: 'Ativo' });
@@ -1026,7 +1072,8 @@ export default function AdminPanel() {
 
       {activeTab === 'commission_groups' && (
         <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4">
-          <div className="flex justify-end">
+          <div className="flex justify-between items-center">
+            <h2 className="text-xl font-bold text-slate-900">Grupos de Comissão</h2>
             <Button className="bg-blue-900 hover:bg-blue-800" onClick={() => setIsGroupFormOpen(true)}>
               <Plus className="w-4 h-4 mr-2" />
               Novo Grupo
@@ -1152,6 +1199,7 @@ export default function AdminPanel() {
 
       {activeTab === 'requests' && (
         <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4">
+          <h2 className="text-xl font-bold text-slate-900">Solicitações de Acesso</h2>
           <Card className="bg-blue-50 border-blue-200">
             <CardContent className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-4 gap-4">
               <div>

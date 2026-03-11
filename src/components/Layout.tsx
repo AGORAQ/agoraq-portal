@@ -11,6 +11,7 @@ import {
   BookOpen, 
   HeadphonesIcon, 
   Database,
+  Cpu,
   Menu,
   X,
   LogOut,
@@ -47,6 +48,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     path: string;
     badge?: number;
     adminOnly?: boolean;
+    external?: boolean;
   }
 
   // Define all possible items in order
@@ -56,7 +58,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     { icon: KeyRound, label: 'Usuário Bancos', path: '/credenciais' },
     { icon: Table2, label: 'Tabela de Comissão', path: '/comissoes' },
     { icon: DollarSign, label: 'Vendas', path: '/vendas' },
-    { icon: Database, label: 'CRM', path: '/crm' },
+    { icon: Cpu, label: 'Gestão de Automação', path: '/crm' },
     { icon: Wallet, label: 'Financeiro', path: '/financeiro' },
     { icon: BarChart3, label: 'Relatório Financeiro', path: '/admin/financeiro', adminOnly: true },
     { icon: GraduationCap, label: 'AgoraQ Academy', path: '/academy' },
@@ -80,24 +82,37 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         <div className="flex-1 overflow-y-auto py-4">
           <nav className="space-y-1 px-3">
             {navItems.map((item) => (
-              <Link
-                key={item.path}
-                to={item.path}
-                className={cn(
-                  "flex items-center gap-3 px-4 py-3 text-sm font-medium rounded-lg transition-colors",
-                  location.pathname === item.path 
-                    ? "bg-blue-600 text-white shadow-md" 
-                    : "text-slate-300 hover:bg-slate-800 hover:text-white"
-                )}
-              >
-                <item.icon className="w-5 h-5" />
-                <span className="flex-1">{item.label}</span>
-                {item.badge !== undefined && item.badge > 0 && (
-                  <span className="bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[18px] text-center">
-                    {item.badge}
-                  </span>
-                )}
-              </Link>
+              item.external ? (
+                <a
+                  key={item.path}
+                  href={item.path}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-3 px-4 py-3 text-sm font-medium rounded-lg transition-colors text-slate-300 hover:bg-slate-800 hover:text-white"
+                >
+                  <item.icon className="w-5 h-5" />
+                  <span className="flex-1">{item.label}</span>
+                </a>
+              ) : (
+                <Link
+                  key={item.path}
+                  to={item.path}
+                  className={cn(
+                    "flex items-center gap-3 px-4 py-3 text-sm font-medium rounded-lg transition-colors",
+                    location.pathname === item.path 
+                      ? "bg-blue-600 text-white shadow-md" 
+                      : "text-slate-300 hover:bg-slate-800 hover:text-white"
+                  )}
+                >
+                  <item.icon className="w-5 h-5" />
+                  <span className="flex-1">{item.label}</span>
+                  {item.badge !== undefined && item.badge > 0 && (
+                    <span className="bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[18px] text-center">
+                      {item.badge}
+                    </span>
+                  )}
+                </Link>
+              )
             ))}
           </nav>
         </div>
@@ -143,25 +158,39 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         <div className="md:hidden fixed inset-0 z-20 bg-slate-900 pt-16">
           <nav className="p-4 space-y-2">
             {navItems.map((item) => (
-              <Link
-                key={item.path}
-                to={item.path}
-                onClick={() => setIsMobileMenuOpen(false)}
-                className={cn(
-                  "flex items-center gap-3 px-4 py-3 text-sm font-medium rounded-lg transition-colors",
-                  location.pathname === item.path 
-                    ? "bg-blue-600 text-white" 
-                    : "text-slate-300 hover:bg-slate-800"
-                )}
-              >
-                <item.icon className="w-5 h-5" />
-                <span className="flex-1">{item.label}</span>
-                {item.badge !== undefined && item.badge > 0 && (
-                  <span className="bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[18px] text-center">
-                    {item.badge}
-                  </span>
-                )}
-              </Link>
+              item.external ? (
+                <a
+                  key={item.path}
+                  href={item.path}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={() => setIsMobileMenuOpen(false)}
+                  className="flex items-center gap-3 px-4 py-3 text-sm font-medium rounded-lg transition-colors text-slate-300 hover:bg-slate-800"
+                >
+                  <item.icon className="w-5 h-5" />
+                  <span className="flex-1">{item.label}</span>
+                </a>
+              ) : (
+                <Link
+                  key={item.path}
+                  to={item.path}
+                  onClick={() => setIsMobileMenuOpen(false)}
+                  className={cn(
+                    "flex items-center gap-3 px-4 py-3 text-sm font-medium rounded-lg transition-colors",
+                    location.pathname === item.path 
+                      ? "bg-blue-600 text-white" 
+                      : "text-slate-300 hover:bg-slate-800"
+                  )}
+                >
+                  <item.icon className="w-5 h-5" />
+                  <span className="flex-1">{item.label}</span>
+                  {item.badge !== undefined && item.badge > 0 && (
+                    <span className="bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[18px] text-center">
+                      {item.badge}
+                    </span>
+                  )}
+                </Link>
+              )
             ))}
             <button 
               onClick={handleLogout}

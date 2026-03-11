@@ -8,6 +8,8 @@ interface CommissionContextType {
   addCommission: (commission: Omit<CommissionTable, 'id' | 'data_criacao' | 'data_atualizacao' | 'status'>) => void;
   updateCommission: (id: string, updates: Partial<CommissionTable>) => void;
   deleteCommission: (id: string) => void;
+  deleteManyCommissions: (ids: string[]) => void;
+  deleteAllCommissions: () => void;
   importCommissions: (newCommissions: Omit<CommissionTable, 'id' | 'data_criacao' | 'data_atualizacao'>[]) => void;
   refreshCommissions: () => void;
 }
@@ -61,6 +63,30 @@ export function CommissionProvider({ children }: { children: React.ReactNode }) 
     }
   };
 
+  const deleteManyCommissions = (ids: string[]) => {
+    if (!user) return;
+    if (confirm(`Tem certeza que deseja excluir ${ids.length} tabelas selecionadas?`)) {
+      try {
+        db.commissions.deleteMany(ids, user.role, user.id);
+        refreshCommissions();
+      } catch (error: any) {
+        alert(error.message);
+      }
+    }
+  };
+
+  const deleteAllCommissions = () => {
+    if (!user) return;
+    if (confirm('ATENÇÃO: Tem certeza que deseja excluir TODAS as tabelas de comissão? Esta ação não pode ser desfeita.')) {
+      try {
+        db.commissions.deleteAll(user.role, user.id);
+        refreshCommissions();
+      } catch (error: any) {
+        alert(error.message);
+      }
+    }
+  };
+
   const importCommissions = (newCommissions: Omit<CommissionTable, 'id' | 'data_criacao' | 'data_atualizacao'>[]) => {
     if (!user) return;
     try {
@@ -89,7 +115,16 @@ export function CommissionProvider({ children }: { children: React.ReactNode }) 
   };
 
   return (
-    <CommissionContext.Provider value={{ commissions, addCommission, updateCommission, deleteCommission, importCommissions, refreshCommissions }}>
+    <CommissionContext.Provider value={{ 
+      commissions, 
+      addCommission, 
+      updateCommission, 
+      deleteCommission, 
+      deleteManyCommissions,
+      deleteAllCommissions,
+      importCommissions, 
+      refreshCommissions 
+    }}>
       {children}
     </CommissionContext.Provider>
   );

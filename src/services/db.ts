@@ -259,6 +259,20 @@ export const db = {
       const filtered = commissions.filter(c => c.id !== id);
       setStorage('commissions', filtered);
     },
+    deleteMany: (ids: string[], userRole: string, userId: string) => {
+      if (userRole !== 'admin') {
+        throw new Error('Acesso negado.');
+      }
+      const commissions = getStorage<CommissionTable[]>('commissions', INITIAL_COMMISSIONS);
+      const filtered = commissions.filter(c => !ids.includes(c.id));
+      setStorage('commissions', filtered);
+    },
+    deleteAll: (userRole: string, userId: string) => {
+      if (userRole !== 'admin') {
+        throw new Error('Acesso negado.');
+      }
+      setStorage('commissions', []);
+    },
     import: (comms: Omit<CommissionTable, 'id' | 'data_criacao' | 'data_atualizacao'>[], userRole: string, userId: string) => {
       if (userRole !== 'admin') {
         db.logs.addSecurityLog({
@@ -534,6 +548,11 @@ export const db = {
         return bancos[index];
       }
       return null;
+    },
+    delete: (id: string) => {
+      const bancos = getStorage<Bank[]>('bancos_v1', INITIAL_BANKS);
+      const filtered = bancos.filter(b => b.id !== id);
+      setStorage('bancos_v1', filtered);
     }
   },
 
@@ -702,6 +721,31 @@ export const db = {
       const announcements = getStorage<Announcement[]>('announcements', []);
       const filtered = announcements.filter(a => a.id !== id);
       setStorage('announcements', filtered);
+    }
+  },
+  campaigns: {
+    getAll: () => getStorage<any[]>('campaigns', []),
+    create: (campaign: any) => {
+      const campaigns = getStorage<any[]>('campaigns', []);
+      const newCampaign = { ...campaign, id: uuidv4(), createdAt: new Date().toISOString() };
+      campaigns.push(newCampaign);
+      setStorage('campaigns', campaigns);
+      return newCampaign;
+    },
+    update: (id: string, updates: any) => {
+      const campaigns = getStorage<any[]>('campaigns', []);
+      const index = campaigns.findIndex(c => c.id === id);
+      if (index !== -1) {
+        campaigns[index] = { ...campaigns[index], ...updates };
+        setStorage('campaigns', campaigns);
+        return campaigns[index];
+      }
+      return null;
+    },
+    delete: (id: string) => {
+      const campaigns = getStorage<any[]>('campaigns', []);
+      const filtered = campaigns.filter(c => c.id !== id);
+      setStorage('campaigns', filtered);
     }
   },
   utils: {

@@ -15,7 +15,7 @@ const crms = [
 export default function CRM() {
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin' || user?.role === 'supervisor';
-  const [activeTab, setActiveTab] = useState<'access' | 'capture' | 'leads' | 'upload' | 'export'>('access');
+  const [activeTab, setActiveTab] = useState<'capture' | 'leads' | 'upload'>('capture');
   const [leadsCapturedToday, setLeadsCapturedToday] = useState(0);
   const [captureQuantity, setCaptureQuantity] = useState<number | string>(1);
   const [isImporterOpen, setIsImporterOpen] = useState(false);
@@ -23,11 +23,41 @@ export default function CRM() {
   const DAILY_LIMIT = 100;
 
   useEffect(() => {
-    setLeads(db.leads.getAll());
-  }, []);
+    const allLeads = db.leads.getAll();
+    const today = new Date().toISOString().split('T')[0];
+    
+    // Calculate leads captured today by this user
+    const userLeadsToday = allLeads.filter(l => 
+      l.createdAt.startsWith(today) && 
+      (isAdmin || l.usuario_id === user?.id)
+    );
+    
+    setLeadsCapturedToday(userLeadsToday.length);
+
+    if (isAdmin) {
+      setLeads(allLeads);
+    } else {
+      // Sellers only see today's leads
+      setLeads(userLeadsToday);
+    }
+  }, [isAdmin, user?.id]);
 
   const refreshLeads = () => {
-    setLeads(db.leads.getAll());
+    const allLeads = db.leads.getAll();
+    const today = new Date().toISOString().split('T')[0];
+    
+    const userLeadsToday = allLeads.filter(l => 
+      l.createdAt.startsWith(today) && 
+      (isAdmin || l.usuario_id === user?.id)
+    );
+    
+    setLeadsCapturedToday(userLeadsToday.length);
+
+    if (isAdmin) {
+      setLeads(allLeads);
+    } else {
+      setLeads(userLeadsToday);
+    }
   };
 
   const copyToClipboard = (text: string) => {
@@ -51,7 +81,8 @@ export default function CRM() {
           phone: `(11) 9${Math.floor(Math.random() * 90000000 + 10000000)}`,
           email: `lead${Math.floor(Math.random() * 1000)}@email.com`,
           city: 'Captura Automática',
-          status: 'Novo'
+          status: 'Novo',
+          usuario_id: user?.id
         });
       }
 
@@ -82,7 +113,7 @@ export default function CRM() {
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">CRM & Leads</h1>
+          <h1 className="text-2xl font-bold text-slate-900">Gestão de Automação</h1>
           <div className="flex items-center gap-2 mt-1">
             <p className="text-slate-500">Gestão de relacionamento e captura de leads.</p>
             <span className="text-slate-300">•</span>
@@ -92,22 +123,17 @@ export default function CRM() {
             </div>
           </div>
         </div>
+        <Button 
+          className="bg-blue-900 hover:bg-blue-800 shadow-md"
+          onClick={() => window.open('https://inbox.agoraqoficial.com/entrar', '_blank')}
+        >
+          <ExternalLink className="w-4 h-4 mr-2" />
+          Acessar App CRM
+        </Button>
       </div>
 
       {/* Navigation Tabs as Icons/Buttons */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-        <button
-          onClick={() => setActiveTab('access')}
-          className={`flex flex-col items-center justify-center p-6 rounded-xl border transition-all ${
-            activeTab === 'access' 
-              ? 'bg-blue-50 border-blue-200 text-blue-700 shadow-sm' 
-              : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50 hover:border-slate-300'
-          }`}
-        >
-          <LayoutGrid className="w-8 h-8 mb-3" />
-          <span className="font-medium text-sm">Acesso ao CRM</span>
-        </button>
-
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
         <button
           onClick={() => setActiveTab('capture')}
           className={`flex flex-col items-center justify-center p-6 rounded-xl border transition-all ${
@@ -129,7 +155,7 @@ export default function CRM() {
           }`}
         >
           <List className="w-8 h-8 mb-3" />
-          <span className="font-medium text-sm">Lista de Leads</span>
+          <span className="font-medium text-sm">Visualizar & Exportar</span>
         </button>
 
         {isAdmin && (
@@ -142,67 +168,12 @@ export default function CRM() {
             }`}
           >
             <Upload className="w-8 h-8 mb-3" />
-            <span className="font-medium text-sm">Subir Leads</span>
+            <span className="font-medium text-sm">Subir Leads (Admin)</span>
           </button>
         )}
-
-        <button
-          onClick={() => setActiveTab('export')}
-          className={`flex flex-col items-center justify-center p-6 rounded-xl border transition-all ${
-            activeTab === 'export' 
-              ? 'bg-purple-50 border-purple-200 text-purple-700 shadow-sm' 
-              : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50 hover:border-slate-300'
-          }`}
-        >
-          <Download className="w-8 h-8 mb-3" />
-          <span className="font-medium text-sm">Exportar Dados</span>
-        </button>
       </div>
 
       <div className="mt-6">
-        {activeTab === 'access' && (
-          <div className="grid gap-6">
-            {crms.map((crm) => (
-              <Card key={crm.id} className="overflow-hidden">
-                <div className="flex flex-col md:flex-row">
-                  <div className="bg-slate-50 p-6 flex flex-col items-center justify-center border-b md:border-b-0 md:border-r border-slate-200 min-w-[200px]">
-                    <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mb-4 text-blue-600">
-                      <Database className="h-8 w-8" />
-                    </div>
-                    <Badge variant={crm.status === 'Ativo' ? 'success' : 'warning'}>
-                      {crm.status}
-                    </Badge>
-                  </div>
-                  
-                  <div className="flex-1 p-6 flex flex-col justify-between">
-                    <div>
-                      <div className="flex justify-between items-start mb-2">
-                        <h3 className="text-xl font-bold text-slate-900">{crm.name}</h3>
-                      </div>
-                      <p className="text-slate-600 mb-4">{crm.notes}</p>
-                      
-                      <div className="bg-slate-50 p-3 rounded-lg border border-slate-100 inline-flex items-center gap-3 mb-4">
-                        <span className="text-xs font-medium text-slate-500 uppercase">Login:</span>
-                        <code className="font-mono text-slate-900 font-bold">{crm.login}</code>
-                        <Button variant="ghost" size="icon" className="h-6 w-6 ml-2" onClick={() => copyToClipboard(crm.login)}>
-                          <Copy className="h-3 w-3" />
-                        </Button>
-                      </div>
-                    </div>
-
-                    <div className="flex justify-end pt-4 border-t border-slate-100">
-                      <Button className="bg-blue-900 hover:bg-blue-800" onClick={() => window.open(crm.url, '_blank')}>
-                        <ExternalLink className="h-4 w-4 mr-2" />
-                        Acessar Sistema
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-              </Card>
-            ))}
-          </div>
-        )}
-
         {activeTab === 'capture' && (
           <Card>
             <CardHeader>
@@ -268,8 +239,17 @@ export default function CRM() {
 
         {activeTab === 'leads' && (
           <Card>
-            <CardHeader>
-              <CardTitle><span>Meus Leads Capturados</span></CardTitle>
+            <CardHeader className="flex flex-row items-center justify-between">
+              <CardTitle>Meus Leads Capturados</CardTitle>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                className="border-blue-200 text-blue-700 hover:bg-blue-50"
+                onClick={handleExportData}
+              >
+                <Download className="w-4 h-4 mr-2" />
+                Exportar Lista
+              </Button>
             </CardHeader>
             <CardContent>
               <div className="overflow-x-auto rounded-lg border">

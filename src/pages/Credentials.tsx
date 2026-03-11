@@ -10,7 +10,7 @@ import { PlatformCredential, Bank, User } from '@/types';
 
 export default function Credentials() {
   const { user } = useAuth();
-  const isAdmin = user?.role === 'admin';
+  const isAdmin = user?.role === 'admin' || user?.role === 'supervisor';
 
   const [credentials, setCredentials] = useState<PlatformCredential[]>([]);
   const [banks, setBanks] = useState<Bank[]>([]);
