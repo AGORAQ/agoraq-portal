@@ -251,13 +251,18 @@ function initDb() {
   `);
 
   // Seed Initial Admin if not exists
-  const admin = db.prepare('SELECT * FROM users WHERE email = ?').get('agoraq@agoraqoficial.com');
+  const adminEmail = 'agoraq@agoraqoficial.com';
+  const admin = db.prepare('SELECT * FROM users WHERE email = ?').get(adminEmail);
+  const hashedPassword = bcrypt.hashSync('admin', 10);
+  
   if (!admin) {
-    const hashedPassword = bcrypt.hashSync('admin', 10);
     db.prepare(`
       INSERT INTO users (id, name, email, role, status, lastAccess, password, grupo_comissao)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `).run('1', 'Administrador', 'agoraq@agoraqoficial.com', 'admin', 'Ativo', new Date().toISOString(), hashedPassword, 'MASTER');
+    `).run('1', 'Administrador', adminEmail, 'admin', 'Ativo', new Date().toISOString(), hashedPassword, 'MASTER');
+  } else {
+    // Reset password to 'admin' to ensure access after update
+    db.prepare('UPDATE users SET password = ? WHERE email = ?').run(hashedPassword, adminEmail);
   }
 
   // Seed Initial Banks if not exists
