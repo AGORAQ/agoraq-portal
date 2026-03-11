@@ -85,7 +85,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           }
         }
 
-        // Hardcoded fallback for the main admin
+        // Hardcoded fallback for the main admin (even if not in localUsers yet)
         if (email === 'agoraq@agoraqoficial.com' && password === 'admin') {
           const mockUser = {
             id: '1',
@@ -102,6 +102,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           localStorage.setItem('agoraq_user', JSON.stringify(mockUser));
           return { success: true };
         }
+
+        return { success: false, error: `Usuário não encontrado localmente. Verifique o e-mail ou crie o usuário no painel admin.` };
       }
 
       let errorMessage = 'Credenciais inválidas';

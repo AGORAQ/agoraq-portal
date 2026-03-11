@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Badge } from '@/components/ui/Badge';
-import { ExternalLink, Copy, Database, Upload, UserPlus, Download, LayoutGrid, List, RefreshCw, FileSpreadsheet } from 'lucide-react';
+import { ExternalLink, Copy, Database, Upload, UserPlus, Download, LayoutGrid, List, RefreshCw, FileSpreadsheet, Trash2 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import GlobalImporter from '@/components/GlobalImporter';
 import { db } from '@/services/db';
@@ -16,16 +16,22 @@ const crms = [
 export default function CRM() {
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin' || user?.role === 'supervisor';
-  const [activeTab, setActiveTab] = useState<'capture' | 'leads' | 'upload'>('capture');
+  const [activeTab, setActiveTab] = useState<'capture' | 'leads' | 'upload' | 'database'>('capture');
   const [leadsCapturedToday, setLeadsCapturedToday] = useState(0);
   const [captureQuantity, setCaptureQuantity] = useState<number | string>(1);
   const [isImporterOpen, setIsImporterOpen] = useState(false);
   const [leads, setLeads] = useState<any[]>([]);
+  const [users, setUsers] = useState<any[]>([]);
   const DAILY_LIMIT = 100;
 
   useEffect(() => {
-    const loadLeads = async () => {
-      const allLeads = await db.leads.getAll();
+    const loadData = async () => {
+      const [allLeads, allUsers] = await Promise.all([
+        db.leads.getAll(),
+        db.users.getAll()
+      ]);
+      
+      setUsers(allUsers);
       const today = new Date().toISOString().split('T')[0];
       
       // Calculate leads captured today by this user
@@ -43,11 +49,16 @@ export default function CRM() {
         setLeads(userLeadsToday);
       }
     };
-    loadLeads();
+    loadData();
   }, [isAdmin, user?.id]);
 
   const refreshLeads = async () => {
-    const allLeads = await db.leads.getAll();
+    const [allLeads, allUsers] = await Promise.all([
+      db.leads.getAll(),
+      db.users.getAll()
+    ]);
+    
+    setUsers(allUsers);
     const today = new Date().toISOString().split('T')[0];
     
     const userLeadsToday = allLeads.filter((l: any) => 
@@ -63,7 +74,7 @@ export default function CRM() {
 
     // Sync user daily count from backend
     if (user?.id) {
-      const updatedUser = await db.users.getById(user.id);
+      const updatedUser = allUsers.find(u => u.id === user.id);
       if (updatedUser && updatedUser.last_lead_date === today) {
         setLeadsCapturedToday(updatedUser.daily_lead_count || 0);
       } else {
@@ -181,6 +192,13 @@ export default function CRM() {
     reader.readAsArrayBuffer(file);
   };
 
+  const handleDeleteLead = async (id: string) => {
+    if (confirm('Tem certeza que deseja remover este lead?')) {
+      await db.leads.delete(id);
+      await refreshLeads();
+    }
+  };
+
   const handleExportData = () => {
     handleExportSpreadsheet();
   };
@@ -233,6 +251,20 @@ export default function CRM() {
           <List className="w-8 h-8 mb-3" />
           <span className="font-medium text-sm">Visualizar & Exportar</span>
         </button>
+
+        {isAdmin && (
+          <button
+            onClick={() => setActiveTab('database')}
+            className={`flex flex-col items-center justify-center p-6 rounded-xl border transition-all ${
+              activeTab === 'database' 
+                ? 'bg-blue-50 border-blue-200 text-blue-700 shadow-sm' 
+                : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50 hover:border-slate-300'
+            }`}
+          >
+            <Database className="w-8 h-8 mb-3" />
+            <span className="font-medium text-sm">Base de Dados</span>
+          </button>
+        )}
 
         {isAdmin && (
           <button
@@ -316,7 +348,7 @@ export default function CRM() {
         {activeTab === 'leads' && (
           <Card>
             <CardHeader className="flex flex-row items-center justify-between">
-              <CardTitle>Meus Leads Capturados</CardTitle>
+              <CardTitle>{isAdmin ? 'Todos os Leads Capturados' : 'Meus Leads Capturados'}</CardTitle>
               <Button 
                 variant="outline" 
                 size="sm" 
@@ -337,11 +369,13 @@ export default function CRM() {
                       <th className="px-4 py-3"><span>Email</span></th>
                       <th className="px-4 py-3"><span>Cidade</span></th>
                       <th className="px-4 py-3"><span>Status</span></th>
+                      {isAdmin && <th className="px-4 py-3"><span>Capturado Por</span></th>}
                       <th className="px-4 py-3"><span>Data</span></th>
+                      {isAdmin && <th className="px-4 py-3 text-right"><span>Ações</span></th>}
                     </tr>
                   </thead>
                   <tbody className="divide-y">
-                    {leads.length > 0 ? leads.map((lead) => (
+                    {leads.filter(l => l.usuario_id).length > 0 ? leads.filter(l => l.usuario_id).map((lead) => (
                       <tr key={lead.id} className="hover:bg-slate-50 transition-colors">
                         <td className="px-4 py-3 font-medium text-slate-900"><span>{lead.name}</span></td>
                         <td className="px-4 py-3"><span>{lead.phone}</span></td>
@@ -352,14 +386,100 @@ export default function CRM() {
                             <span>{lead.status}</span>
                           </Badge>
                         </td>
+                        {isAdmin && (
+                          <td className="px-4 py-3">
+                            <span className="text-xs font-medium text-blue-600">
+                              {users.find(u => u.id === lead.usuario_id)?.name || 'Desconhecido'}
+                            </span>
+                          </td>
+                        )}
                         <td className="px-4 py-3 text-slate-400 text-xs">
                           <span>{new Date(lead.createdAt).toLocaleDateString()}</span>
+                        </td>
+                        {isAdmin && (
+                          <td className="px-4 py-3 text-right">
+                            <Button variant="ghost" size="icon" className="h-8 w-8 text-red-600" onClick={() => handleDeleteLead(lead.id)}>
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+                          </td>
+                        )}
+                      </tr>
+                    )) : (
+                      <tr>
+                        <td colSpan={isAdmin ? 8 : 6} className="px-4 py-12 text-center text-slate-400">
+                          <span>Nenhum lead capturado ainda.</span>
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {activeTab === 'database' && isAdmin && (
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between">
+              <div>
+                <CardTitle>Base de Dados de Leads (Pool)</CardTitle>
+                <p className="text-sm text-slate-500">Leads importados aguardando captura pelos vendedores.</p>
+              </div>
+              <div className="flex gap-2">
+                <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
+                  {leads.filter(l => !l.usuario_id).length} Leads Disponíveis
+                </Badge>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  className="border-red-200 text-red-700 hover:bg-red-50"
+                  onClick={async () => {
+                    if (confirm('Tem certeza que deseja limpar TODA a base de leads não capturados?')) {
+                      const unassigned = leads.filter(l => !l.usuario_id);
+                      for (const l of unassigned) {
+                        await db.leads.delete(l.id);
+                      }
+                      await refreshLeads();
+                    }
+                  }}
+                >
+                  Limpar Base
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="overflow-x-auto rounded-lg border">
+                <table className="w-full text-sm text-left">
+                  <thead className="bg-slate-50 border-b text-slate-500 uppercase text-[10px] font-bold">
+                    <tr>
+                      <th className="px-4 py-3"><span>Nome</span></th>
+                      <th className="px-4 py-3"><span>Telefone</span></th>
+                      <th className="px-4 py-3"><span>Email</span></th>
+                      <th className="px-4 py-3"><span>Cidade</span></th>
+                      <th className="px-4 py-3"><span>Data Importação</span></th>
+                      <th className="px-4 py-3 text-right"><span>Ações</span></th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y">
+                    {leads.filter(l => !l.usuario_id).length > 0 ? leads.filter(l => !l.usuario_id).map((lead) => (
+                      <tr key={lead.id} className="hover:bg-slate-50 transition-colors">
+                        <td className="px-4 py-3 font-medium text-slate-900"><span>{lead.name}</span></td>
+                        <td className="px-4 py-3"><span>{lead.phone}</span></td>
+                        <td className="px-4 py-3 text-slate-500"><span>{lead.email}</span></td>
+                        <td className="px-4 py-3 text-slate-500"><span>{lead.city}</span></td>
+                        <td className="px-4 py-3 text-slate-400 text-xs">
+                          <span>{new Date(lead.createdAt).toLocaleDateString()}</span>
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          <Button variant="ghost" size="icon" className="h-8 w-8 text-red-600" onClick={() => handleDeleteLead(lead.id)}>
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
                         </td>
                       </tr>
                     )) : (
                       <tr>
                         <td colSpan={6} className="px-4 py-12 text-center text-slate-400">
-                          <span>Nenhum lead capturado ainda.</span>
+                          <span>A base de dados está vazia. Importe leads para disponibilizar aos vendedores.</span>
                         </td>
                       </tr>
                     )}

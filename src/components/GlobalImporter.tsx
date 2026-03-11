@@ -115,7 +115,11 @@ export default function GlobalImporter({ type, onImportComplete, onClose }: Glob
           await db.sales.create(sale, user);
         }
       } else if (type === 'leads') {
-        await db.leads.import(preview);
+        const leadsWithAssignment = preview.map(l => ({
+          ...l,
+          usuario_id: null // Admins import to the general pool
+        }));
+        await db.leads.import(leadsWithAssignment);
       }
 
       // Log the import
