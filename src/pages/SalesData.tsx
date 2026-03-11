@@ -4,13 +4,14 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Badge } from '@/components/ui/Badge';
 import { Search, Plus, Trash2, Edit, X, Save, TrendingUp, DollarSign, Wallet, BellRing, CheckCircle2, Download, Lightbulb, Sparkles, Target, Trophy } from 'lucide-react';
-import { formatCurrency } from '@/lib/utils';
+import { formatCurrency, maskCPF, maskPhone, validateCPF } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
 import { useCommission } from '@/context/CommissionContext';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { db } from '@/services/db';
 import { Sale, PaymentRequest } from '@/types';
 import GlobalImporter from '@/components/GlobalImporter';
+import * as XLSX from 'xlsx';
 
 export default function SalesData() {
   const { user } = useAuth();
@@ -52,8 +53,47 @@ export default function SalesData() {
     operacao: '',
     value: '',
     status: 'Pendente' as Sale['status'],
-    seller: user?.name || ''
+    seller: user?.name || '',
+    commission: 0,
+    companyCommission: 0,
+    bankCommission: 0,
+    table_name: ''
   });
+
+  // Auto-calculate commissions when bank, product, operation or value changes
+  useEffect(() => {
+    if (formData.bank && formData.product && formData.operacao && formData.value) {
+      const selectedTable = commissions.find(c => 
+        c.banco === formData.bank && 
+        c.produto === formData.product && 
+        c.operacao === formData.operacao
+      );
+
+      if (selectedTable) {
+        const saleValue = parseFloat(formData.value) || 0;
+        let sellerRate = 0;
+        if (selectedTable.percentual_vendedor !== undefined) {
+          sellerRate = selectedTable.percentual_vendedor / 100;
+        } else {
+          const userGroup = user?.grupo_comissao;
+          if (userGroup === 'MASTER') sellerRate = selectedTable.comissao_master / 100;
+          else if (userGroup === 'OURO') sellerRate = selectedTable.comissao_ouro / 100;
+          else if (userGroup === 'PRATA') sellerRate = selectedTable.comissao_prata / 100;
+          else if (userGroup === 'PLUS') sellerRate = selectedTable.comissao_plus / 100;
+        }
+
+        const bankRate = (selectedTable.percentual_total_empresa || selectedTable.bank_rate || 0) / 100;
+        
+        setFormData(prev => ({
+          ...prev,
+          table_name: selectedTable.nome_tabela,
+          bankCommission: saleValue * bankRate,
+          companyCommission: (saleValue * bankRate) - (saleValue * sellerRate),
+          commission: saleValue * sellerRate
+        }));
+      }
+    }
+  }, [formData.bank, formData.product, formData.operacao, formData.value, commissions, user]);
 
   const refreshData = async () => {
     const [allSales, allPixRequests] = await Promise.all([
@@ -133,12 +173,21 @@ export default function SalesData() {
   }, [user, sales]);
 
   const handleInputChange = (field: string, value: string) => {
-    setFormData(prev => ({ ...prev, [field]: value }));
+    let finalValue = value;
+    if (field === 'cpf') finalValue = maskCPF(value);
+    if (field === 'phone') finalValue = maskPhone(value);
+
+    setFormData(prev => ({ ...prev, [field]: finalValue }));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) return;
+
+    if (!validateCPF(formData.cpf)) {
+      alert('CPF inválido. Por favor, verifique os dados.');
+      return;
+    }
     
     const saleData = {
       ...formData,
@@ -218,31 +267,28 @@ export default function SalesData() {
   });
 
   const handleExport = () => {
-    const headers = ['Data', 'Proposta', 'Cliente', 'CPF', 'Banco', 'Tabela', 'Valor', 'Status', 'Vendedor'];
-    const csvContent = [
-      headers.join(','),
-      ...filteredSales.map(sale => [
-        sale.date,
-        sale.proposal,
-        `"${sale.client}"`,
-        sale.cpf,
-        sale.bank,
-        sale.table,
-        sale.value.toFixed(2),
-        sale.status,
-        `"${sale.seller}"`
-      ].join(','))
-    ].join('\n');
+    if (filteredSales.length === 0) {
+      alert('Não há vendas para exportar.');
+      return;
+    }
 
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    const url = URL.createObjectURL(blob);
-    link.setAttribute('href', url);
-    link.setAttribute('download', 'vendas_export.csv');
-    link.style.visibility = 'hidden';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    const worksheet = XLSX.utils.json_to_sheet(filteredSales.map(sale => ({
+      Data: sale.date,
+      Proposta: sale.proposal,
+      Cliente: sale.client,
+      CPF: sale.cpf,
+      Banco: sale.bank,
+      Tabela: sale.table_name || sale.table,
+      Valor: sale.value,
+      'Comissão Vendedor': sale.commission || 0,
+      'Comissão Empresa': sale.companyCommission || 0,
+      'Comissão Banco': sale.bankCommission || 0,
+      Status: sale.status,
+      Vendedor: sale.seller
+    })));
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Vendas");
+    XLSX.writeFile(workbook, `vendas_export_${new Date().toISOString().split('T')[0]}.xlsx`);
   };
 
   const totalSales = filteredSales.reduce((acc, curr) => acc + curr.value, 0);

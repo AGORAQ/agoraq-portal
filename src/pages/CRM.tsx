@@ -7,6 +7,7 @@ import { ExternalLink, Copy, Database, Upload, UserPlus, Download, LayoutGrid, L
 import { useAuth } from '@/context/AuthContext';
 import GlobalImporter from '@/components/GlobalImporter';
 import { db } from '@/services/db';
+import * as XLSX from 'xlsx';
 
 const crms = [
   { id: 1, name: 'Gestão de Leads', url: 'https://inbox.agoraqoficial.com/entrar', login: 'usuario.vendas', status: 'Ativo', notes: 'Sistema principal para gestão de leads e propostas.' },
@@ -119,17 +120,59 @@ export default function CRM() {
   };
 
   const handleExportSpreadsheet = () => {
-    alert('Planilha de leads exportada com sucesso! (Simulação)');
+    if (leads.length === 0) {
+      alert('Não há leads para exportar.');
+      return;
+    }
+
+    const worksheet = XLSX.utils.json_to_sheet(leads.map(l => ({
+      Nome: l.name,
+      Telefone: l.phone,
+      Email: l.email,
+      Cidade: l.city,
+      Status: l.status,
+      Data: new Date(l.createdAt).toLocaleDateString()
+    })));
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Leads");
+    XLSX.writeFile(workbook, `leads_export_${new Date().toISOString().split('T')[0]}.xlsx`);
   };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      alert(`Arquivo ${e.target.files[0].name} carregado com sucesso! (Simulação)`);
-    }
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      try {
+        const data = new Uint8Array(event.target?.result as ArrayBuffer);
+        const workbook = XLSX.read(data, { type: 'array' });
+        const sheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[sheetName];
+        const jsonData = XLSX.utils.sheet_to_json(worksheet) as any[];
+
+        const leadsToImport = jsonData.map(row => ({
+          name: row.Nome || row.name || 'Lead Importado',
+          phone: row.Telefone || row.phone || '',
+          email: row.Email || row.email || '',
+          city: row.Cidade || row.city || 'Importado',
+          status: 'Novo',
+          usuario_id: user?.id
+        }));
+
+        await db.leads.import(leadsToImport);
+        await refreshLeads();
+        alert(`${leadsToImport.length} leads importados com sucesso!`);
+      } catch (error) {
+        console.error('Error importing leads:', error);
+        alert('Erro ao processar o arquivo. Verifique o formato.');
+      }
+    };
+    reader.readAsArrayBuffer(file);
   };
 
   const handleExportData = () => {
-    alert('Dados exportados com sucesso! (Simulação)');
+    handleExportSpreadsheet();
   };
 
   return (

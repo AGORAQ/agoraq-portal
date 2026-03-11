@@ -39,6 +39,7 @@ import {
 import { useAuth } from '@/context/AuthContext';
 import { db } from '@/services/db';
 import { User, CommissionGroup, AccessRequest, Bank, CommissionTable } from '@/types';
+import * as XLSX from 'xlsx';
 
 export default function AdminPanel() {
   const { user } = useAuth();
@@ -683,8 +684,45 @@ export default function AdminPanel() {
                       input.onchange = (e) => {
                         const file = (e.target as HTMLInputElement).files?.[0];
                         if (file) {
-                          alert(`Simulando processamento de: ${file.name}\n\n- Validando percentuais...\n- Criando grupos vinculados...\n- Sincronizando tabelas...\n\nImportação concluída com sucesso!`);
-                          loadData();
+                          const reader = new FileReader();
+                          reader.onload = async (event) => {
+                            try {
+                              const data = new Uint8Array(event.target?.result as ArrayBuffer);
+                              const workbook = XLSX.read(data, { type: 'array' });
+                              const sheetName = workbook.SheetNames[0];
+                              const worksheet = workbook.Sheets[sheetName];
+                              const jsonData = XLSX.utils.sheet_to_json(worksheet) as any[];
+
+                              const bank = banks.find(b => b.id === selectedBankForConfig);
+                              if (!bank) return;
+
+                              const commsToImport = jsonData.map(row => ({
+                                banco: bank.nome_banco,
+                                produto: row.Produto || row.produto || bank.tipo_produto,
+                                operacao: row.Operação || row.operacao || 'Normal',
+                                parcelas: String(row.Parcelas || row.parcelas || '84x'),
+                                codigo_tabela: row['Código Tabela'] || row.codigo_tabela || 'TAB_' + Math.random().toString(36).substring(7),
+                                nome_tabela: row['Nome Tabela'] || row.nome_tabela || 'Tabela Importada',
+                                faixa_valor_min: Number(row['Valor Mín'] || row.faixa_valor_min || 0),
+                                faixa_valor_max: Number(row['Valor Máx'] || row.faixa_valor_max || 999999),
+                                percentual_total_empresa: Number(row['% Empresa'] || row.percentual_total_empresa || 0),
+                                comissao_master: Number(row['% Master'] || row.comissao_master || 0),
+                                comissao_ouro: Number(row['% Ouro'] || row.comissao_ouro || 0),
+                                comissao_prata: Number(row['% Prata'] || row.comissao_prata || 0),
+                                comissao_plus: Number(row['% Plus'] || row.comissao_plus || 0),
+                                status: 'Ativo' as const,
+                                criado_por: user?.id || 'admin'
+                              }));
+
+                              await db.commissions.import(commsToImport, user?.role || 'admin', user?.id || '1');
+                              alert(`${commsToImport.length} tabelas importadas com sucesso!`);
+                              loadData();
+                            } catch (error) {
+                              console.error('Error importing commissions:', error);
+                              alert('Erro ao processar o arquivo. Verifique o formato.');
+                            }
+                          };
+                          reader.readAsArrayBuffer(file);
                         }
                       };
                       input.click();
@@ -1381,7 +1419,10 @@ export default function AdminPanel() {
                       placeholder="https://seu-sistema.com/webhook"
                       disabled={!isWebhookActive}
                     />
-                    <Button disabled={!isWebhookActive} onClick={() => alert('Configurações de Webhook salvas!')}>
+                    <Button disabled={!isWebhookActive} onClick={async () => {
+                      await db.settings.update({ webhookUrl, isWebhookActive });
+                      alert('Configurações de Webhook salvas!');
+                    }}>
                       Salvar
                     </Button>
                   </div>

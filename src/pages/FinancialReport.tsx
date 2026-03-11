@@ -20,6 +20,7 @@ import {
 import { db } from '@/services/db';
 import { Bank, CommissionGroup, Sale, PaymentRequest } from '@/types';
 import { formatCurrency } from '@/lib/utils';
+import * as XLSX from 'xlsx';
 import { 
   BarChart, 
   Bar, 
@@ -73,10 +74,10 @@ export default function FinancialReport() {
 
   const stats = useMemo(() => {
     const totalSold = filteredData.reduce((acc, s) => acc + s.value, 0);
-    const totalCompanyComm = filteredData.reduce((acc, s) => acc + (s.companyCommission * s.value), 0);
-    const totalSellerComm = filteredData.reduce((acc, s) => acc + (s.commission * s.value), 0);
+    const totalCompanyComm = filteredData.reduce((acc, s) => acc + (s.companyCommission || 0), 0);
+    const totalSellerComm = filteredData.reduce((acc, s) => acc + (s.commission || 0), 0);
     const totalPaid = payments.filter(p => p.status === 'Pago').reduce((acc, p) => acc + p.valor, 0);
-    const netProfit = totalCompanyComm - totalSellerComm;
+    const netProfit = totalCompanyComm; // companyCommission is already profit (bank - seller)
 
     return { totalSold, totalCompanyComm, totalSellerComm, totalPaid, netProfit };
   }, [filteredData, payments]);
@@ -88,9 +89,9 @@ export default function FinancialReport() {
       if (bankSales.length > 0) {
         data.push({
           name: b.nome_banco,
-          receita: bankSales.reduce((acc, s) => acc + (s.companyCommission * s.value), 0),
-          lucro: bankSales.reduce((acc, s) => acc + (s.companyCommission * s.value) - (s.commission * s.value), 0),
-          comissao: bankSales.reduce((acc, s) => acc + (s.commission * s.value), 0),
+          receita: bankSales.reduce((acc, s) => acc + (s.bankCommission || 0), 0),
+          lucro: bankSales.reduce((acc, s) => acc + (s.companyCommission || 0), 0),
+          comissao: bankSales.reduce((acc, s) => acc + (s.commission || 0), 0),
         });
       }
     });
@@ -114,8 +115,24 @@ export default function FinancialReport() {
   const COLORS = ['#10b981', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
 
   const handleExport = () => {
-    alert('Exportando relatório para Excel...');
-    // In a real app, use a library like xlsx
+    if (filteredData.length === 0) {
+      alert('Não há dados para exportar.');
+      return;
+    }
+
+    const worksheet = XLSX.utils.json_to_sheet(filteredData.map(s => ({
+      Data: new Date(s.date).toLocaleDateString(),
+      Vendedor: s.seller,
+      Banco: s.bank,
+      'Valor Venda': s.value,
+      'Comissão Vendedor': s.commission || 0,
+      'Comissão Banco': s.bankCommission || 0,
+      'Comissão Empresa (Lucro)': s.companyCommission || 0,
+      Status: s.status
+    })));
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Relatório Financeiro");
+    XLSX.writeFile(workbook, `relatorio_financeiro_${new Date().toISOString().split('T')[0]}.xlsx`);
   };
 
   return (
@@ -300,9 +317,9 @@ export default function FinancialReport() {
               </thead>
               <tbody className="divide-y divide-slate-800">
                 {filteredData.map((sale) => {
-                  const sellerComm = sale.commission * sale.value;
-                  const companyComm = sale.companyCommission * sale.value;
-                  const profit = companyComm - sellerComm;
+                  const sellerComm = sale.commission || 0;
+                  const companyComm = sale.bankCommission || 0;
+                  const profit = sale.companyCommission || 0;
                   
                   return (
                     <tr key={sale.id} className="hover:bg-slate-800/30 transition-colors">

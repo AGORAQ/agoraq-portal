@@ -35,7 +35,9 @@ function initDb() {
       saldo_acumulado REAL DEFAULT 0,
       saldo_pago REAL DEFAULT 0,
       daily_lead_count INTEGER DEFAULT 0,
-      last_lead_date TEXT
+      last_lead_date TEXT,
+      monthly_goal REAL DEFAULT 0,
+      deleted_at TEXT
     );
 
     CREATE TABLE IF NOT EXISTS banks (
@@ -75,7 +77,8 @@ function initDb() {
       status TEXT NOT NULL,
       criado_por TEXT NOT NULL,
       data_criacao TEXT NOT NULL,
-      data_atualizacao TEXT NOT NULL
+      data_atualizacao TEXT NOT NULL,
+      deleted_at TEXT
     );
 
     CREATE TABLE IF NOT EXISTS sales (
@@ -93,7 +96,8 @@ function initDb() {
       companyCommission REAL NOT NULL,
       bankCommission REAL NOT NULL,
       status TEXT NOT NULL,
-      seller TEXT NOT NULL
+      seller TEXT NOT NULL,
+      deleted_at TEXT
     );
 
     CREATE TABLE IF NOT EXISTS leads (
@@ -103,7 +107,8 @@ function initDb() {
       email TEXT,
       city TEXT,
       status TEXT NOT NULL,
-      createdAt TEXT NOT NULL
+      createdAt TEXT NOT NULL,
+      usuario_id TEXT
     );
 
     CREATE TABLE IF NOT EXISTS access_requests (
@@ -252,21 +257,13 @@ function initDb() {
     db.prepare(`
       INSERT INTO users (id, name, email, role, status, lastAccess, password, grupo_comissao)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `).run('1', 'Administrador Demo', 'agoraq@agoraqoficial.com', 'admin', 'Ativo', new Date().toISOString(), hashedPassword, 'MASTER');
+    `).run('1', 'Administrador', 'agoraq@agoraqoficial.com', 'admin', 'Ativo', new Date().toISOString(), hashedPassword, 'MASTER');
   }
 
   // Seed Initial Banks if not exists
   const bankCount = db.prepare('SELECT COUNT(*) as count FROM banks').get() as { count: number };
   if (bankCount.count === 0) {
-    const initialBanks = [
-      ['b1', 'Banco Pan', 'Ambos', 15, 'Ativo', new Date().toISOString()],
-      ['b2', 'Itaú', 'Ambos', 12, 'Ativo', new Date().toISOString()],
-      ['b3', 'BMG', 'FGTS', 18, 'Ativo', new Date().toISOString()],
-    ];
-    const insertBank = db.prepare('INSERT INTO banks (id, nome_banco, tipo_produto, percentual_maximo, status, criado_em) VALUES (?, ?, ?, ?, ?, ?)');
-    for (const b of initialBanks) {
-      insertBank.run(...b);
-    }
+    // No initial banks for production-ready state
   }
 }
 
@@ -297,7 +294,7 @@ async function startServer() {
 
   // Users
   app.get('/api/users', (req, res) => {
-    const users = db.prepare('SELECT id, name, email, role, status, lastAccess, grupo_comissao, saldo_acumulado, saldo_pago FROM users').all();
+    const users = db.prepare('SELECT id, name, email, role, status, lastAccess, grupo_comissao, saldo_acumulado, saldo_pago, monthly_goal FROM users WHERE deleted_at IS NULL').all();
     res.json(users);
   });
 
@@ -356,7 +353,7 @@ async function startServer() {
   });
 
   app.delete('/api/users/:id', (req, res) => {
-    db.prepare('DELETE FROM users WHERE id = ?').run(req.params.id);
+    db.prepare('UPDATE users SET deleted_at = ? WHERE id = ?').run(new Date().toISOString(), req.params.id);
     res.json({ success: true });
   });
 
@@ -414,7 +411,32 @@ async function startServer() {
 
   // Commissions
   app.get('/api/commissions', (req, res) => {
-    const commissions = db.prepare('SELECT * FROM commissions').all();
+    const { role, group } = req.query;
+    const commissions = db.prepare('SELECT * FROM commissions WHERE deleted_at IS NULL').all() as any[];
+    
+    // If not admin/supervisor, strip sensitive data
+    if (role !== 'admin' && role !== 'supervisor') {
+      return res.json(commissions.map(c => {
+        let sellerRate = 0;
+        if (group === 'MASTER') sellerRate = c.comissao_master;
+        else if (group === 'OURO') sellerRate = c.comissao_ouro;
+        else if (group === 'PRATA') sellerRate = c.comissao_prata;
+        else if (group === 'PLUS') sellerRate = c.comissao_plus;
+
+        return {
+          id: c.id,
+          banco: c.banco,
+          produto: c.produto,
+          operacao: c.operacao,
+          parcelas: c.parcelas,
+          codigo_tabela: c.codigo_tabela,
+          nome_tabela: c.nome_tabela,
+          percentual_vendedor: sellerRate,
+          status: c.status
+        };
+      }));
+    }
+    
     res.json(commissions);
   });
 
@@ -439,7 +461,7 @@ async function startServer() {
   });
 
   app.delete('/api/commissions/:id', (req, res) => {
-    db.prepare('DELETE FROM commissions WHERE id = ?').run(req.params.id);
+    db.prepare('UPDATE commissions SET deleted_at = ? WHERE id = ?').run(new Date().toISOString(), req.params.id);
     res.json({ success: true });
   });
 
@@ -447,19 +469,29 @@ async function startServer() {
     const { ids } = req.body;
     if (!Array.isArray(ids) || ids.length === 0) return res.status(400).json({ error: 'Invalid IDs' });
     const placeholders = ids.map(() => '?').join(',');
-    db.prepare(`DELETE FROM commissions WHERE id IN (${placeholders})`).run(...ids);
+    const now = new Date().toISOString();
+    db.prepare(`UPDATE commissions SET deleted_at = ? WHERE id IN (${placeholders})`).run(now, ...ids);
+    res.json({ success: true });
+  });
+
+  app.post('/api/commissions/delete-all', (req, res) => {
+    const now = new Date().toISOString();
+    db.prepare('UPDATE commissions SET deleted_at = ? WHERE deleted_at IS NULL').run(now);
     res.json({ success: true });
   });
 
   // Sales
   app.get('/api/sales', (req, res) => {
-    const sales = db.prepare('SELECT * FROM sales').all();
+    const sales = db.prepare('SELECT * FROM sales WHERE deleted_at IS NULL ORDER BY date DESC').all();
     res.json(sales);
   });
 
   app.post('/api/sales', (req, res) => {
     const sale = req.body;
     const id = uuidv4();
+    
+    // Server-side validation/calculation could be added here if we had the tables accessible easily
+    // For now, we ensure the structure is correct
     db.prepare(`
       INSERT INTO sales (
         id, date, proposal, client, cpf, phone, bank, operacao, table_name, 
@@ -467,15 +499,20 @@ async function startServer() {
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       id, sale.date, sale.proposal, sale.client, sale.cpf, sale.phone, sale.bank, sale.operacao, sale.table_name || sale.table,
-      sale.value, sale.commission, sale.companyCommission, sale.bankCommission, sale.status, sale.seller
+      sale.value, sale.commission || 0, sale.companyCommission || 0, sale.bankCommission || 0, sale.status, sale.seller
     );
 
-    // Update user balance if status is Pago
-    if (sale.status === 'Pago' || sale.status === 'Paga') {
-      db.prepare('UPDATE users SET saldo_acumulado = saldo_acumulado + ? WHERE name = ?').run(sale.commission, sale.seller);
+    // Update user balance if status is Paga
+    if (sale.status === 'Paga') {
+      db.prepare('UPDATE users SET saldo_acumulado = saldo_acumulado + ? WHERE name = ?').run(sale.commission || 0, sale.seller);
     }
 
     res.json({ id, ...sale });
+  });
+
+  app.delete('/api/sales/:id', (req, res) => {
+    db.prepare('UPDATE sales SET deleted_at = ? WHERE id = ?').run(new Date().toISOString(), req.params.id);
+    res.json({ success: true });
   });
 
   // Leads
@@ -500,9 +537,9 @@ async function startServer() {
     const lead = req.body;
     const id = uuidv4();
     db.prepare(`
-      INSERT INTO leads (id, name, phone, email, city, status, createdAt)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-    `).run(id, lead.name, lead.phone, lead.email, lead.city, lead.status || 'Novo', new Date().toISOString());
+      INSERT INTO leads (id, name, phone, email, city, status, createdAt, usuario_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(id, lead.name, lead.phone, lead.email, lead.city, lead.status || 'Novo', new Date().toISOString(), lead.usuario_id);
     res.json({ id, ...lead });
   });
 

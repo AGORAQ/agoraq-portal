@@ -12,7 +12,9 @@ import {
   HeadphonesIcon,
   Database,
   Palette,
-  Target
+  Target,
+  Trophy,
+  Sparkles
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { formatCurrency } from '@/lib/utils';
@@ -45,6 +47,7 @@ export default function Dashboard() {
   const [tempGoal, setTempGoal] = React.useState('');
   const [bankDistribution, setBankDistribution] = React.useState<{ name: string; value: number }[]>([]);
   const [projection, setProjection] = React.useState({ total: 0, company: 0, seller: 0 });
+  const [topTables, setTopTables] = React.useState<any[]>([]);
 
   const isAdmin = user?.role === 'admin';
   const isSupervisor = user?.role === 'supervisor';
@@ -58,12 +61,14 @@ export default function Dashboard() {
       }
       
       // Load Monthly Goal
-      const savedGoal = localStorage.getItem(`monthly_goal_${user?.id}`);
-      if (savedGoal) setMonthlyGoal(Number(savedGoal));
+      if (user?.monthly_goal) {
+        setMonthlyGoal(user.monthly_goal);
+      }
 
-      const [allSales, allRequests] = await Promise.all([
+      const [allSales, allRequests, allCommissions] = await Promise.all([
         db.sales.getAll(),
-        db.requests.getAll()
+        db.requests.getAll(),
+        db.commissions.getAll(user?.role, user?.grupo_comissao)
       ]);
       
       // Filter sales if user is not management
@@ -71,6 +76,12 @@ export default function Dashboard() {
       
       setSales(filteredSales);
       setRequests(allRequests);
+
+      // Top Performing Tables (by seller commission rate)
+      const sortedTables = [...allCommissions]
+        .sort((a, b) => (b.percentual_vendedor || 0) - (a.percentual_vendedor || 0))
+        .slice(0, 3);
+      setTopTables(sortedTables);
 
       // Prepare Chart Data (Last 7 days)
       const days = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
@@ -126,11 +137,11 @@ export default function Dashboard() {
     init();
   }, [user, monthlyGoal, isManagement]);
 
-  const handleSaveGoal = () => {
+  const handleSaveGoal = async () => {
     const goal = parseFloat(tempGoal);
-    if (!isNaN(goal)) {
+    if (!isNaN(goal) && user?.id) {
+      await db.users.update(user.id, { monthly_goal: goal });
       setMonthlyGoal(goal);
-      localStorage.setItem(`monthly_goal_${user?.id}`, goal.toString());
       setIsGoalModalOpen(false);
     }
   };
@@ -153,8 +164,8 @@ export default function Dashboard() {
   const remainingDays = daysInMonth - currentDay;
   const neededPerDay = remainingDays > 0 ? Math.max(0, (monthlyGoal - monthTotal) / remainingDays) : 0;
 
-  const totalCommissionsValue = sales.reduce((acc, curr) => acc + ((Number(curr.value) || 0) * (Number(curr.commission) || 0)), 0);
-  const totalProfitValue = sales.reduce((acc, curr) => acc + ((Number(curr.value) || 0) * (Number(curr.companyCommission) || 0)), 0);
+  const totalCommissionsValue = sales.reduce((acc, curr) => acc + (Number(curr.commission) || 0), 0);
+  const totalProfitValue = sales.reduce((acc, curr) => acc + (Number(curr.companyCommission) || 0), 0);
   const pendingRequestsCount = requests.filter(r => r.status === 'Pendente').length;
 
   return (
@@ -296,8 +307,9 @@ export default function Dashboard() {
 
       <div className="grid grid-cols-1 lg:grid-cols-7 gap-6">
         <Card className="col-span-1 lg:col-span-4">
-          <CardHeader>
+          <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle>Desempenho Semanal</CardTitle>
+            <TrendingUp className="w-4 h-4 text-slate-400" />
           </CardHeader>
           <CardContent className="pl-2">
             <div className="h-[300px] w-full">
@@ -330,32 +342,34 @@ export default function Dashboard() {
           </CardContent>
         </Card>
         
-        <Card className="col-span-1 lg:col-span-3">
-          <CardHeader>
-            <CardTitle>Distribuição por Banco</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="h-[300px] w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={bankDistribution}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={60}
-                    outerRadius={80}
-                    paddingAngle={5}
-                    dataKey="value"
-                  >
-                    {bankDistribution.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                    ))}
-                  </Pie>
-                  <Tooltip 
-                    formatter={(value: number) => formatCurrency(value)}
-                  />
-                </PieChart>
-              </ResponsiveContainer>
+        <div className="col-span-1 lg:col-span-3 space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Distribuição por Banco</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="h-[200px] w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={bankDistribution}
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={60}
+                      outerRadius={80}
+                      paddingAngle={5}
+                      dataKey="value"
+                    >
+                      {bankDistribution.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                      ))}
+                    </Pie>
+                    <Tooltip 
+                      formatter={(value: number) => formatCurrency(value)}
+                    />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
               <div className="grid grid-cols-2 gap-2 mt-4">
                 {bankDistribution.map((entry, index) => (
                   <div key={entry.name} className="flex items-center gap-2">
@@ -364,9 +378,38 @@ export default function Dashboard() {
                   </div>
                 ))}
               </div>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-gradient-to-br from-blue-900 to-indigo-950 text-white border-none shadow-xl overflow-hidden relative">
+            <div className="absolute top-0 right-0 p-4 opacity-10">
+              <Trophy className="w-24 h-24" />
             </div>
-          </CardContent>
-        </Card>
+            <CardHeader>
+              <CardTitle className="text-white flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-amber-400" />
+                Melhores Tabelas
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {topTables.map((table, i) => (
+                <div key={i} className="flex items-center justify-between p-3 bg-white/10 rounded-lg backdrop-blur-sm border border-white/5 hover:bg-white/20 transition-colors">
+                  <div>
+                    <p className="text-xs font-medium text-blue-200 uppercase tracking-wider">{table.banco}</p>
+                    <p className="font-bold text-sm truncate max-w-[150px]">{table.nome_tabela}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-xs text-blue-200">Sua Comissão</p>
+                    <p className="text-lg font-black text-amber-400">{table.percentual_vendedor}%</p>
+                  </div>
+                </div>
+              ))}
+              {topTables.length === 0 && (
+                <p className="text-sm text-blue-200 text-center py-4 italic">Nenhuma tabela disponível no momento.</p>
+              )}
+            </CardContent>
+          </Card>
+        </div>
       </div>
 
       {/* Recent Sales Preview */}

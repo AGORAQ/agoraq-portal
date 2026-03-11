@@ -15,6 +15,9 @@ export interface User {
   pix_key?: string;
   saldo_acumulado?: number;
   saldo_pago?: number;
+  daily_lead_count?: number;
+  last_lead_date?: string;
+  monthly_goal?: number;
 }
 
 export interface Bank {

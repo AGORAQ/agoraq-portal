@@ -7,82 +7,20 @@ const hashPassword = (password: string) => bcrypt.hashSync(password, 10);
 
 // Initial Data (Passwords are hashed)
 const INITIAL_USERS: User[] = [
-  { id: '1', name: 'Administrador Demo', email: 'agoraq@agoraqoficial.com', role: 'admin', status: 'Ativo', lastAccess: new Date().toISOString(), password: hashPassword('admin'), saldo_acumulado: 0, saldo_pago: 0, grupo_comissao: 'MASTER' },
-  { id: '2', name: 'Supervisor Vendas', email: 'supervisor@agoraqoficial.com.br', role: 'supervisor', status: 'Ativo', lastAccess: new Date().toISOString(), password: hashPassword('sup'), saldo_acumulado: 0, saldo_pago: 0, grupo_comissao: 'MASTER' },
-  { id: '3', name: 'Vendedor Exemplo', email: 'vendedor@agoraqoficial.com.br', role: 'vendedor', status: 'Ativo', lastAccess: new Date().toISOString(), password: hashPassword('vend'), saldo_acumulado: 1500, saldo_pago: 500, pix_key: 'vendedor@pix.com', grupo_comissao: 'MASTER' },
+  { id: '1', name: 'Administrador', email: 'agoraq@agoraqoficial.com', role: 'admin', status: 'Ativo', lastAccess: new Date().toISOString(), password: hashPassword('admin'), saldo_acumulado: 0, saldo_pago: 0, grupo_comissao: 'MASTER' },
 ];
 
-const INITIAL_BANKS: Bank[] = [
-  { id: 'b1', nome_banco: 'Banco Pan', tipo_produto: 'Ambos', percentual_maximo: 15, status: 'Ativo', criado_em: new Date().toISOString() },
-  { id: 'b2', nome_banco: 'Itaú', tipo_produto: 'Ambos', percentual_maximo: 12, status: 'Ativo', criado_em: new Date().toISOString() },
-  { id: 'b3', nome_banco: 'BMG', tipo_produto: 'FGTS', percentual_maximo: 18, status: 'Ativo', criado_em: new Date().toISOString() },
-  { id: 'b4', nome_banco: 'Prata', tipo_produto: 'Ambos', percentual_maximo: 0, status: 'Ativo', criado_em: new Date().toISOString() },
-  { id: 'b5', nome_banco: 'C6', tipo_produto: 'Ambos', percentual_maximo: 0, status: 'Ativo', criado_em: new Date().toISOString() },
-  { id: 'b6', nome_banco: 'HUB', tipo_produto: 'Ambos', percentual_maximo: 0, status: 'Ativo', criado_em: new Date().toISOString() },
-  { id: 'b7', nome_banco: 'Presença Bank', tipo_produto: 'Ambos', percentual_maximo: 0, status: 'Ativo', criado_em: new Date().toISOString() },
-  { id: 'b8', nome_banco: 'Taquitado', tipo_produto: 'Ambos', percentual_maximo: 0, status: 'Ativo', criado_em: new Date().toISOString() },
-  { id: 'b9', nome_banco: 'Granapix', tipo_produto: 'Ambos', percentual_maximo: 0, status: 'Ativo', criado_em: new Date().toISOString() },
-  { id: 'b10', nome_banco: 'Novo Saque', tipo_produto: 'Ambos', percentual_maximo: 0, status: 'Ativo', criado_em: new Date().toISOString() },
-  { id: 'b11', nome_banco: 'Qualibank', tipo_produto: 'Ambos', percentual_maximo: 0, status: 'Ativo', criado_em: new Date().toISOString() },
-  { id: 'b12', nome_banco: 'Grandino', tipo_produto: 'Ambos', percentual_maximo: 0, status: 'Ativo', criado_em: new Date().toISOString() },
-  { id: 'b13', nome_banco: 'DI+', tipo_produto: 'Ambos', percentual_maximo: 0, status: 'Ativo', criado_em: new Date().toISOString() },
-  { id: 'b14', nome_banco: 'Unno', tipo_produto: 'Ambos', percentual_maximo: 0, status: 'Ativo', criado_em: new Date().toISOString() },
-  { id: 'b15', nome_banco: 'Crefaz', tipo_produto: 'Ambos', percentual_maximo: 0, status: 'Ativo', criado_em: new Date().toISOString() },
-  { id: 'b16', nome_banco: 'Crefisa', tipo_produto: 'Ambos', percentual_maximo: 0, status: 'Ativo', criado_em: new Date().toISOString() },
-  { id: 'b17', nome_banco: 'PAN', tipo_produto: 'Ambos', percentual_maximo: 0, status: 'Ativo', criado_em: new Date().toISOString() },
-  { id: 'b18', nome_banco: 'PH Tech', tipo_produto: 'Ambos', percentual_maximo: 0, status: 'Ativo', criado_em: new Date().toISOString() },
-  { id: 'b19', nome_banco: 'V8', tipo_produto: 'Ambos', percentual_maximo: 0, status: 'Ativo', criado_em: new Date().toISOString() },
-  { id: 'b20', nome_banco: 'Top Mais', tipo_produto: 'Ambos', percentual_maximo: 0, status: 'Ativo', criado_em: new Date().toISOString() },
-  { id: 'b21', nome_banco: 'DSV', tipo_produto: 'Ambos', percentual_maximo: 0, status: 'Ativo', criado_em: new Date().toISOString() },
-];
+const INITIAL_BANKS: Bank[] = [];
 
-const INITIAL_COMMISSIONS: CommissionTable[] = [
-  { 
-    id: '1', 
-    banco: 'Banco Pan', 
-    produto: 'Empréstimo Consignado', 
-    operacao: 'INSS Normal',
-    parcelas: '84x',
-    codigo_tabela: 'PAN_INSS_01',
-    nome_tabela: 'INSS Normal', 
-    faixa_valor_min: 1000,
-    faixa_valor_max: 50000,
-    percentual_total_empresa: 12, 
-    comissao_master: 10,
-    comissao_ouro: 9,
-    comissao_prata: 8,
-    comissao_plus: 7,
-    status: 'Ativo', 
-    criado_por: 'sistema',
-    data_criacao: new Date().toISOString(),
-    data_atualizacao: new Date().toISOString(),
-  },
-];
+const INITIAL_COMMISSIONS: CommissionTable[] = [];
 
-const INITIAL_SALES = [
-  { id: '1', date: '2024-03-01', proposal: '123456', client: 'Carlos Oliveira', cpf: '123.456.789-00', phone: '(11) 99999-9999', bank: 'Banco Pan', table: 'INSS Normal', value: 5000.00, commission: 0.10, companyCommission: 0.15, bankCommission: 0.18, status: 'Pago', seller: 'Vendedor Exemplo' },
-  { id: '2', date: '2024-03-02', proposal: '123457', client: 'Ana Souza', cpf: '222.333.444-55', phone: '(11) 98888-8888', bank: 'Itaú', table: 'Portabilidade', value: 12000.00, commission: 0.08, companyCommission: 0.12, bankCommission: 0.15, status: 'Aguardando', seller: 'Ana Vendedora' },
-  { id: '3', date: '2024-03-03', proposal: '123458', client: 'Roberto Lima', cpf: '555.666.777-88', phone: '(21) 97777-7777', bank: 'BMG', table: 'Cartão Benefício', value: 3500.00, commission: 0.12, companyCommission: 0.18, bankCommission: 0.22, status: 'Pago', seller: 'Vendedor Exemplo' },
-  { id: '4', date: '2024-03-04', proposal: '123459', client: 'Fernanda Costa', cpf: '999.888.777-66', phone: '(31) 96666-6666', bank: 'C6 Bank', table: 'Refinanciamento', value: 8900.00, commission: 0.09, companyCommission: 0.14, bankCommission: 0.17, status: 'Em Análise', seller: 'Carlos Vendedor' },
-];
+const INITIAL_SALES: any[] = [];
 
-const INITIAL_LEADS = [
-  { id: '1', name: 'José Silva', phone: '(11) 91234-5678', email: 'jose@email.com', city: 'São Paulo', status: 'Novo', createdAt: new Date().toISOString() },
-  { id: '2', name: 'Maria Oliveira', phone: '(21) 98765-4321', email: 'maria@email.com', city: 'Rio de Janeiro', status: 'Novo', createdAt: new Date().toISOString() },
-];
+const INITIAL_LEADS: any[] = [];
 
-const INITIAL_REQUESTS: AccessRequest[] = [
-  { id: '1', usuario_id: '3', name: 'João Silva', email: 'joao@email.com', bank: 'Banco Pan', banco_nome: 'Banco Pan', sellerName: 'Vendedor Exemplo', cpf: '111.222.333-44', status: 'Pendente', createdAt: new Date().toISOString(), data_criacao: new Date().toISOString(), fgtsGroup: 'DIAMANTE', cltGroup: 'Fortuna 8D' },
-  { id: '2', usuario_id: '3', name: 'Maria Santos', email: 'maria@email.com', bank: 'Itaú', banco_nome: 'Itaú', sellerName: 'Ana Vendedora', cpf: '555.666.777-88', status: 'Aprovado', createdAt: new Date().toISOString(), data_criacao: new Date().toISOString(), fgtsGroup: 'OURO', cltGroup: 'Líder CLT' },
-];
+const INITIAL_REQUESTS: AccessRequest[] = [];
 
-const INITIAL_COMMISSION_GROUPS: CommissionGroup[] = [
-  { id: '1', name: 'DIAMANTE', type: 'FGTS', banco_id: 'b1', status: 'Ativo', createdAt: new Date().toISOString() },
-  { id: '2', name: 'OURO', type: 'FGTS', banco_id: 'b1', status: 'Ativo', createdAt: new Date().toISOString() },
-  { id: '3', name: 'PRATA', type: 'FGTS', banco_id: 'b1', status: 'Ativo', createdAt: new Date().toISOString() },
-  { id: '4', name: 'Fortuna 8D', type: 'CLT', banco_id: 'b2', status: 'Ativo', createdAt: new Date().toISOString() },
-  { id: '5', name: 'Líder CLT', type: 'CLT', banco_id: 'b2', status: 'Ativo', createdAt: new Date().toISOString() },
-];
+const INITIAL_COMMISSION_GROUPS: CommissionGroup[] = [];
 
 const API_URL = '/api';
 
@@ -125,36 +63,11 @@ export const db = {
 
   commissions: {
     getAll: async (role: string = 'vendedor', userGroup?: string) => {
-      const res = await fetch(`${API_URL}/commissions`);
-      const commissions = await res.json();
+      const params = new URLSearchParams({ role });
+      if (userGroup) params.append('group', userGroup);
       
-      if (role === 'admin' || role === 'supervisor') {
-        return commissions;
-      }
-
-      // Filter by group for sellers and hide sensitive fields
-      return commissions
-        .map((c: any) => {
-          let sellerCommission = 0;
-          if (userGroup === 'MASTER') sellerCommission = c.comissao_master;
-          else if (userGroup === 'OURO') sellerCommission = c.comissao_ouro;
-          else if (userGroup === 'PRATA') sellerCommission = c.comissao_prata;
-          else if (userGroup === 'PLUS') sellerCommission = c.comissao_plus;
-
-          return {
-            id: c.id,
-            banco: c.banco,
-            produto: c.produto,
-            operacao: c.operacao,
-            parcelas: c.parcelas,
-            codigo_tabela: c.codigo_tabela,
-            nome_tabela: c.nome_tabela,
-            faixa_valor_min: c.faixa_valor_min,
-            faixa_valor_max: c.faixa_valor_max,
-            percentual_vendedor: sellerCommission,
-            status: c.status,
-          };
-        });
+      const res = await fetch(`${API_URL}/commissions?${params.toString()}`);
+      return res.json();
     },
     create: async (comm: Omit<CommissionTable, 'id' | 'data_criacao' | 'data_atualizacao'>, userRole: string, userId: string) => {
       const res = await fetch(`${API_URL}/commissions`, {
@@ -183,12 +96,7 @@ export const db = {
       });
     },
     deleteAll: async (userRole: string, userId: string) => {
-      const all = await fetch(`${API_URL}/commissions`);
-      const commissions = await all.json();
-      const ids = commissions.map((c: any) => c.id);
-      if (ids.length > 0) {
-        await db.commissions.deleteMany(ids, userRole, userId);
-      }
+      await fetch(`${API_URL}/commissions/delete-all`, { method: 'POST' });
     },
     import: async (comms: Omit<CommissionTable, 'id' | 'data_criacao' | 'data_atualizacao'>[], userRole: string, userId: string) => {
       for (const comm of comms) {
