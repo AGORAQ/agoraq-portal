@@ -31,11 +31,11 @@ export default function Login() {
     setLoading(true);
     
     try {
-      const success = await login(email, password);
-      if (success) {
+      const result = await login(email, password);
+      if (result.success) {
         navigate('/');
       } else {
-        setError('Credenciais inválidas. Tente novamente.');
+        setError(result.error || 'Credenciais inválidas. Tente novamente.');
       }
     } catch (err) {
       setError('Ocorreu um erro ao tentar fazer login.');

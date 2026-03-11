@@ -4,7 +4,7 @@ import { db } from '@/services/db';
 
 interface AuthContextType {
   user: User | null;
-  login: (email: string, password?: string) => Promise<boolean>;
+  login: (email: string, password?: string) => Promise<{ success: boolean; error?: string }>;
   logout: () => void;
   isAuthenticated: boolean;
   loading: boolean;
@@ -42,12 +42,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const userData = await res.json();
         setUser(userData);
         localStorage.setItem('agoraq_user', JSON.stringify(userData));
-        return true;
+        return { success: true };
       }
-      return false;
+      
+      const errorData = await res.json();
+      return { success: false, error: errorData.error || 'Credenciais inválidas' };
     } catch (e) {
       console.error('Login error:', e);
-      return false;
+      return { success: false, error: 'Erro de conexão com o servidor' };
     }
   };
 

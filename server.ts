@@ -250,20 +250,19 @@ function initDb() {
     );
   `);
 
-  // Seed Initial Admin if not exists
+  // Seed Initial Admin - Force reset to ensure access
   const adminEmail = 'agoraq@agoraqoficial.com';
-  const admin = db.prepare('SELECT * FROM users WHERE email = ?').get(adminEmail);
   const hashedPassword = bcrypt.hashSync('admin', 10);
   
-  if (!admin) {
-    db.prepare(`
-      INSERT INTO users (id, name, email, role, status, lastAccess, password, grupo_comissao)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `).run('1', 'Administrador', adminEmail, 'admin', 'Ativo', new Date().toISOString(), hashedPassword, 'MASTER');
-  } else {
-    // Reset password to 'admin' to ensure access after update
-    db.prepare('UPDATE users SET password = ? WHERE email = ?').run(hashedPassword, adminEmail);
-  }
+  // Delete existing by email AND by ID to avoid any conflicts
+  db.prepare('DELETE FROM users WHERE email = ?').run(adminEmail);
+  db.prepare('DELETE FROM users WHERE id = ?').run('1');
+  
+  db.prepare(`
+    INSERT INTO users (id, name, email, role, status, lastAccess, password, grupo_comissao)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `).run('1', 'Administrador', adminEmail, 'admin', 'Ativo', new Date().toISOString(), hashedPassword, 'MASTER');
+
 
   // Seed Initial Banks if not exists
   const bankCount = db.prepare('SELECT COUNT(*) as count FROM banks').get() as { count: number };
@@ -272,7 +271,11 @@ function initDb() {
   }
 }
 
-initDb();
+try {
+  initDb();
+} catch (error) {
+  console.error('Failed to initialize database:', error);
+}
 
 async function startServer() {
   const app = express();
@@ -285,15 +288,20 @@ async function startServer() {
   // Auth
   app.post('/api/auth/login', (req, res) => {
     const { email, password } = req.body;
-    const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email.trim().toLowerCase()) as any;
+    const normalizedEmail = email.trim().toLowerCase();
+    const user = db.prepare('SELECT * FROM users WHERE email = ?').get(normalizedEmail) as any;
     
-    if (user && bcrypt.compareSync(password, user.password)) {
+    if (!user) {
+      return res.status(401).json({ error: 'Usuário não encontrado' });
+    }
+
+    if (bcrypt.compareSync(password, user.password)) {
       const lastAccess = new Date().toISOString();
       db.prepare('UPDATE users SET lastAccess = ? WHERE id = ?').run(lastAccess, user.id);
       const { password: _, ...userWithoutPassword } = user;
       res.json({ ...userWithoutPassword, lastAccess });
     } else {
-      res.status(401).json({ error: 'Credenciais inválidas' });
+      res.status(401).json({ error: 'Senha incorreta' });
     }
   });
 
