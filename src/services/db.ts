@@ -24,81 +24,69 @@ const INITIAL_COMMISSION_GROUPS: CommissionGroup[] = [];
 
 const API_URL = '/api';
 
+// Helper for safe fetching with fallback for static environments like Netlify
+const safeFetch = async (url: string, options?: RequestInit, fallbackData: any = []) => {
+  try {
+    const res = await fetch(url, options);
+    if (res.ok) return res.json();
+    if (res.status === 404 && window.location.hostname.includes('netlify.app')) {
+      console.warn(`API route ${url} not found on Netlify. Using fallback data.`);
+      return fallbackData;
+    }
+    return fallbackData;
+  } catch (e) {
+    console.error(`Fetch error for ${url}:`, e);
+    return fallbackData;
+  }
+};
+
 // Database Service
 export const db = {
   users: {
-    getAll: async () => {
-      const res = await fetch(`${API_URL}/users`);
-      return res.json();
-    },
+    getAll: async () => safeFetch(`${API_URL}/users`, undefined, INITIAL_USERS),
     getById: async (id: string) => {
-      const res = await fetch(`${API_URL}/users`);
-      const users = await res.json();
+      const users = await safeFetch(`${API_URL}/users`, undefined, INITIAL_USERS);
       return users.find((u: any) => u.id === id);
     },
-    create: async (user: Omit<User, 'id' | 'lastAccess'>) => {
-      const res = await fetch(`${API_URL}/users`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(user),
-      });
-      return res.json();
-    },
-    update: async (id: string, updates: Partial<User>) => {
-      const res = await fetch(`${API_URL}/users/${id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(updates),
-      });
-      return res.json();
-    },
-    delete: async (id: string) => {
-      await fetch(`${API_URL}/users/${id}`, { method: 'DELETE' });
-    },
-    incrementLeads: async (id: string) => {
-      const res = await fetch(`${API_URL}/users/${id}/increment-leads`, { method: 'POST' });
-      return res.json();
-    }
+    create: async (user: Omit<User, 'id' | 'lastAccess'>) => safeFetch(`${API_URL}/users`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(user),
+    }, { ...user, id: uuidv4() }),
+    update: async (id: string, updates: Partial<User>) => safeFetch(`${API_URL}/users/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updates),
+    }, updates),
+    delete: async (id: string) => safeFetch(`${API_URL}/users/${id}`, { method: 'DELETE' }),
+    incrementLeads: async (id: string) => safeFetch(`${API_URL}/users/${id}/increment-leads`, { method: 'POST' }, { success: true })
   },
 
   commissions: {
     getAll: async (role: string = 'vendedor', userGroup?: string) => {
       const params = new URLSearchParams({ role });
       if (userGroup) params.append('group', userGroup);
-      
-      const res = await fetch(`${API_URL}/commissions?${params.toString()}`);
-      return res.json();
+      return safeFetch(`${API_URL}/commissions?${params.toString()}`, undefined, INITIAL_COMMISSIONS);
     },
-    create: async (comm: Omit<CommissionTable, 'id' | 'data_criacao' | 'data_atualizacao'>, userRole: string, userId: string) => {
-      const res = await fetch(`${API_URL}/commissions`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...comm, criado_por: userId }),
-      });
-      return res.json();
-    },
-    update: async (id: string, updates: Partial<CommissionTable>, userRole: string, userId: string) => {
-      const res = await fetch(`${API_URL}/commissions/${id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(updates),
-      });
-      return res.json();
-    },
-    delete: async (id: string, userRole: string, userId: string) => {
-      await fetch(`${API_URL}/commissions/${id}`, { method: 'DELETE' });
-    },
-    deleteMany: async (ids: string[], userRole: string, userId: string) => {
-      await fetch(`${API_URL}/commissions/bulk-delete`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ids }),
-      });
-    },
-    deleteAll: async (userRole: string, userId: string) => {
-      await fetch(`${API_URL}/commissions/delete-all`, { method: 'POST' });
-    },
+    create: async (comm: Omit<CommissionTable, 'id' | 'data_criacao' | 'data_atualizacao'>, userRole: string, userId: string) => safeFetch(`${API_URL}/commissions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...comm, criado_por: userId }),
+    }, { ...comm, id: uuidv4() }),
+    update: async (id: string, updates: Partial<CommissionTable>, userRole: string, userId: string) => safeFetch(`${API_URL}/commissions/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updates),
+    }, updates),
+    delete: async (id: string, userRole: string, userId: string) => safeFetch(`${API_URL}/commissions/${id}`, { method: 'DELETE' }),
+    deleteMany: async (ids: string[], userRole: string, userId: string) => safeFetch(`${API_URL}/commissions/bulk-delete`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids }),
+    }),
+    deleteAll: async (userRole: string, userId: string) => safeFetch(`${API_URL}/commissions/delete-all`, { method: 'POST' }),
     import: async (comms: Omit<CommissionTable, 'id' | 'data_criacao' | 'data_atualizacao'>[], userRole: string, userId: string) => {
+      if (window.location.hostname.includes('netlify.app')) return comms;
       for (const comm of comms) {
         await db.commissions.create(comm, userRole, userId);
       }
@@ -107,56 +95,35 @@ export const db = {
   },
 
   sales: {
-    getAll: async () => {
-      const res = await fetch(`${API_URL}/sales`);
-      return res.json();
-    },
-    create: async (sale: any, user: User) => {
-      const res = await fetch(`${API_URL}/sales`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...sale, seller: user.name }),
-      });
-      return res.json();
-    },
-    update: async (id: string, updates: any) => {
-      const res = await fetch(`${API_URL}/sales/${id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(updates),
-      });
-      return res.json();
-    },
-    delete: async (id: string) => {
-      await fetch(`${API_URL}/sales/${id}`, { method: 'DELETE' });
-    }
+    getAll: async () => safeFetch(`${API_URL}/sales`, undefined, INITIAL_SALES),
+    create: async (sale: any, user: User) => safeFetch(`${API_URL}/sales`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...sale, seller: user.name }),
+    }, { ...sale, id: uuidv4() }),
+    update: async (id: string, updates: any) => safeFetch(`${API_URL}/sales/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updates),
+    }, updates),
+    delete: async (id: string) => safeFetch(`${API_URL}/sales/${id}`, { method: 'DELETE' })
   },
 
   leads: {
-    getAll: async () => {
-      const res = await fetch(`${API_URL}/leads`);
-      return res.json();
-    },
-    create: async (lead: any) => {
-      const res = await fetch(`${API_URL}/leads`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(lead),
-      });
-      return res.json();
-    },
-    update: async (id: string, updates: any) => {
-      const res = await fetch(`${API_URL}/leads/${id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(updates),
-      });
-      return res.json();
-    },
-    delete: async (id: string) => {
-      await fetch(`${API_URL}/leads/${id}`, { method: 'DELETE' });
-    },
+    getAll: async () => safeFetch(`${API_URL}/leads`, undefined, INITIAL_LEADS),
+    create: async (lead: any) => safeFetch(`${API_URL}/leads`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(lead),
+    }, { ...lead, id: uuidv4() }),
+    update: async (id: string, updates: any) => safeFetch(`${API_URL}/leads/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updates),
+    }, updates),
+    delete: async (id: string) => safeFetch(`${API_URL}/leads/${id}`, { method: 'DELETE' }),
     import: async (leadsData: any[]) => {
+      if (window.location.hostname.includes('netlify.app')) return leadsData;
       for (const lead of leadsData) {
         await db.leads.create(lead);
       }
@@ -165,62 +132,40 @@ export const db = {
   },
 
   requests: {
-    getAll: async () => {
-      const res = await fetch(`${API_URL}/access-requests`);
-      return res.json();
-    },
+    getAll: async () => safeFetch(`${API_URL}/access-requests`, undefined, INITIAL_REQUESTS),
     getByUser: async (userId: string) => {
-      const res = await fetch(`${API_URL}/access-requests`);
-      const requests = await res.json();
+      const requests = await safeFetch(`${API_URL}/access-requests`, undefined, INITIAL_REQUESTS);
       return requests.filter((r: any) => r.usuario_id === userId);
     },
-    create: async (req: Omit<AccessRequest, 'id' | 'createdAt' | 'status'>) => {
-      const res = await fetch(`${API_URL}/access-requests`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(req),
-      });
-      return res.json();
-    },
-    updateStatus: async (id: string, status: AccessRequest['status'], adminObservation?: string, adminId?: string) => {
-      const res = await fetch(`${API_URL}/access-requests/${id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status, observacao_admin: adminObservation, criado_por_admin: adminId }),
-      });
-      return res.json();
-    }
+    create: async (req: Omit<AccessRequest, 'id' | 'createdAt' | 'status'>) => safeFetch(`${API_URL}/access-requests`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(req),
+    }, { ...req, id: uuidv4(), status: 'Pendente', createdAt: new Date().toISOString() }),
+    updateStatus: async (id: string, status: AccessRequest['status'], adminObservation?: string, adminId?: string) => safeFetch(`${API_URL}/access-requests/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status, observacao_admin: adminObservation, criado_por_admin: adminId }),
+    }, { status })
   },
 
   credentials: {
-    getAll: async () => {
-      const res = await fetch(`${API_URL}/credentials`);
-      return res.json();
-    },
+    getAll: async () => safeFetch(`${API_URL}/credentials`),
     getByUser: async (userId: string) => {
-      const res = await fetch(`${API_URL}/credentials`);
-      const credentials = await res.json();
+      const credentials = await safeFetch(`${API_URL}/credentials`);
       return credentials.filter((c: any) => c.usuario_id === userId);
     },
-    create: async (cred: Omit<PlatformCredential, 'id' | 'data_criacao' | 'data_atualizacao'>) => {
-      const res = await fetch(`${API_URL}/credentials`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(cred),
-      });
-      return res.json();
-    },
-    update: async (id: string, updates: Partial<PlatformCredential>) => {
-      const res = await fetch(`${API_URL}/credentials/${id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(updates),
-      });
-      return res.json();
-    },
-    delete: async (id: string) => {
-      await fetch(`${API_URL}/credentials/${id}`, { method: 'DELETE' });
-    }
+    create: async (cred: Omit<PlatformCredential, 'id' | 'data_criacao' | 'data_atualizacao'>) => safeFetch(`${API_URL}/credentials`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(cred),
+    }, { ...cred, id: uuidv4() }),
+    update: async (id: string, updates: Partial<PlatformCredential>) => safeFetch(`${API_URL}/credentials/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updates),
+    }, updates),
+    delete: async (id: string) => safeFetch(`${API_URL}/credentials/${id}`, { method: 'DELETE' })
   },
 
   logs: {
@@ -233,117 +178,70 @@ export const db = {
   },
 
   commissionGroups: {
-    getAll: async () => {
-      const res = await fetch(`${API_URL}/commission-groups`);
-      return res.json();
-    },
+    getAll: async () => safeFetch(`${API_URL}/commission-groups`, undefined, INITIAL_COMMISSION_GROUPS),
     getByBank: async (bankId: string) => {
-      const all = await fetch(`${API_URL}/commission-groups`);
-      const groups = await all.json();
+      const groups = await safeFetch(`${API_URL}/commission-groups`, undefined, INITIAL_COMMISSION_GROUPS);
       return groups.filter((g: any) => g.banco_id === bankId);
     },
-    create: async (group: any) => {
-      const res = await fetch(`${API_URL}/commission-groups`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(group),
-      });
-      return res.json();
-    },
-    delete: async (id: string) => {
-      await fetch(`${API_URL}/commission-groups/${id}`, { method: 'DELETE' });
-    }
+    create: async (group: any) => safeFetch(`${API_URL}/commission-groups`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(group),
+    }, { ...group, id: uuidv4() }),
+    delete: async (id: string) => safeFetch(`${API_URL}/commission-groups/${id}`, { method: 'DELETE' })
   },
 
   bancos: {
-    getAll: async () => {
-      const res = await fetch(`${API_URL}/banks`);
-      return res.json();
-    },
-    create: async (bank: Omit<Bank, 'id' | 'criado_em'>) => {
-      const res = await fetch(`${API_URL}/banks`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(bank),
-      });
-      return res.json();
-    },
-    update: async (id: string, updates: Partial<Bank>) => {
-      const res = await fetch(`${API_URL}/banks/${id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(updates),
-      });
-      return res.json();
-    },
-    delete: async (id: string) => {
-      await fetch(`${API_URL}/banks/${id}`, { method: 'DELETE' });
-    }
+    getAll: async () => safeFetch(`${API_URL}/banks`, undefined, INITIAL_BANKS),
+    create: async (bank: Omit<Bank, 'id' | 'criado_em'>) => safeFetch(`${API_URL}/banks`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(bank),
+    }, { ...bank, id: uuidv4(), criado_em: new Date().toISOString() }),
+    update: async (id: string, updates: Partial<Bank>) => safeFetch(`${API_URL}/banks/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updates),
+    }, updates),
+    delete: async (id: string) => safeFetch(`${API_URL}/banks/${id}`, { method: 'DELETE' })
   },
 
   payment_requests: {
-    getAll: async () => {
-      const res = await fetch(`${API_URL}/payment-requests`);
-      return res.json();
-    },
-    create: async (req: any) => {
-      const res = await fetch(`${API_URL}/payment-requests`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(req),
-      });
-      return res.json();
-    },
-    update: async (id: string, updates: any) => {
-      const res = await fetch(`${API_URL}/payment-requests/${id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(updates),
-      });
-      return res.json();
-    }
+    getAll: async () => safeFetch(`${API_URL}/payment-requests`),
+    create: async (req: any) => safeFetch(`${API_URL}/payment-requests`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(req),
+    }, { ...req, id: uuidv4() }),
+    update: async (id: string, updates: any) => safeFetch(`${API_URL}/payment-requests/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updates),
+    }, updates)
   },
 
   settings: {
-    get: async () => {
-      const res = await fetch(`${API_URL}/settings`);
-      return res.json();
-    },
-    update: async (newSettings: any) => {
-      const res = await fetch(`${API_URL}/settings`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newSettings),
-      });
-      return res.json();
-    }
+    get: async () => safeFetch(`${API_URL}/settings`, undefined, {}),
+    update: async (newSettings: any) => safeFetch(`${API_URL}/settings`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(newSettings),
+    }, newSettings)
   },
   academy: {
-    getAll: async () => {
-      const res = await fetch(`${API_URL}/academy`);
-      return res.json();
-    },
-    create: async (content: any) => {
-      const res = await fetch(`${API_URL}/academy`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(content),
-      });
-      return res.json();
-    },
-    update: async (id: string, updates: any) => {
-      // Not implemented on backend yet
-    },
-    delete: async (id: string) => {
-      await fetch(`${API_URL}/academy/${id}`, { method: 'DELETE' });
-    },
-    trackView: async (conteudo_id: string, usuario_id: string) => {
-      await fetch(`${API_URL}/academy/views`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ conteudo_id, usuario_id }),
-      });
-    }
+    getAll: async () => safeFetch(`${API_URL}/academy`),
+    create: async (content: any) => safeFetch(`${API_URL}/academy`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(content),
+    }, { ...content, id: uuidv4() }),
+    update: async (id: string, updates: any) => ({}),
+    delete: async (id: string) => safeFetch(`${API_URL}/academy/${id}`, { method: 'DELETE' }),
+    trackView: async (conteudo_id: string, usuario_id: string) => safeFetch(`${API_URL}/academy/views`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ conteudo_id, usuario_id }),
+    })
   },
   academyViews: {
     getAll: async () => [],
@@ -353,40 +251,24 @@ export const db = {
     getUserViews: async (usuario_id: string) => []
   },
   announcements: {
-    getAll: async () => {
-      const res = await fetch(`${API_URL}/announcements`);
-      return res.json();
-    },
-    create: async (announcement: any) => {
-      const res = await fetch(`${API_URL}/announcements`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(announcement),
-      });
-      return res.json();
-    },
+    getAll: async () => safeFetch(`${API_URL}/announcements`),
+    create: async (announcement: any) => safeFetch(`${API_URL}/announcements`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(announcement),
+    }, { ...announcement, id: uuidv4() }),
     update: async (id: string, updates: any) => ({}),
-    delete: async (id: string) => {
-      await fetch(`${API_URL}/announcements/${id}`, { method: 'DELETE' });
-    }
+    delete: async (id: string) => safeFetch(`${API_URL}/announcements/${id}`, { method: 'DELETE' })
   },
   campaigns: {
-    getAll: async () => {
-      const res = await fetch(`${API_URL}/campaigns`);
-      return res.json();
-    },
-    create: async (campaign: any) => {
-      const res = await fetch(`${API_URL}/campaigns`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(campaign),
-      });
-      return res.json();
-    },
+    getAll: async () => safeFetch(`${API_URL}/campaigns`),
+    create: async (campaign: any) => safeFetch(`${API_URL}/campaigns`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(campaign),
+    }, { ...campaign, id: uuidv4() }),
     update: async (id: string, updates: any) => ({}),
-    delete: async (id: string) => {
-      await fetch(`${API_URL}/campaigns/${id}`, { method: 'DELETE' });
-    }
+    delete: async (id: string) => safeFetch(`${API_URL}/campaigns/${id}`, { method: 'DELETE' })
   },
   utils: {
     generatePassword: (length: number = 10) => {

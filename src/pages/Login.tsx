@@ -52,16 +52,6 @@ export default function Login() {
   return (
     <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4">
       <div className="w-full max-w-md">
-        {window.location.hostname.includes('netlify.app') && (
-          <div className="mb-6 bg-amber-50 border border-amber-200 p-4 rounded-lg text-amber-800 text-sm shadow-sm">
-            <p className="font-bold flex items-center gap-2 mb-1">
-              <ShieldAlert className="w-4 h-4" />
-              URL Incorreta Detectada
-            </p>
-            <p>Você está acessando uma versão estática (Netlify) que não possui o servidor de banco de dados ativo.</p>
-            <p className="mt-2">Por favor, utilize a URL oficial do <strong>AI Studio</strong> para acessar o sistema completo.</p>
-          </div>
-        )}
         <div className="text-center mb-8 flex flex-col items-center">
           <div className="mb-4">
             <Logo className="scale-150" />

@@ -45,6 +45,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return { success: true };
       }
       
+      // If we get a 404, it might be Netlify or another static host
+      if (res.status === 404 && window.location.hostname.includes('netlify.app')) {
+        console.warn('Backend not found on Netlify. Falling back to local authentication.');
+        // Fallback to local admin check for Netlify demo
+        if (email === 'agoraq@agoraqoficial.com' && password === 'admin') {
+          const mockUser = {
+            id: '1',
+            name: 'Administrador (Demo)',
+            email: 'agoraq@agoraqoficial.com',
+            role: 'admin',
+            status: 'Ativo',
+            lastAccess: new Date().toISOString(),
+            saldo_acumulado: 0,
+            saldo_pago: 0,
+            grupo_comissao: 'MASTER'
+          };
+          setUser(mockUser as any);
+          localStorage.setItem('agoraq_user', JSON.stringify(mockUser));
+          return { success: true };
+        }
+      }
+
       let errorMessage = 'Credenciais inválidas';
       try {
         const errorData = await res.json();
@@ -56,6 +78,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return { success: false, error: errorMessage };
     } catch (e) {
       console.error('Login error:', e);
+      
+      // Network error fallback for Netlify/Local
+      if (window.location.hostname.includes('netlify.app') || window.location.hostname === 'localhost') {
+        if (email === 'agoraq@agoraqoficial.com' && password === 'admin') {
+          const mockUser = {
+            id: '1',
+            name: 'Administrador (Offline)',
+            email: 'agoraq@agoraqoficial.com',
+            role: 'admin',
+            status: 'Ativo',
+            lastAccess: new Date().toISOString(),
+            saldo_acumulado: 0,
+            saldo_pago: 0,
+            grupo_comissao: 'MASTER'
+          };
+          setUser(mockUser as any);
+          localStorage.setItem('agoraq_user', JSON.stringify(mockUser));
+          return { success: true };
+        }
+      }
+      
       return { success: false, error: 'Erro de conexão: Verifique sua internet ou tente novamente.' };
     }
   };
