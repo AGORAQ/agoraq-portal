@@ -109,7 +109,13 @@ const safeFetch = async (url: string, options?: RequestInit, fallbackKey?: strin
 const handleLocalStorageFallback = (options: RequestInit | undefined, key: string, fallbackData: any, url: string) => {
   if (options?.method === 'POST') {
     try {
-      const body = JSON.parse(options.body as string);
+      let body = JSON.parse(options.body as string);
+      
+      // Hash password if creating a user locally
+      if (key === 'users' && body.password) {
+        body = { ...body, password: hashPassword(body.password) };
+      }
+      
       return localStore.addItem(key, body, fallbackData);
     } catch (e) {
       return fallbackData;
@@ -118,7 +124,13 @@ const handleLocalStorageFallback = (options: RequestInit | undefined, key: strin
   if (options?.method === 'PUT') {
     try {
       const id = url.split('/').pop() || '';
-      const body = JSON.parse(options.body as string);
+      let body = JSON.parse(options.body as string);
+
+      // Hash password if updating a user password locally
+      if (key === 'users' && body.password) {
+        body = { ...body, password: hashPassword(body.password) };
+      }
+
       return localStore.updateItem(key, id, body, fallbackData);
     } catch (e) {
       return fallbackData;

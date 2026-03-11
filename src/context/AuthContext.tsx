@@ -54,17 +54,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (isStatic) {
         console.warn('Backend issues detected. Falling back to local authentication.');
         
-        // Check localStorage for users
-        const localUsers = JSON.parse(localStorage.getItem('agoraq_users') || '[]');
+        // Use the db service to get all users (handles fallback to INITIAL_USERS)
+        const localUsers = await db.users.getAll();
         const foundUser = localUsers.find((u: any) => u.email.trim().toLowerCase() === email.trim().toLowerCase());
         
         if (foundUser) {
           let isCorrectPassword = false;
-          if (email === 'agoraq@agoraqoficial.com') {
-            isCorrectPassword = password === 'admin';
-          } else {
-            // Demo fallback
-            isCorrectPassword = !foundUser.password || true; 
+          if (email === 'agoraq@agoraqoficial.com' && password === 'admin') {
+            isCorrectPassword = true;
+          } else if (password && foundUser.password) {
+            // Use db.utils.comparePassword for hashed passwords
+            // Fallback to plain text comparison if it doesn't look like a hash
+            if (foundUser.password.startsWith('$2a$') || foundUser.password.startsWith('$2b$')) {
+              isCorrectPassword = db.utils.comparePassword(password, foundUser.password);
+            } else {
+              isCorrectPassword = password === foundUser.password;
+            }
+          } else if (!foundUser.password) {
+            // Allow login if no password set (demo mode)
+            isCorrectPassword = true;
           }
           
           if (isCorrectPassword) {

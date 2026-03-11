@@ -41,6 +41,10 @@ const COLUMN_SYNONYMS: { [key: string]: string } = {
   
   'comissão empresa': 'percentual_total_empresa',
   'comissÃ£o empresa': 'percentual_total_empresa',
+  'comissão total empresa': 'percentual_total_empresa',
+  'comissao total empresa': 'percentual_total_empresa',
+  'comissão_total_empresa': 'percentual_total_empresa',
+  'comissao_total_empresa': 'percentual_total_empresa',
   'comissão total (%)': 'percentual_total_empresa',
   'comissao total': 'percentual_total_empresa',
   'total %': 'percentual_total_empresa',
@@ -50,18 +54,26 @@ const COLUMN_SYNONYMS: { [key: string]: string } = {
   'grupo master': 'comissao_master',
   'master': 'comissao_master',
   'comissao_master': 'comissao_master',
+  'comissao master': 'comissao_master',
+  '% master': 'comissao_master',
 
   'grupo ouro': 'comissao_ouro',
   'ouro': 'comissao_ouro',
   'comissao_ouro': 'comissao_ouro',
+  'comissao ouro': 'comissao_ouro',
+  '% ouro': 'comissao_ouro',
 
   'grupo prata': 'comissao_prata',
   'prata': 'comissao_prata',
   'comissao_prata': 'comissao_prata',
+  'comissao prata': 'comissao_prata',
+  '% prata': 'comissao_prata',
 
   'grupo plus': 'comissao_plus',
   'plus': 'comissao_plus',
   'comissao_plus': 'comissao_plus',
+  'comissao plus': 'comissao_plus',
+  '% plus': 'comissao_plus',
   
   'percentual vendedor (%)': 'percentual_vendedor',
   'comissão vendedor': 'percentual_vendedor',
@@ -71,7 +83,7 @@ const COLUMN_SYNONYMS: { [key: string]: string } = {
   
   'percentual empresa (%)': 'percentual_empresa',
   'empresa %': 'percentual_empresa',
-  '% empresa': 'percentual_empresa',
+  '% empresa': 'percentual_total_empresa', // Map % empresa to total commission if that's what user expects
   'percentual_empresa': 'percentual_empresa',
   
   'grupo de comissão': 'grupo_comissao',
