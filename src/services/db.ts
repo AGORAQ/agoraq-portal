@@ -29,7 +29,17 @@ const localStore = {
   get: (key: string, fallback: any = []) => {
     try {
       const data = localStorage.getItem(`agoraq_${key}`);
-      return data ? JSON.parse(data) : fallback;
+      if (!data) {
+        // If no data in localStorage, check if we should seed it with initial data
+        if (key === 'users') return INITIAL_USERS;
+        if (key === 'commissions') return INITIAL_COMMISSIONS;
+        if (key === 'banks') return INITIAL_BANKS;
+        if (key === 'leads') return INITIAL_LEADS;
+        if (key === 'sales') return INITIAL_SALES;
+        if (key === 'requests') return INITIAL_REQUESTS;
+        return fallback;
+      }
+      return JSON.parse(data);
     } catch (e) {
       return fallback;
     }
@@ -39,59 +49,87 @@ const localStore = {
   },
   addItem: (key: string, item: any, fallbackData: any = []) => {
     const items = localStore.get(key, fallbackData);
-    const newItems = [...items, item];
+    const newItem = { ...item, id: item.id || uuidv4(), createdAt: item.createdAt || new Date().toISOString() };
+    const newItems = [...items, newItem];
     localStore.set(key, newItems);
-    return item;
+    return newItem;
   },
   updateItem: (key: string, id: string, updates: any, fallbackData: any = []) => {
     const items = localStore.get(key, fallbackData);
     const newItems = items.map((item: any) => item.id === id ? { ...item, ...updates } : item);
     localStore.set(key, newItems);
-    return updates;
+    return { success: true, ...updates };
   },
   deleteItem: (key: string, id: string, fallbackData: any = []) => {
     const items = localStore.get(key, fallbackData);
     const newItems = items.filter((item: any) => item.id !== id);
     localStore.set(key, newItems);
+    return { success: true };
   }
 };
 
-// Helper for safe fetching with fallback for static environments like Netlify
+// Helper for safe fetching with fallback for static environments
 const safeFetch = async (url: string, options?: RequestInit, fallbackKey?: string, fallbackData: any = []) => {
-  const isStatic = window.location.hostname.includes('netlify.app') || window.location.hostname === 'localhost';
+  // Determine if we should use local storage as fallback
+  // We use it if we are on a known static host OR if the API call fails
+  const isKnownStatic = window.location.hostname.includes('netlify.app') || 
+                        window.location.hostname.includes('github.io') || 
+                        window.location.hostname.includes('vercel.app');
   
   try {
     const res = await fetch(url, options);
-    if (res.ok) return res.json();
     
-    if (isStatic && fallbackKey) {
-      if (options?.method === 'POST') {
-        const body = JSON.parse(options.body as string);
-        return localStore.addItem(fallbackKey, { ...body, id: body.id || uuidv4(), createdAt: body.createdAt || new Date().toISOString() }, fallbackData);
+    // If API is working, use it
+    if (res.ok) {
+      const data = await res.json();
+      // Optionally sync to local storage for offline support
+      if (fallbackKey && options?.method === undefined) {
+        localStore.set(fallbackKey, data);
       }
-      if (options?.method === 'PUT') {
-        const id = url.split('/').pop() || '';
-        const body = JSON.parse(options.body as string);
-        return localStore.updateItem(fallbackKey, id, body, fallbackData);
-      }
-      if (options?.method === 'DELETE') {
-        const id = url.split('/').pop() || '';
-        localStore.deleteItem(fallbackKey, id, fallbackData);
-        return { success: true };
-      }
-      return localStore.get(fallbackKey, fallbackData);
+      return data;
     }
+    
+    // If API returns 404 or other error, and we have a fallback key, use localStorage
+    if (fallbackKey) {
+      console.warn(`API error (${res.status}) for ${url}. Falling back to localStorage[${fallbackKey}].`);
+      return handleLocalStorageFallback(options, fallbackKey, fallbackData, url);
+    }
+    
     return fallbackData;
   } catch (e) {
-    if (isStatic && fallbackKey) {
-      if (options?.method === 'POST') {
-        const body = JSON.parse(options.body as string);
-        return localStore.addItem(fallbackKey, { ...body, id: body.id || uuidv4(), createdAt: body.createdAt || new Date().toISOString() }, fallbackData);
-      }
-      return localStore.get(fallbackKey, fallbackData);
+    // Network error (API unreachable)
+    if (fallbackKey) {
+      console.warn(`API unreachable for ${url}. Falling back to localStorage[${fallbackKey}].`);
+      return handleLocalStorageFallback(options, fallbackKey, fallbackData, url);
     }
     return fallbackData;
   }
+};
+
+const handleLocalStorageFallback = (options: RequestInit | undefined, key: string, fallbackData: any, url: string) => {
+  if (options?.method === 'POST') {
+    try {
+      const body = JSON.parse(options.body as string);
+      return localStore.addItem(key, body, fallbackData);
+    } catch (e) {
+      return fallbackData;
+    }
+  }
+  if (options?.method === 'PUT') {
+    try {
+      const id = url.split('/').pop() || '';
+      const body = JSON.parse(options.body as string);
+      return localStore.updateItem(key, id, body, fallbackData);
+    } catch (e) {
+      return fallbackData;
+    }
+  }
+  if (options?.method === 'DELETE') {
+    const id = url.split('/').pop() || '';
+    return localStore.deleteItem(key, id, fallbackData);
+  }
+  // Default GET
+  return localStore.get(key, fallbackData);
 };
 
 // Database Service
@@ -114,20 +152,24 @@ export const db = {
     }, 'users'),
     delete: async (id: string) => safeFetch(`${API_URL}/users/${id}`, { method: 'DELETE' }, 'users'),
     incrementLeads: async (id: string) => {
-      if (window.location.hostname.includes('netlify.app')) {
-        const users = localStore.get('users', INITIAL_USERS);
-        const today = new Date().toISOString().split('T')[0];
-        const updatedUsers = users.map((u: any) => {
-          if (u.id === id) {
-            const count = u.last_lead_date === today ? (u.daily_lead_count || 0) + 1 : 1;
-            return { ...u, daily_lead_count: count, last_lead_date: today };
-          }
-          return u;
-        });
-        localStore.set('users', updatedUsers);
-        return { success: true };
+      try {
+        const res = await fetch(`${API_URL}/users/${id}/increment-leads`, { method: 'POST' });
+        if (res.ok) return res.json();
+      } catch (e) {
+        // Fallback
       }
-      return safeFetch(`${API_URL}/users/${id}/increment-leads`, { method: 'POST' }, 'users');
+      
+      const users = localStore.get('users', INITIAL_USERS);
+      const today = new Date().toISOString().split('T')[0];
+      const updatedUsers = users.map((u: any) => {
+        if (u.id === id) {
+          const count = u.last_lead_date === today ? (u.daily_lead_count || 0) + 1 : 1;
+          return { ...u, daily_lead_count: count, last_lead_date: today };
+        }
+        return u;
+      });
+      localStore.set('users', updatedUsers);
+      return { success: true };
     }
   },
 
@@ -149,43 +191,63 @@ export const db = {
     }, 'commissions'),
     delete: async (id: string, userRole: string, userId: string) => safeFetch(`${API_URL}/commissions/${id}`, { method: 'DELETE' }, 'commissions'),
     deleteMany: async (ids: string[], userRole: string, userId: string) => {
-      if (window.location.hostname.includes('netlify.app')) {
-        const items = localStore.get('commissions');
-        localStore.set('commissions', items.filter((i: any) => !ids.includes(i.id)));
-        return;
+      try {
+        const res = await fetch(`${API_URL}/commissions/bulk-delete`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ids }),
+        });
+        if (res.ok) return res.json();
+      } catch (e) {
+        // Fallback
       }
-      return safeFetch(`${API_URL}/commissions/bulk-delete`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ids }),
-      });
+      
+      const items = localStore.get('commissions');
+      localStore.set('commissions', items.filter((i: any) => !ids.includes(i.id)));
+      return { success: true };
     },
     deleteAll: async (userRole: string, userId: string) => {
-      if (window.location.hostname.includes('netlify.app')) {
-        localStore.set('commissions', []);
-        return;
+      try {
+        const res = await fetch(`${API_URL}/commissions/delete-all`, { method: 'POST' });
+        if (res.ok) return res.json();
+      } catch (e) {
+        // Fallback
       }
-      return safeFetch(`${API_URL}/commissions/delete-all`, { method: 'POST' });
+      
+      localStore.set('commissions', []);
+      return { success: true };
     },
     import: async (comms: Omit<CommissionTable, 'id' | 'data_criacao' | 'data_atualizacao'>[], userRole: string, userId: string) => {
-      if (window.location.hostname.includes('netlify.app')) {
-        const existing = localStore.get('commissions');
-        const now = new Date().toISOString();
-        const newComms = comms.map(c => ({ 
-          ...c, 
-          id: uuidv4(),
-          status: 'Ativo',
-          data_criacao: now,
-          data_atualizacao: now,
-          criado_por: userId
-        }));
-        localStore.set('commissions', [...existing, ...newComms]);
-        return newComms;
+      // Try API first
+      try {
+        // For bulk import, we might want a specific endpoint, but for now we'll try to loop or just use local if it fails
+        // Actually, let's just use local if we're in a static-ish environment to be safe
+        const isStatic = window.location.hostname.includes('netlify.app') || 
+                         window.location.hostname.includes('github.io') || 
+                         window.location.hostname.includes('vercel.app');
+        
+        if (!isStatic) {
+          for (const comm of comms) {
+            await db.commissions.create(comm, userRole, userId);
+          }
+          return comms;
+        }
+      } catch (e) {
+        // Fallback to local
       }
-      for (const comm of comms) {
-        await db.commissions.create(comm, userRole, userId);
-      }
-      return comms;
+
+      const existing = localStore.get('commissions');
+      const now = new Date().toISOString();
+      const newComms = comms.map(c => ({ 
+        ...c, 
+        id: uuidv4(),
+        status: 'Ativo',
+        data_criacao: now,
+        data_atualizacao: now,
+        criado_por: userId
+      }));
+      localStore.set('commissions', [...existing, ...newComms]);
+      return newComms;
     }
   },
 
@@ -218,22 +280,31 @@ export const db = {
     }, 'leads'),
     delete: async (id: string) => safeFetch(`${API_URL}/leads/${id}`, { method: 'DELETE' }, 'leads'),
     import: async (leadsData: any[]) => {
-      if (window.location.hostname.includes('netlify.app')) {
-        const existing = localStore.get('leads');
-        const now = new Date().toISOString();
-        const newLeads = leadsData.map(l => ({ 
-          ...l, 
-          id: uuidv4(),
-          createdAt: now,
-          status: l.status || 'Novo'
-        }));
-        localStore.set('leads', [...existing, ...newLeads]);
-        return newLeads;
+      try {
+        const isStatic = window.location.hostname.includes('netlify.app') || 
+                         window.location.hostname.includes('github.io') || 
+                         window.location.hostname.includes('vercel.app');
+        
+        if (!isStatic) {
+          for (const lead of leadsData) {
+            await db.leads.create(lead);
+          }
+          return leadsData;
+        }
+      } catch (e) {
+        // Fallback
       }
-      for (const lead of leadsData) {
-        await db.leads.create(lead);
-      }
-      return leadsData;
+
+      const existing = localStore.get('leads');
+      const now = new Date().toISOString();
+      const newLeads = leadsData.map(l => ({ 
+        ...l, 
+        id: uuidv4(),
+        createdAt: now,
+        status: l.status || 'Novo'
+      }));
+      localStore.set('leads', [...existing, ...newLeads]);
+      return newLeads;
     }
   },
 

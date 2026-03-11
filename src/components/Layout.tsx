@@ -37,6 +37,23 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = React.useState(false);
   const location = useLocation();
 
+  const [isLocalMode, setIsLocalMode] = useState(false);
+
+  React.useEffect(() => {
+    const checkMode = async () => {
+      try {
+        const res = await fetch('/api/health');
+        setIsLocalMode(!res.ok);
+      } catch (e) {
+        setIsLocalMode(true);
+      }
+    };
+    checkMode();
+    // Check every 30 seconds
+    const interval = setInterval(checkMode, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
   const handleLogout = () => {
     logout();
     navigate('/login');
@@ -118,6 +135,14 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         </div>
 
         <div className="p-4 border-t border-slate-800 bg-slate-900">
+          <div className={cn(
+            "flex items-center gap-2 px-3 py-2 rounded-lg text-[10px] font-bold uppercase tracking-wider mb-4",
+            isLocalMode ? "bg-amber-500/10 text-amber-400 border border-amber-500/20" : "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
+          )}>
+            <div className={cn("w-1.5 h-1.5 rounded-full", isLocalMode ? "bg-amber-500 animate-pulse" : "bg-emerald-500")} />
+            {isLocalMode ? 'Modo Local (Offline)' : 'Modo Nuvem (Online)'}
+          </div>
+
           <Link to="/perfil" className="flex items-center gap-3 mb-4 px-2 hover:bg-slate-800 rounded-lg p-2 transition-colors">
             <div className="w-10 h-10 rounded-full bg-blue-600 flex items-center justify-center text-white font-bold overflow-hidden">
               {user?.avatar ? (

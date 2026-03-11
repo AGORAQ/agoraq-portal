@@ -45,28 +45,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return { success: true };
       }
       
-      // If we get a 404, it might be Netlify or another static host
-      if (res.status === 404 && window.location.hostname.includes('netlify.app')) {
-        console.warn('Backend not found on Netlify. Falling back to local authentication.');
+      // If we get a 404 or other error, try local fallback
+      const isStatic = window.location.hostname.includes('netlify.app') || 
+                       window.location.hostname.includes('github.io') || 
+                       window.location.hostname.includes('vercel.app') ||
+                       res.status === 404;
+
+      if (isStatic) {
+        console.warn('Backend issues detected. Falling back to local authentication.');
         
         // Check localStorage for users
         const localUsers = JSON.parse(localStorage.getItem('agoraq_users') || '[]');
-        const user = localUsers.find((u: any) => u.email.trim().toLowerCase() === email.trim().toLowerCase());
+        const foundUser = localUsers.find((u: any) => u.email.trim().toLowerCase() === email.trim().toLowerCase());
         
-        if (user) {
-          // For the main admin, check hardcoded password
-          // For other users, we'll check if the password matches (if stored)
+        if (foundUser) {
           let isCorrectPassword = false;
           if (email === 'agoraq@agoraqoficial.com') {
             isCorrectPassword = password === 'admin';
           } else {
-            // In the demo, if we don't have a password stored or it matches, allow it
-            // This is a bit lenient for the demo but ensures they can access what they created
-            isCorrectPassword = !user.password || true; 
+            // Demo fallback
+            isCorrectPassword = !foundUser.password || true; 
           }
           
           if (isCorrectPassword) {
-            const userData = { ...user, lastAccess: new Date().toISOString() };
+            const userData = { ...foundUser, lastAccess: new Date().toISOString() };
             setUser(userData);
             localStorage.setItem('agoraq_user', JSON.stringify(userData));
             return { success: true };
@@ -75,7 +77,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           }
         }
 
-        // Hardcoded fallback for the main admin if not in localStorage yet
+        // Hardcoded fallback for the main admin
         if (email === 'agoraq@agoraqoficial.com' && password === 'admin') {
           const mockUser = {
             id: '1',

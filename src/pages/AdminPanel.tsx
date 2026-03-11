@@ -825,6 +825,71 @@ export default function AdminPanel() {
               </div>
             </CardContent>
           </Card>
+
+          <Card className="mt-6 border-red-200">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-red-600">
+                <AlertTriangle className="w-5 h-5" />
+                Manutenção do Sistema (Local)
+              </CardTitle>
+              <CardDescription>
+                Ferramentas para gerenciar dados salvos localmente no navegador.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <div className="bg-red-50 p-4 rounded-lg border border-red-100">
+                <p className="text-sm text-red-800">
+                  <strong>Atenção:</strong> Limpar os dados locais removerá todas as informações que ainda não foram sincronizadas com a nuvem. Use apenas se estiver enfrentando problemas de persistência.
+                </p>
+              </div>
+
+              <div className="flex flex-wrap gap-4">
+                <Button 
+                  variant="destructive" 
+                  onClick={() => {
+                    if (confirm('Tem certeza que deseja limpar TODOS os dados locais? Esta ação é irreversível.')) {
+                      const keys = Object.keys(localStorage);
+                      keys.forEach(key => {
+                        if (key.startsWith('agoraq_')) {
+                          localStorage.removeItem(key);
+                        }
+                      });
+                      alert('Dados locais limpos com sucesso! O sistema será reiniciado.');
+                      window.location.reload();
+                    }
+                  }}
+                >
+                  <Trash2 className="w-4 h-4 mr-2" />
+                  Limpar Cache de Dados Local
+                </Button>
+
+                <Button 
+                  variant="outline" 
+                  onClick={() => {
+                    const data: any = {};
+                    Object.keys(localStorage).forEach(key => {
+                      if (key.startsWith('agoraq_')) {
+                        try {
+                          data[key] = JSON.parse(localStorage.getItem(key) || '[]');
+                        } catch (e) {
+                          data[key] = localStorage.getItem(key);
+                        }
+                      }
+                    });
+                    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `agoraq_backup_${new Date().toISOString()}.json`;
+                    a.click();
+                  }}
+                >
+                  <Upload className="w-4 h-4 mr-2" />
+                  Exportar Backup Local (JSON)
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
         </div>
       )}
 
