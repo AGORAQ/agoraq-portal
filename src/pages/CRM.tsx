@@ -91,7 +91,10 @@ export default function CRM() {
     }
 
     try {
-      // Simulate lead capture by adding real entries to db
+      // Get all unassigned leads
+      const allLeads = await db.leads.getAll();
+      const unassignedLeads = allLeads.filter((l: any) => !l.usuario_id);
+      
       for (let i = 0; i < qty; i++) {
         // Increment count on backend for each lead
         const result = await db.users.incrementLeads(user!.id);
@@ -100,14 +103,21 @@ export default function CRM() {
           break;
         }
 
-        await db.leads.create({
-          name: `Lead Capturado ${Math.floor(Math.random() * 1000)}`,
-          phone: `(11) 9${Math.floor(Math.random() * 90000000 + 10000000)}`,
-          email: `lead${Math.floor(Math.random() * 1000)}@email.com`,
-          city: 'Captura Automática',
-          status: 'Novo',
-          usuario_id: user?.id
-        });
+        // If we have unassigned leads, take one
+        if (unassignedLeads.length > i) {
+          const leadToCapture = unassignedLeads[i];
+          await db.leads.update(leadToCapture.id, { usuario_id: user?.id });
+        } else {
+          // Fallback to creating a new lead if pool is empty
+          await db.leads.create({
+            name: `Lead Capturado ${Math.floor(Math.random() * 1000)}`,
+            phone: `(11) 9${Math.floor(Math.random() * 90000000 + 10000000)}`,
+            email: `lead${Math.floor(Math.random() * 1000)}@email.com`,
+            city: 'Captura Automática',
+            status: 'Novo',
+            usuario_id: user?.id
+          });
+        }
       }
 
       await refreshLeads();
@@ -157,7 +167,7 @@ export default function CRM() {
           email: row.Email || row.email || '',
           city: row.Cidade || row.city || 'Importado',
           status: 'Novo',
-          usuario_id: user?.id
+          usuario_id: isAdmin ? null : user?.id
         }));
 
         await db.leads.import(leadsToImport);

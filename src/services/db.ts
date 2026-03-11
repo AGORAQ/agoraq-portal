@@ -113,7 +113,22 @@ export const db = {
       body: JSON.stringify(updates),
     }, 'users'),
     delete: async (id: string) => safeFetch(`${API_URL}/users/${id}`, { method: 'DELETE' }, 'users'),
-    incrementLeads: async (id: string) => safeFetch(`${API_URL}/users/${id}/increment-leads`, { method: 'POST' }, 'users')
+    incrementLeads: async (id: string) => {
+      if (window.location.hostname.includes('netlify.app')) {
+        const users = localStore.get('users', INITIAL_USERS);
+        const today = new Date().toISOString().split('T')[0];
+        const updatedUsers = users.map((u: any) => {
+          if (u.id === id) {
+            const count = u.last_lead_date === today ? (u.daily_lead_count || 0) + 1 : 1;
+            return { ...u, daily_lead_count: count, last_lead_date: today };
+          }
+          return u;
+        });
+        localStore.set('users', updatedUsers);
+        return { success: true };
+      }
+      return safeFetch(`${API_URL}/users/${id}/increment-leads`, { method: 'POST' }, 'users');
+    }
   },
 
   commissions: {
@@ -155,8 +170,17 @@ export const db = {
     import: async (comms: Omit<CommissionTable, 'id' | 'data_criacao' | 'data_atualizacao'>[], userRole: string, userId: string) => {
       if (window.location.hostname.includes('netlify.app')) {
         const existing = localStore.get('commissions');
-        localStore.set('commissions', [...existing, ...comms.map(c => ({ ...c, id: uuidv4() }))]);
-        return comms;
+        const now = new Date().toISOString();
+        const newComms = comms.map(c => ({ 
+          ...c, 
+          id: uuidv4(),
+          status: 'Ativo',
+          data_criacao: now,
+          data_atualizacao: now,
+          criado_por: userId
+        }));
+        localStore.set('commissions', [...existing, ...newComms]);
+        return newComms;
       }
       for (const comm of comms) {
         await db.commissions.create(comm, userRole, userId);
@@ -196,8 +220,15 @@ export const db = {
     import: async (leadsData: any[]) => {
       if (window.location.hostname.includes('netlify.app')) {
         const existing = localStore.get('leads');
-        localStore.set('leads', [...existing, ...leadsData.map(l => ({ ...l, id: uuidv4() }))]);
-        return leadsData;
+        const now = new Date().toISOString();
+        const newLeads = leadsData.map(l => ({ 
+          ...l, 
+          id: uuidv4(),
+          createdAt: now,
+          status: l.status || 'Novo'
+        }));
+        localStore.set('leads', [...existing, ...newLeads]);
+        return newLeads;
       }
       for (const lead of leadsData) {
         await db.leads.create(lead);

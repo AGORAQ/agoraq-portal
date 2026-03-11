@@ -88,13 +88,25 @@ export default function Commissions() {
   const bestCommissions = useMemo(() => {
     const best: { [product: string]: number } = {};
     commissions.forEach(c => {
-      const value = isAdmin ? c.percentual_total_empresa : c.percentual_vendedor;
+      let value = 0;
+      if (isAdmin) {
+        value = c.percentual_total_empresa;
+      } else if (user?.grupo_comissao === 'MASTER') {
+        value = c.comissao_master;
+      } else if (user?.grupo_comissao === 'OURO') {
+        value = c.comissao_ouro;
+      } else if (user?.grupo_comissao === 'PRATA') {
+        value = c.comissao_prata;
+      } else if (user?.grupo_comissao === 'PLUS') {
+        value = c.comissao_plus;
+      }
+      
       if (!best[c.produto] || value > best[c.produto]) {
         best[c.produto] = value;
       }
     });
     return best;
-  }, [commissions, isAdmin]);
+  }, [commissions, isAdmin, user?.grupo_comissao]);
 
   const filteredCommissions = useMemo(() => {
     let result = commissions.filter(comm => {
@@ -436,6 +448,34 @@ export default function Commissions() {
                               <div className="flex items-center justify-center gap-2">
                                 <span className={`font-bold ${isBest ? 'text-emerald-600 text-lg' : 'text-slate-700'}`}>
                                   {comm.comissao_ouro}%
+                                </span>
+                                {isBest && (
+                                  <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200 text-[10px] py-0 px-1.5">
+                                    MELHOR TAXA
+                                  </Badge>
+                                )}
+                              </div>
+                            </td>
+                          )}
+                          {!isAdmin && user?.grupo_comissao === 'PRATA' && (
+                            <td className="px-4 py-3 text-center">
+                              <div className="flex items-center justify-center gap-2">
+                                <span className={`font-bold ${isBest ? 'text-emerald-600 text-lg' : 'text-slate-700'}`}>
+                                  {comm.comissao_prata}%
+                                </span>
+                                {isBest && (
+                                  <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200 text-[10px] py-0 px-1.5">
+                                    MELHOR TAXA
+                                  </Badge>
+                                )}
+                              </div>
+                            </td>
+                          )}
+                          {!isAdmin && user?.grupo_comissao === 'PLUS' && (
+                            <td className="px-4 py-3 text-center">
+                              <div className="flex items-center justify-center gap-2">
+                                <span className={`font-bold ${isBest ? 'text-emerald-600 text-lg' : 'text-slate-700'}`}>
+                                  {comm.comissao_plus}%
                                 </span>
                                 {isBest && (
                                   <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200 text-[10px] py-0 px-1.5">

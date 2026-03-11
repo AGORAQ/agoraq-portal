@@ -108,16 +108,18 @@ export default function GlobalImporter({ type, onImportComplete, onClose }: Glob
           }
         }
         
-        db.commissions.import(preview as any, 'admin', user?.id || '');
+        await db.commissions.import(preview as any, 'admin', user?.id || '');
       } else if (type === 'vendas' && user) {
         // Implement sales import if needed
-        preview.forEach(sale => db.sales.create(sale, user));
+        for (const sale of preview) {
+          await db.sales.create(sale, user);
+        }
       } else if (type === 'leads') {
-        db.leads.import(preview);
+        await db.leads.import(preview);
       }
 
       // Log the import
-      db.logs.add({
+      await db.logs.add({
         fileName: file?.name || 'import_global',
         user: user?.name || 'Admin',
         linesProcessed: preview.length,
