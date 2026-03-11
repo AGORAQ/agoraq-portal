@@ -826,6 +826,64 @@ export default function AdminPanel() {
             </CardContent>
           </Card>
 
+          <Card className="mt-6 border-blue-200">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-blue-600">
+                <RefreshCw className="w-5 h-5" />
+                Sincronização em Nuvem (Multi-Dispositivo)
+              </CardTitle>
+              <CardDescription>
+                Configure o endereço do servidor central para que os dados sejam os mesmos em todos os computadores.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <div className="bg-blue-50 p-4 rounded-lg border border-blue-100">
+                <p className="text-sm text-blue-800">
+                  <strong>Como funciona:</strong> Se você estiver usando o Netlify, os dados são salvos apenas no seu navegador por padrão. Para sincronizar com outros PCs, você deve apontar para o servidor oficial do Cloud Run.
+                </p>
+              </div>
+
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">URL do Servidor (API)</label>
+                  <div className="flex gap-2">
+                    <Input 
+                      placeholder="https://sua-api.run.app/api" 
+                      value={localStorage.getItem('agoraq_api_url') || ''}
+                      onChange={(e) => {
+                        if (e.target.value) {
+                          localStorage.setItem('agoraq_api_url', e.target.value);
+                        } else {
+                          localStorage.removeItem('agoraq_api_url');
+                        }
+                        // Force re-render if needed, but simple reload is safer
+                      }}
+                    />
+                    <Button 
+                      variant="outline" 
+                      onClick={() => {
+                        localStorage.setItem('agoraq_api_url', 'https://ais-dev-w47zxljbghf6tucdlbhe2z-410044833253.us-east1.run.app/api');
+                        window.location.reload();
+                      }}
+                    >
+                      Usar Padrão
+                    </Button>
+                  </div>
+                  <p className="text-[10px] text-slate-500">
+                    Após alterar este campo, a página será recarregada para aplicar a nova conexão.
+                  </p>
+                </div>
+
+                <div className="pt-2 flex justify-end">
+                  <Button onClick={() => window.location.reload()} className="bg-blue-900 hover:bg-blue-800">
+                    <RefreshCw className="w-4 h-4 mr-2" />
+                    Aplicar e Recarregar
+                  </Button>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
           <Card className="mt-6 border-red-200">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-red-600">

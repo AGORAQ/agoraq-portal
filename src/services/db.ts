@@ -22,7 +22,11 @@ const INITIAL_REQUESTS: AccessRequest[] = [];
 
 const INITIAL_COMMISSION_GROUPS: CommissionGroup[] = [];
 
-const API_URL = '/api';
+// Determine the API URL
+// In production/Netlify, we can point this to the Cloud Run backend URL
+const CLOUD_RUN_URL = 'https://ais-dev-w47zxljbghf6tucdlbhe2z-410044833253.us-east1.run.app';
+const API_URL_OVERRIDE = localStorage.getItem('agoraq_api_url');
+const API_URL = API_URL_OVERRIDE || import.meta.env.VITE_API_URL || (window.location.hostname.includes('netlify.app') ? `${CLOUD_RUN_URL}/api` : '/api');
 
 // Local Storage Persistence for Static Environments (Netlify/Demo)
 const localStore = {
@@ -31,13 +35,19 @@ const localStore = {
       const data = localStorage.getItem(`agoraq_${key}`);
       if (!data) {
         // If no data in localStorage, check if we should seed it with initial data
-        if (key === 'users') return INITIAL_USERS;
-        if (key === 'commissions') return INITIAL_COMMISSIONS;
-        if (key === 'banks') return INITIAL_BANKS;
-        if (key === 'leads') return INITIAL_LEADS;
-        if (key === 'sales') return INITIAL_SALES;
-        if (key === 'requests') return INITIAL_REQUESTS;
-        return fallback;
+        let initialData = fallback;
+        if (key === 'users') initialData = [...INITIAL_USERS];
+        if (key === 'commissions') initialData = [...INITIAL_COMMISSIONS];
+        if (key === 'banks') initialData = [...INITIAL_BANKS];
+        if (key === 'leads') initialData = [...INITIAL_LEADS];
+        if (key === 'sales') initialData = [...INITIAL_SALES];
+        if (key === 'requests') initialData = [...INITIAL_REQUESTS];
+        
+        // Seed it so it's there for next time
+        if (initialData !== fallback) {
+          localStorage.setItem(`agoraq_${key}`, JSON.stringify(initialData));
+        }
+        return initialData;
       }
       return JSON.parse(data);
     } catch (e) {
@@ -146,6 +156,16 @@ const handleLocalStorageFallback = (options: RequestInit | undefined, key: strin
 
 // Database Service
 export const db = {
+  status: {
+    check: async () => {
+      try {
+        const res = await fetch(`${API_URL}/health`);
+        return res.ok;
+      } catch (e) {
+        return false;
+      }
+    }
+  },
   users: {
     getAll: async () => safeFetch(`${API_URL}/users`, undefined, 'users', INITIAL_USERS),
     getById: async (id: string) => {

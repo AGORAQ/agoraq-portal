@@ -155,6 +155,23 @@ export default function Login() {
               <div className="text-sm text-slate-500">
                 Não tem acesso? <Link to="/solicitar-acesso" className="text-blue-600 font-medium hover:underline">Solicitar Cadastro</Link>
               </div>
+              <button 
+                type="button"
+                onClick={() => {
+                  const url = prompt('Configure a URL da API para sincronização (ex: https://sua-api.run.app/api):', localStorage.getItem('agoraq_api_url') || '');
+                  if (url !== null) {
+                    if (url === '') {
+                      localStorage.removeItem('agoraq_api_url');
+                    } else {
+                      localStorage.setItem('agoraq_api_url', url);
+                    }
+                    window.location.reload();
+                  }
+                }}
+                className="text-[10px] text-slate-400 hover:text-blue-600 bg-transparent border-none cursor-pointer mt-2"
+              >
+                Configurar API de Sincronização
+              </button>
             </CardFooter>
           )}
         </Card>

@@ -51,24 +51,63 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                        window.location.hostname.includes('vercel.app') ||
                        res.status === 404;
 
-      if (isStatic) {
-        console.warn('Backend issues detected. Falling back to local authentication.');
+      if (isStatic || res.status === 404 || res.status === 500) {
+        console.warn('Backend issues or static environment detected. Falling back to local authentication.');
         
-        // Use the db service to get all users (handles fallback to INITIAL_USERS)
-        const localUsers = await db.users.getAll();
-        const foundUser = localUsers.find((u: any) => u.email.trim().toLowerCase() === email.trim().toLowerCase());
+        // 1. Try to get users via the db service
+        let localUsers = [];
+        try {
+          localUsers = await db.users.getAll();
+        } catch (e) {
+          console.error('Failed to get users from db service', e);
+        }
+
+        // 2. If db service failed or returned empty, try direct localStorage as last resort
+        if (!localUsers || localUsers.length <= 1) {
+          try {
+            const rawData = localStorage.getItem('agoraq_users');
+            if (rawData) {
+              const parsed = JSON.parse(rawData);
+              if (Array.isArray(parsed) && parsed.length > 0) {
+                localUsers = parsed;
+              }
+            }
+          } catch (e) {
+            console.error('Failed to parse agoraq_users from localStorage', e);
+          }
+        }
+        
+        // 3. Search for the user with extreme prejudice (trim, lowercase, string conversion)
+        const searchEmail = String(email || '').trim().toLowerCase();
+        
+        // Debug log (visible in console)
+        console.log(`Attempting local login for: ${searchEmail}. Users available: ${localUsers.length}`);
+        
+        const foundUser = localUsers.find((u: any) => {
+          const uEmail = String(u.email || '').trim().toLowerCase();
+          return uEmail === searchEmail;
+        });
         
         if (foundUser) {
+          console.log('User found locally:', foundUser.email);
           let isCorrectPassword = false;
-          if (email === 'agoraq@agoraqoficial.com' && password === 'admin') {
+          const providedPassword = String(password || '');
+
+          if (searchEmail === 'agoraq@agoraqoficial.com' && providedPassword === 'admin') {
             isCorrectPassword = true;
-          } else if (password && foundUser.password) {
+          } else if (providedPassword && foundUser.password) {
+            const storedPassword = String(foundUser.password);
             // Use db.utils.comparePassword for hashed passwords
             // Fallback to plain text comparison if it doesn't look like a hash
-            if (foundUser.password.startsWith('$2a$') || foundUser.password.startsWith('$2b$')) {
-              isCorrectPassword = db.utils.comparePassword(password, foundUser.password);
+            if (storedPassword.startsWith('$2a$') || storedPassword.startsWith('$2b$')) {
+              try {
+                isCorrectPassword = db.utils.comparePassword(providedPassword, storedPassword);
+              } catch (e) {
+                console.error('Bcrypt comparison failed', e);
+                isCorrectPassword = providedPassword === storedPassword;
+              }
             } else {
-              isCorrectPassword = password === foundUser.password;
+              isCorrectPassword = providedPassword === storedPassword;
             }
           } else if (!foundUser.password) {
             // Allow login if no password set (demo mode)
@@ -81,15 +120,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             localStorage.setItem('agoraq_user', JSON.stringify(userData));
             return { success: true };
           } else {
-            return { success: false, error: 'Senha incorreta' };
+            return { success: false, error: 'Senha incorreta. Verifique se digitou corretamente.' };
           }
         }
 
-        // Hardcoded fallback for the main admin (even if not in localUsers yet)
-        if (email === 'agoraq@agoraqoficial.com' && password === 'admin') {
+        // 4. Ultimate hardcoded fallback for the main admin
+        if (searchEmail === 'agoraq@agoraqoficial.com' && String(password || '') === 'admin') {
+          console.log('Using emergency admin fallback');
           const mockUser = {
             id: '1',
-            name: 'Administrador (Demo)',
+            name: 'Administrador (Emergência)',
             email: 'agoraq@agoraqoficial.com',
             role: 'admin',
             status: 'Ativo',
@@ -103,7 +143,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           return { success: true };
         }
 
-        return { success: false, error: `Usuário não encontrado localmente. Verifique o e-mail ou crie o usuário no painel admin.` };
+        console.error(`User not found in local list of ${localUsers.length} users`);
+        return { success: false, error: `Usuário '${email}' não encontrado. Verifique o e-mail ou peça ao administrador para recriar o usuário.` };
       }
 
       let errorMessage = 'Credenciais inválidas';

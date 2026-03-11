@@ -10,46 +10,63 @@ export interface ImportResult {
   headers: string[];
 }
 
+const removeAccents = (str: string): string => {
+  return str.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+};
+
 const COLUMN_SYNONYMS: { [key: string]: string } = {
   // Commissions
   'banco': 'banco',
   'bank': 'banco',
-  'instituição': 'banco',
+  'instituicao': 'banco',
+  'nome do banco': 'banco',
   
   'produto': 'produto',
   'product': 'produto',
-  'serviço': 'produto',
+  'servico': 'produto',
+  'convenio': 'produto',
   
-  'código da tabela': 'codigo_tabela',
   'codigo da tabela': 'codigo_tabela',
   'cod tabela': 'codigo_tabela',
-  'cód tabela': 'codigo_tabela',
   'codigo_tabela': 'codigo_tabela',
+  'codigo': 'codigo_tabela',
+  'cod': 'codigo_tabela',
   
   'nome da tabela': 'nome_tabela',
   'tabela': 'nome_tabela',
   'nome_tabela': 'nome_tabela',
+  'nome tabela': 'nome_tabela',
   
   'prazo': 'parcelas',
   'term': 'parcelas',
   'meses': 'parcelas',
   'parcelas': 'parcelas',
+  'n parcelas': 'parcelas',
+  'numero de parcelas': 'parcelas',
   
   'operacao': 'operacao',
-  'operação': 'operacao',
-  'operaÃ§Ã£o': 'operacao',
+  'tipo': 'operacao',
+  'tipo de operacao': 'operacao',
+
+  'valor min': 'faixa_valor_min',
+  'valor minimo': 'faixa_valor_min',
+  'min': 'faixa_valor_min',
+  'valor inicial': 'faixa_valor_min',
   
-  'comissão empresa': 'percentual_total_empresa',
-  'comissÃ£o empresa': 'percentual_total_empresa',
-  'comissão total empresa': 'percentual_total_empresa',
+  'valor max': 'faixa_valor_max',
+  'valor maximo': 'faixa_valor_max',
+  'max': 'faixa_valor_max',
+  'valor final': 'faixa_valor_max',
+  
+  'comissao empresa': 'percentual_total_empresa',
   'comissao total empresa': 'percentual_total_empresa',
-  'comissão_total_empresa': 'percentual_total_empresa',
   'comissao_total_empresa': 'percentual_total_empresa',
-  'comissão total (%)': 'percentual_total_empresa',
+  'comissao total (%)': 'percentual_total_empresa',
   'comissao total': 'percentual_total_empresa',
   'total %': 'percentual_total_empresa',
   '% total': 'percentual_total_empresa',
   'percentual_total_empresa': 'percentual_total_empresa',
+  '% empresa': 'percentual_total_empresa',
 
   'grupo master': 'comissao_master',
   'master': 'comissao_master',
@@ -76,25 +93,27 @@ const COLUMN_SYNONYMS: { [key: string]: string } = {
   '% plus': 'comissao_plus',
   
   'percentual vendedor (%)': 'percentual_vendedor',
-  'comissão vendedor': 'percentual_vendedor',
+  'comissao vendedor': 'percentual_vendedor',
   'vendedor %': 'percentual_vendedor',
   '% vendedor': 'percentual_vendedor',
   'percentual_vendedor': 'percentual_vendedor',
   
   'percentual empresa (%)': 'percentual_empresa',
   'empresa %': 'percentual_empresa',
-  '% empresa': 'percentual_total_empresa', // Map % empresa to total commission if that's what user expects
   'percentual_empresa': 'percentual_empresa',
   
-  'grupo de comissão': 'grupo_comissao',
+  'grupo de comissao': 'grupo_comissao',
   'grupo': 'grupo_comissao',
   'categoria': 'grupo_comissao',
+  'perfil': 'grupo_comissao',
   'grupo_comissao': 'grupo_comissao',
 
   // Leads
   'nome': 'name',
   'name': 'name',
   'contato': 'name',
+  'cliente': 'name',
+  'nome completo': 'name',
   
   'telefone': 'phone',
   'celular': 'phone',
@@ -106,8 +125,11 @@ const COLUMN_SYNONYMS: { [key: string]: string } = {
   
   'cidade': 'city',
   'city': 'city',
-  'município': 'city',
   'municipio': 'city',
+  'uf': 'state',
+  'estado': 'state',
+  'cpf': 'cpf',
+  'documento': 'cpf',
 
   // Sales
   'valor da venda': 'valor_venda',
@@ -115,53 +137,69 @@ const COLUMN_SYNONYMS: { [key: string]: string } = {
   'valor': 'valor_venda',
   'venda': 'valor_venda',
   
-  'cliente': 'cliente',
   'nome do cliente': 'cliente',
   
   'data': 'data',
   'data da venda': 'data',
-  'período': 'data',
+  'periodo': 'data',
   
   'proposta': 'proposta',
-  'nº proposta': 'proposta',
+  'n proposta': 'proposta',
   'numero proposta': 'proposta',
   
-  'cpf': 'cpf',
   'cpf do cliente': 'cpf',
-  'documento': 'cpf',
 };
 
 export const normalizeHeader = (header: string): string => {
-  const cleanHeader = header.toLowerCase().trim();
-  return COLUMN_SYNONYMS[cleanHeader] || cleanHeader.replace(/\s+/g, '_');
+  if (!header) return '';
+  // Remove accents, special characters and multiple spaces for better matching
+  const normalized = removeAccents(String(header).trim().toLowerCase())
+    .replace(/[._\-\s]+/g, ' ') // Normalize separators to single space
+    .trim();
+  
+  // Try direct match first
+  if (COLUMN_SYNONYMS[normalized]) return COLUMN_SYNONYMS[normalized];
+  
+  // Try matching without spaces
+  const noSpaces = normalized.replace(/\s/g, '');
+  if (COLUMN_SYNONYMS[noSpaces]) return COLUMN_SYNONYMS[noSpaces];
+
+  return normalized.replace(/\s+/g, '_');
 };
 
 export const normalizeValue = (value: any): any => {
-  if (value === null || value === undefined) return null;
+  if (value === null || value === undefined || value === '') return null;
   
+  // If it's already a number, just return it
+  if (typeof value === 'number') return value;
+
   if (typeof value === 'string') {
     let cleanValue = value.trim();
+    if (cleanValue === '') return null;
+    
+    // Remove currency and spaces
+    let numStr = cleanValue.replace('R$', '').replace(/\s/g, '');
     
     // Check if it's a percentage
-    if (cleanValue.endsWith('%')) {
-      return parseFloat(cleanValue.replace('%', '').replace(',', '.')) || 0;
-    }
-    
-    // Check if it's currency (R$ 1.500,00)
-    if (cleanValue.startsWith('R$')) {
-      return parseFloat(cleanValue.replace('R$', '').replace(/\./g, '').replace(',', '.')) || 0;
-    }
-    
-    // Check if it's a number with comma (1.500,00)
-    if (/^-?\d+(\.\d+)*,\d+$/.test(cleanValue)) {
-      return parseFloat(cleanValue.replace(/\./g, '').replace(',', '.')) || 0;
+    const isPercentage = numStr.includes('%');
+    if (isPercentage) numStr = numStr.replace('%', '');
+
+    // Brazilian number logic
+    if (numStr.includes(',')) {
+      // Has comma: definitely BR format. Dots are thousands, comma is decimal.
+      numStr = numStr.replace(/\./g, '').replace(',', '.');
+    } else {
+      // No comma: could be US format or plain number
+      // If there are multiple dots, they are thousands.
+      const dots = (numStr.match(/\./g) || []).length;
+      if (dots > 1) {
+        numStr = numStr.replace(/\./g, '');
+      }
+      // If one dot, we treat it as decimal by default (standard parseFloat)
     }
 
-    // Try parsing as float if it looks like a number
-    const parsed = parseFloat(cleanValue.replace(',', '.'));
-    if (!isNaN(parsed) && /^-?\d+([.,]\d+)?$/.test(cleanValue)) {
-      return parsed;
-    }
+    const parsed = parseFloat(numStr);
+    if (!isNaN(parsed)) return parsed;
     
     return cleanValue;
   }
