@@ -30,18 +30,22 @@ export default function PaymentAlerts() {
   const [isProcessing, setIsProcessing] = useState<string | null>(null);
   const [obs, setObs] = useState('');
 
-  const loadData = () => {
-    setRequests(db.payment_requests.getAll().sort((a, b) => 
+  const loadData = async () => {
+    const [allRequests, allUsers] = await Promise.all([
+      db.payment_requests.getAll(),
+      db.users.getAll()
+    ]);
+    setRequests(allRequests.sort((a, b) => 
       new Date(b.data_solicitacao).getTime() - new Date(a.data_solicitacao).getTime()
     ));
-    setUsers(db.users.getAll());
+    setUsers(allUsers);
   };
 
   useEffect(() => {
     loadData();
   }, []);
 
-  const handleAction = (id: string, action: 'Aprovado' | 'Recusado' | 'Pago') => {
+  const handleAction = async (id: string, action: 'Aprovado' | 'Recusado' | 'Pago') => {
     const req = requests.find(r => r.id === id);
     if (!req) return;
 
@@ -64,14 +68,14 @@ export default function PaymentAlerts() {
       const user = users.find(u => u.id === req.usuario_id);
       if (user) {
         const currentPaid = user.saldo_pago || 0;
-        db.users.update(user.id, { saldo_pago: currentPaid + req.valor });
+        await db.users.update(user.id, { saldo_pago: currentPaid + req.valor });
       }
     }
 
-    db.payment_requests.update(id, updates);
+    await db.payment_requests.update(id, updates);
     setObs('');
     setIsProcessing(null);
-    loadData();
+    await loadData();
     alert(`Solicitação marcada como ${action} com sucesso!`);
   };
 

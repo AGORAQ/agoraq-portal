@@ -23,14 +23,20 @@ export default function Credentials() {
     status: 'Ativo'
   });
 
-  const refreshData = () => {
+  const refreshData = async () => {
     if (isAdmin) {
-      setCredentials(db.credentials.getAll());
-      setUsers(db.users.getAll().filter(u => u.role === 'vendedor'));
+      const [allCreds, allUsers] = await Promise.all([
+        db.credentials.getAll(),
+        db.users.getAll()
+      ]);
+      setCredentials(allCreds);
+      setUsers(allUsers.filter(u => u.role === 'vendedor'));
     } else if (user?.id) {
-      setCredentials(db.credentials.getByUser(user.id));
+      const userCreds = await db.credentials.getByUser(user.id);
+      setCredentials(userCreds);
     }
-    setBanks(db.bancos.getAll());
+    const allBanks = await db.bancos.getAll();
+    setBanks(allBanks);
   };
 
   useEffect(() => {
@@ -55,7 +61,7 @@ export default function Credentials() {
     setFormData(prev => ({ ...prev, [field]: value }));
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.banco_nome || !formData.login || !formData.link_acesso || !formData.usuario_id) {
       alert('Preencha os campos obrigatórios (Banco, Link, Usuário e Vendedor).');
@@ -74,12 +80,12 @@ export default function Credentials() {
     };
 
     if (editingId) {
-      db.credentials.update(editingId, credData as any);
+      await db.credentials.update(editingId, credData as any);
     } else {
-      db.credentials.create(credData);
+      await db.credentials.create(credData);
     }
 
-    refreshData();
+    await refreshData();
     setIsFormOpen(false);
     setFormData({ status: 'Ativo' });
     setEditingId(null);
@@ -97,10 +103,10 @@ export default function Credentials() {
     setIsFormOpen(true);
   };
 
-  const handleDelete = (id: string) => {
+  const handleDelete = async (id: string) => {
     if (confirm('Tem certeza que deseja excluir este acesso?')) {
-      db.credentials.delete(id);
-    refreshData();
+      await db.credentials.delete(id);
+      await refreshData();
     }
   };
 

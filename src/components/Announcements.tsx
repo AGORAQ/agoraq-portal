@@ -9,12 +9,15 @@ export default function Announcements() {
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
 
   useEffect(() => {
-    // Fetch active announcements sorted by date (newest first)
-    const all = db.announcements.getAll();
-    const active = all
-      .filter(a => a.active)
-      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-    setAnnouncements(active);
+    const fetchAnnouncements = async () => {
+      // Fetch active announcements sorted by date (newest first)
+      const all = await db.announcements.getAll();
+      const active = all
+        .filter((a: any) => a.active)
+        .sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime());
+      setAnnouncements(active);
+    };
+    fetchAnnouncements();
   }, []);
 
   if (announcements.length === 0) return null;

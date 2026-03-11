@@ -51,11 +51,16 @@ export default function Academy() {
     versao: '1.0'
   });
 
-  const loadData = () => {
-    setContents(db.academy.getAll());
-    setGroups(db.commissionGroups.getAll());
+  const loadData = async () => {
+    const [allContents, allGroups] = await Promise.all([
+      db.academy.getAll(),
+      db.commissionGroups.getAll()
+    ]);
+    setContents(allContents);
+    setGroups(allGroups);
     if (user) {
-      setUserViews(db.academyViews.getUserViews(user.id));
+      const views = await db.academyViews.getUserViews(user.id);
+      setUserViews(views);
     }
   };
 
@@ -67,7 +72,7 @@ export default function Academy() {
     setFormData(prev => ({ ...prev, [field]: value }));
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.titulo || !formData.categoria) {
       alert('Título e Categoria são obrigatórios.');
@@ -93,12 +98,12 @@ export default function Academy() {
     };
 
     if (editingId) {
-      db.academy.update(editingId, contentData);
+      await db.academy.update(editingId, contentData);
     } else {
-      db.academy.create(contentData);
+      await db.academy.create(contentData);
     }
 
-    loadData();
+    await loadData();
     setIsFormOpen(false);
     setEditingId(null);
     setFormData({
@@ -116,14 +121,16 @@ export default function Academy() {
     setIsFormOpen(true);
   };
 
-  const handleDelete = (id: string) => {
-    db.academy.delete(id);
-    loadData();
+  const handleDelete = async (id: string) => {
+    if (confirm('Tem certeza que deseja excluir este conteúdo?')) {
+      await db.academy.delete(id);
+      await loadData();
+    }
   };
 
   const handleView = async (content: AcademyContent) => {
     if (user) {
-      db.academyViews.register(content.id, user.id);
+      await db.academyViews.register(content.id, user.id);
       setUserViews(prev => [...new Set([...prev, content.id])]);
     }
     
@@ -227,8 +234,8 @@ export default function Academy() {
         status: 'Ativo' as any
       };
 
-      db.academy.create(newTutorial);
-      loadData();
+      await db.academy.create(newTutorial);
+      await loadData();
       setIsGeneratingVideo(false);
       setGenerationProgress('');
       setAiPrompt('');

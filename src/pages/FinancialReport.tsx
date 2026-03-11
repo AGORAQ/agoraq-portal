@@ -46,10 +46,19 @@ export default function FinancialReport() {
   const [endDate, setEndDate] = useState('');
 
   useEffect(() => {
-    setBanks(db.bancos.getAll());
-    setGroups(db.commissionGroups.getAll());
-    setSales(db.sales.getAll());
-    setPayments(db.payment_requests.getAll());
+    const loadData = async () => {
+      const [allBanks, allGroups, allSales, allPayments] = await Promise.all([
+        db.bancos.getAll(),
+        db.commissionGroups.getAll(),
+        db.sales.getAll(),
+        db.payment_requests.getAll()
+      ]);
+      setBanks(allBanks);
+      setGroups(allGroups);
+      setSales(allSales);
+      setPayments(allPayments);
+    };
+    loadData();
   }, []);
 
   const filteredData = useMemo(() => {

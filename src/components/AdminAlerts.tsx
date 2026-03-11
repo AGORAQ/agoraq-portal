@@ -32,11 +32,12 @@ export default function AdminAlerts() {
       setViewedIds(JSON.parse(savedViewed));
     }
 
-    const fetchAlerts = () => {
+    const fetchAlerts = async () => {
       const newAlerts: AlertItem[] = [];
 
       // User Requests
-      const requests = db.requests.getAll().filter(r => r.status === 'Aguardando Documentos' || r.status === 'Pendente');
+      const allRequests = await db.requests.getAll();
+      const requests = allRequests.filter(r => r.status === 'Aguardando Documentos' || r.status === 'Pendente');
       requests.forEach(req => {
         newAlerts.push({
           id: `req_${req.id}`,
@@ -50,15 +51,20 @@ export default function AdminAlerts() {
       });
 
       // Payment Requests
-      const payments = db.payment_requests.getAll().filter(p => p.status === 'Pendente');
+      const allPayments = await db.payment_requests.getAll();
+      const payments = allPayments.filter(p => p.status === 'Pendente');
+      
+      // Fetch all users to map names
+      const allUsers = await db.users.getAll();
+      const usersMap = new Map(allUsers.map(u => [u.id, u.name]));
+
       payments.forEach(pay => {
-        // Find user name
-        const requestUser = db.users.getById(pay.usuario_id);
+        const sellerName = usersMap.get(pay.usuario_id);
         newAlerts.push({
           id: `pay_${pay.id}`,
           type: 'payment_request',
           title: 'Solicitação de Pagamento',
-          sellerName: requestUser?.name || 'Vendedor Desconhecido',
+          sellerName: typeof sellerName === 'string' ? sellerName : 'Vendedor Desconhecido',
           date: pay.data_solicitacao,
           link: '/admin/pagamentos',
           viewed: false

@@ -22,8 +22,8 @@ export default function AdminAnnouncements() {
     date: new Date().toISOString().split('T')[0]
   });
 
-  const refreshAnnouncements = () => {
-    const all = db.announcements.getAll();
+  const refreshAnnouncements = async () => {
+    const all = await db.announcements.getAll();
     setAnnouncements(all.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
   };
 
@@ -35,7 +35,7 @@ export default function AdminAnnouncements() {
     return <div className="p-8 text-center text-slate-500">Acesso restrito a administradores.</div>;
   }
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
     if (!formData.title || !formData.message || !formData.date) {
@@ -44,12 +44,12 @@ export default function AdminAnnouncements() {
     }
 
     if (editingId) {
-      db.announcements.update(editingId, formData);
+      await db.announcements.update(editingId, formData);
     } else {
-      db.announcements.create(formData as any);
+      await db.announcements.create(formData as any);
     }
 
-    refreshAnnouncements();
+    await refreshAnnouncements();
     setIsFormOpen(false);
     setEditingId(null);
     setFormData({ type: 'Aviso', active: true, date: new Date().toISOString().split('T')[0] });
@@ -61,10 +61,10 @@ export default function AdminAnnouncements() {
     setIsFormOpen(true);
   };
 
-  const handleDelete = (id: string) => {
+  const handleDelete = async (id: string) => {
     if (confirm('Tem certeza que deseja excluir este aviso?')) {
-      db.announcements.delete(id);
-      refreshAnnouncements();
+      await db.announcements.delete(id);
+      await refreshAnnouncements();
     }
   };
 

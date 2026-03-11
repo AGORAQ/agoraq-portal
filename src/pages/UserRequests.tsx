@@ -61,17 +61,19 @@ export default function UserRequests() {
     observation: ''
   });
 
-  const refreshRequests = () => {
+  const refreshRequests = async () => {
     if (isAdmin) {
-      setRequests(db.requests.getAll());
+      const all = await db.requests.getAll();
+      setRequests(all);
     } else if (user?.id) {
-      setRequests(db.requests.getByUser(user.id));
+      const userRequests = await db.requests.getByUser(user.id);
+      setRequests(userRequests);
     }
-    const allGroups = db.commissionGroups.getAll();
+    const allGroups = await db.commissionGroups.getAll();
     setFgtsGroups(allGroups.filter(g => g.type === 'FGTS' && g.status === 'Ativo'));
     setCltGroups(allGroups.filter(g => g.type === 'CLT' && g.status === 'Ativo'));
     setOthersGroups(allGroups.filter(g => g.type === 'Outros' && g.status === 'Ativo'));
-    const allBanks = db.bancos.getAll();
+    const allBanks = await db.bancos.getAll();
     setAvailableBanks(allBanks.map(b => b.nome_banco));
   };
 
@@ -114,7 +116,7 @@ export default function UserRequests() {
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
     if (!formData.name || !formData.email || !formData.bank || !formData.sellerName || !formData.cpf || !formData.fgtsGroup || !formData.cltGroup) {
@@ -140,7 +142,7 @@ export default function UserRequests() {
     // Construct full address string
     const fullAddress = `${formData.street}, ${formData.number} - ${formData.neighborhood}, ${formData.city} - ${formData.state}, ${formData.cep}`;
 
-    db.requests.create({
+    await db.requests.create({
       usuario_id: user?.id || '',
       name: formData.name!,
       email: formData.email!,
@@ -173,7 +175,7 @@ export default function UserRequests() {
       tipo_solicitacao: 'novo_usuario'
     });
 
-    refreshRequests();
+    await refreshRequests();
     setIsFormOpen(false);
     setFormData({ 
       status: 'Aguardando Documentos',
@@ -183,7 +185,7 @@ export default function UserRequests() {
     alert(`Solicitação enviada com sucesso!\n\nUm e-mail de notificação foi enviado para: agoraq@agoraqoficial.com.br`);
   };
 
-  const handleResetSubmit = (e: React.FormEvent) => {
+  const handleResetSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (!resetFormData.bank || !resetFormData.reason) {
@@ -209,7 +211,7 @@ export default function UserRequests() {
       return;
     }
 
-    db.requests.create({
+    await db.requests.create({
       usuario_id: user?.id || '',
       name: user?.name || 'Vendedor',
       email: user?.email || '',
@@ -222,7 +224,7 @@ export default function UserRequests() {
       status: 'Aguardando Criação/Liberação'
     } as any); // Type assertion for partial data
 
-    refreshRequests();
+    await refreshRequests();
     setIsResetFormOpen(false);
     setResetFormData({ bank: '', reason: '' });
     alert('Solicitação de reset de senha enviada com sucesso!');
@@ -234,7 +236,7 @@ export default function UserRequests() {
       return;
     }
     
-    db.requests.updateStatus(id, newStatus, adminObservation, user?.id);
+    await db.requests.updateStatus(id, newStatus, adminObservation, user?.id);
 
     // Send email if finalized/approved
     if (newStatus === 'Finalizado' || newStatus === 'Aprovado') {
@@ -245,16 +247,16 @@ export default function UserRequests() {
     }
 
     setAdminObservation('');
-    refreshRequests();
+    await refreshRequests();
     if (selectedRequest) setSelectedRequest(null);
   };
 
-  const handleApprove = (e: React.FormEvent) => {
+  const handleApprove = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedRequest) return;
 
     // 1. Create the credential
-    db.credentials.create({
+    await db.credentials.create({
       usuario_id: selectedRequest.usuario_id,
       banco_nome: selectedRequest.banco_nome,
       login: approvalFormData.login,
@@ -266,13 +268,13 @@ export default function UserRequests() {
     });
 
     // 2. Update request status to 'Finalizado' (or 'Aprovado')
-    db.requests.updateStatus(selectedRequest.id, 'Finalizado', approvalFormData.observation, user?.id);
+    await db.requests.updateStatus(selectedRequest.id, 'Finalizado', approvalFormData.observation, user?.id);
 
     // 3. Cleanup
     setIsApprovalModalOpen(false);
     setSelectedRequest(null);
     setApprovalFormData({ login: '', senha: '', link_acesso: '', observation: '' });
-    refreshRequests();
+    await refreshRequests();
     alert('Credencial cadastrada e solicitação finalizada com sucesso!');
   };
 

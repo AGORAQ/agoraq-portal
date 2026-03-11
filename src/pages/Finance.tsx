@@ -31,22 +31,25 @@ export default function Finance() {
   const availableBalance = (user?.saldo_acumulado || 0) - (user?.saldo_pago || 0);
 
   useEffect(() => {
-    if (user) {
-      const all = db.payment_requests.getAll();
-      setRequests(all.filter(r => r.usuario_id === user.id).sort((a, b) => 
-        new Date(b.data_solicitacao).getTime() - new Date(a.data_solicitacao).getTime()
-      ));
-    }
+    const loadRequests = async () => {
+      if (user) {
+        const all = await db.payment_requests.getAll();
+        setRequests(all.filter(r => r.usuario_id === user.id).sort((a, b) => 
+          new Date(b.data_solicitacao).getTime() - new Date(a.data_solicitacao).getTime()
+        ));
+      }
+    };
+    loadRequests();
   }, [user]);
 
-  const handleUpdatePix = () => {
+  const handleUpdatePix = async () => {
     if (!pixKey) return;
-    db.users.update(user!.id, { pix_key: pixKey });
+    await db.users.update(user!.id, { pix_key: pixKey });
     updateUser({ ...user!, pix_key: pixKey });
     alert('Chave PIX atualizada com sucesso!');
   };
 
-  const handleRequestPayment = (e: React.FormEvent) => {
+  const handleRequestPayment = async (e: React.FormEvent) => {
     e.preventDefault();
     const val = parseFloat(amount);
 
@@ -65,7 +68,7 @@ export default function Finance() {
       return;
     }
 
-    db.payment_requests.create({
+    await db.payment_requests.create({
       usuario_id: user!.id,
       valor: val,
       chave_pix: pixKey,
@@ -75,7 +78,7 @@ export default function Finance() {
     setIsRequesting(false);
     
     // Refresh list
-    const all = db.payment_requests.getAll();
+    const all = await db.payment_requests.getAll();
     setRequests(all.filter(r => r.usuario_id === user!.id).sort((a, b) => 
       new Date(b.data_solicitacao).getTime() - new Date(a.data_solicitacao).getTime()
     ));

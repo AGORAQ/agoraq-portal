@@ -23,40 +23,51 @@ export default function CRM() {
   const DAILY_LIMIT = 100;
 
   useEffect(() => {
-    const allLeads = db.leads.getAll();
-    const today = new Date().toISOString().split('T')[0];
-    
-    // Calculate leads captured today by this user
-    const userLeadsToday = allLeads.filter(l => 
-      l.createdAt.startsWith(today) && 
-      (isAdmin || l.usuario_id === user?.id)
-    );
-    
-    setLeadsCapturedToday(userLeadsToday.length);
+    const loadLeads = async () => {
+      const allLeads = await db.leads.getAll();
+      const today = new Date().toISOString().split('T')[0];
+      
+      // Calculate leads captured today by this user
+      const userLeadsToday = allLeads.filter(l => 
+        l.createdAt.startsWith(today) && 
+        (isAdmin || l.usuario_id === user?.id)
+      );
+      
+      setLeadsCapturedToday(userLeadsToday.length);
 
-    if (isAdmin) {
-      setLeads(allLeads);
-    } else {
-      // Sellers only see today's leads
-      setLeads(userLeadsToday);
-    }
+      if (isAdmin) {
+        setLeads(allLeads);
+      } else {
+        // Sellers only see today's leads
+        setLeads(userLeadsToday);
+      }
+    };
+    loadLeads();
   }, [isAdmin, user?.id]);
 
-  const refreshLeads = () => {
-    const allLeads = db.leads.getAll();
+  const refreshLeads = async () => {
+    const allLeads = await db.leads.getAll();
     const today = new Date().toISOString().split('T')[0];
     
-    const userLeadsToday = allLeads.filter(l => 
+    const userLeadsToday = allLeads.filter((l: any) => 
       l.createdAt.startsWith(today) && 
       (isAdmin || l.usuario_id === user?.id)
     );
     
-    setLeadsCapturedToday(userLeadsToday.length);
-
     if (isAdmin) {
       setLeads(allLeads);
     } else {
       setLeads(userLeadsToday);
+    }
+
+    // Sync user daily count from backend
+    if (user?.id) {
+      const updatedUser = await db.users.getById(user.id);
+      if (updatedUser && updatedUser.last_lead_date === today) {
+        setLeadsCapturedToday(updatedUser.daily_lead_count || 0);
+      } else {
+        setLeadsCapturedToday(0);
+      }
     }
   };
 
@@ -65,7 +76,7 @@ export default function CRM() {
     alert('Copiado para a área de transferência!');
   };
 
-  const handleCaptureLead = () => {
+  const handleCaptureLead = async () => {
     const qty = Number(captureQuantity);
     
     if (!qty || qty <= 0) {
@@ -73,10 +84,22 @@ export default function CRM() {
       return;
     }
 
-    if (leadsCapturedToday + qty <= DAILY_LIMIT) {
+    if (leadsCapturedToday + qty > DAILY_LIMIT) {
+      alert(`Quantidade excede o limite diário restante (${DAILY_LIMIT - leadsCapturedToday}).`);
+      return;
+    }
+
+    try {
       // Simulate lead capture by adding real entries to db
       for (let i = 0; i < qty; i++) {
-        db.leads.create({
+        // Increment count on backend for each lead
+        const result = await db.users.incrementLeads(user!.id);
+        if (result.error) {
+          alert(result.error);
+          break;
+        }
+
+        await db.leads.create({
           name: `Lead Capturado ${Math.floor(Math.random() * 1000)}`,
           phone: `(11) 9${Math.floor(Math.random() * 90000000 + 10000000)}`,
           email: `lead${Math.floor(Math.random() * 1000)}@email.com`,
@@ -86,12 +109,12 @@ export default function CRM() {
         });
       }
 
-      setLeadsCapturedToday(prev => prev + qty);
-      refreshLeads();
+      await refreshLeads();
       alert(`${qty} leads capturados com sucesso!`);
       setCaptureQuantity(1);
-    } else {
-      alert(`Quantidade excede o limite diário restante (${DAILY_LIMIT - leadsCapturedToday}).`);
+    } catch (error: any) {
+      console.error('Error capturing leads:', error);
+      alert('Erro ao capturar leads. Verifique sua conexão.');
     }
   };
 
@@ -318,10 +341,10 @@ export default function CRM() {
         {isImporterOpen && (
           <GlobalImporter 
             type="leads"
-            onImportComplete={() => {
-              refreshLeads();
-              alert('Leads importados com sucesso!');
-            }}
+            onImportComplete={async () => {
+            await refreshLeads();
+            alert('Leads importados com sucesso!');
+          }}
             onClose={() => setIsImporterOpen(false)}
           />
         )}

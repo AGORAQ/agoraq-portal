@@ -135,69 +135,74 @@ export default function AdminPanel() {
   });
   const [copied, setCopied] = useState(false);
 
-  const loadData = () => {
-    setUsers(db.users.getAll());
-    setAccessRequests(db.requests.getAll());
-    setCommissionGroups(db.commissionGroups.getAll());
-    setBanks(db.bancos.getAll());
+  const loadData = async () => {
+    const [allUsers, allRequests, allGroups, allBanks] = await Promise.all([
+      db.users.getAll(),
+      db.requests.getAll(),
+      db.commissionGroups.getAll(),
+      db.bancos.getAll()
+    ]);
+    setUsers(allUsers);
+    setAccessRequests(allRequests);
+    setCommissionGroups(allGroups);
+    setBanks(allBanks);
   };
 
   useEffect(() => {
-    loadData();
-    
-    const params = new URLSearchParams(location.search);
-    if (params.get('action') === 'new') {
-      setActiveTab('users');
-      setIsFormOpen(true);
-      setEditingUser(null);
-      setFormData({ name: '', email: '', role: 'vendedor', status: 'Ativo' });
-    }
-    if (params.get('tab') === 'requests') {
-      setActiveTab('requests');
-    }
+    const init = async () => {
+      await loadData();
+      
+      const params = new URLSearchParams(location.search);
+      if (params.get('action') === 'new') {
+        setActiveTab('users');
+        setIsFormOpen(true);
+        setEditingUser(null);
+        setFormData({ name: '', email: '', role: 'vendedor', status: 'Ativo' });
+      }
+      if (params.get('tab') === 'requests') {
+        setActiveTab('requests');
+      }
 
-    // Load contract config
-    const savedTerms = localStorage.getItem('admin_contract_terms');
-    const savedLink = localStorage.getItem('admin_contract_link');
-    if (savedTerms) setContractTerms(savedTerms);
-    if (savedLink) setSignatureLink(savedLink);
-
-    // Load settings
-    const settings = db.settings.get();
-    if (settings.canvaLink) setCanvaLink(settings.canvaLink);
-    
-    // Load AI config
-    const savedPrompt = localStorage.getItem('ai_system_prompt');
-    if (savedPrompt) {
-      setAiSystemPrompt(savedPrompt);
-    } else {
-      setAiSystemPrompt("Você é um assistente útil e experiente da empresa AgoraQ, especializado em ajudar vendedores de crédito consignado. Você responde dúvidas sobre comissões, uso do CRM, captura de leads e roteiros operacionais. Seja conciso, profissional e motivador.");
-    }
+      // Load contract config
+      const settings = await db.settings.get();
+      if (settings.contractTerms) setContractTerms(settings.contractTerms);
+      if (settings.signatureLink) setSignatureLink(settings.signatureLink);
+      if (settings.canvaLink) setCanvaLink(settings.canvaLink);
+      
+      // Load AI config
+      if (settings.aiSystemPrompt) {
+        setAiSystemPrompt(settings.aiSystemPrompt);
+      } else {
+        setAiSystemPrompt("Você é um assistente útil e experiente da empresa AgoraQ, especializado em ajudar vendedores de crédito consignado. Você responde dúvidas sobre comissões, uso do CRM, captura de leads e roteiros operacionais. Seja conciso, profissional e motivador.");
+      }
+    };
+    init();
   }, [location.search]);
 
-  const handleSaveContract = () => {
-    localStorage.setItem('admin_contract_terms', contractTerms);
-    localStorage.setItem('admin_contract_link', signatureLink);
+  const handleSaveContract = async () => {
+    await db.settings.update({ contractTerms, signatureLink });
     alert('Configurações do contrato salvas com sucesso!');
   };
 
-  const handleSaveSettings = () => {
-    db.settings.update({ canvaLink });
+  const handleSaveSettings = async () => {
+    await db.settings.update({ canvaLink });
     alert('Configurações do sistema salvas com sucesso!');
   };
 
-  const handleSaveAiConfig = () => {
-    localStorage.setItem('ai_system_prompt', aiSystemPrompt);
+  const handleSaveAiConfig = async () => {
+    await db.settings.update({ aiSystemPrompt });
     alert('Configurações da IA salvas com sucesso!');
   };
 
-  if (user?.role !== 'admin') {
+  const isAdmin = user?.role === 'admin' || user?.role === 'supervisor';
+
+  if (!isAdmin) {
     return (
       <div className="flex items-center justify-center h-[50vh]">
         <div className="text-center">
           <Shield className="w-16 h-16 text-slate-300 mx-auto mb-4" />
           <h2 className="text-xl font-bold text-slate-900">Acesso Restrito</h2>
-          <p className="text-slate-500">Apenas administradores podem acessar esta área.</p>
+          <p className="text-slate-500">Apenas administradores e supervisores podem acessar esta área.</p>
         </div>
       </div>
     );
@@ -213,10 +218,10 @@ export default function AdminPanel() {
     setIsFormOpen(true);
   };
 
-  const handleDelete = (id: string) => {
+  const handleDelete = async (id: string) => {
     if (confirm('Tem certeza que deseja remover este usuário?')) {
-      db.users.delete(id);
-      loadData();
+      await db.users.delete(id);
+      await loadData();
     }
   };
 
@@ -227,13 +232,13 @@ export default function AdminPanel() {
       if (!updates.password) {
         delete updates.password;
       }
-      db.users.update(editingUser.id, updates);
+      await db.users.update(editingUser.id, updates);
       alert('Usuário atualizado com sucesso!');
     } else {
       // Use provided password or generate one
       const finalPassword = formData.password || db.utils.generatePassword(12);
       
-      const newUser = db.users.create({
+      const newUser = await db.users.create({
         name: formData.name || '',
         email: formData.email || '',
         role: formData.role as any,
@@ -252,7 +257,7 @@ export default function AdminPanel() {
         });
       }
     }
-    loadData();
+    await loadData();
     setIsFormOpen(false);
     setEditingUser(null);
     setFormData({ name: '', email: '', role: 'vendedor', status: 'Ativo', grupo_comissao: 'PLUS', password: '' });
@@ -262,12 +267,12 @@ export default function AdminPanel() {
     alert("O serviço de e-mail foi desativado. As senhas agora são geradas localmente.");
   };
 
-  const handleBankSubmit = (e: React.FormEvent) => {
+  const handleBankSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!bankFormData.nome_banco) return;
     
     if (editingBank) {
-      db.bancos.update(editingBank.id, {
+      await db.bancos.update(editingBank.id, {
         nome_banco: bankFormData.nome_banco,
         tipo_produto: bankFormData.tipo_produto as any,
         percentual_maximo: bankFormData.percentual_maximo || 15,
@@ -275,7 +280,7 @@ export default function AdminPanel() {
       });
       alert('Banco atualizado com sucesso!');
     } else {
-      db.bancos.create({
+      await db.bancos.create({
         nome_banco: bankFormData.nome_banco,
         tipo_produto: bankFormData.tipo_produto as any,
         percentual_maximo: bankFormData.percentual_maximo || 15,
@@ -284,42 +289,42 @@ export default function AdminPanel() {
       alert('Banco cadastrado com sucesso!');
     }
     
-    loadData();
+    await loadData();
     setIsBankFormOpen(false);
     setEditingBank(null);
     setBankFormData({ nome_banco: '', tipo_produto: 'Ambos', percentual_maximo: 15, status: 'Ativo' });
   };
 
-  const handleDeleteBank = (id: string) => {
+  const handleDeleteBank = async (id: string) => {
     if (confirm('Tem certeza que deseja remover este banco? Todos os grupos vinculados também serão afetados.')) {
-      db.bancos.delete(id);
-      loadData();
+      await db.bancos.delete(id);
+      await loadData();
     }
   };
 
-  const handleGroupSubmit = (e: React.FormEvent) => {
+  const handleGroupSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!groupFormData.name || !groupFormData.banco_id) {
       alert('Nome do grupo e Banco são obrigatórios.');
       return;
     }
     
-    db.commissionGroups.create({
+    await db.commissionGroups.create({
       name: groupFormData.name,
       type: groupFormData.type as 'FGTS' | 'CLT' | 'Outros',
       banco_id: groupFormData.banco_id,
       status: groupFormData.status as 'Ativo' | 'Inativo'
     });
     
-    loadData();
+    await loadData();
     setIsGroupFormOpen(false);
     setGroupFormData({ name: '', type: 'FGTS', status: 'Ativo', banco_id: '' });
   };
 
-  const handleDeleteGroup = (id: string) => {
+  const handleDeleteGroup = async (id: string) => {
     if (confirm('Remover este grupo?')) {
-      db.commissionGroups.delete(id);
-      loadData();
+      await db.commissionGroups.delete(id);
+      await loadData();
     }
   };
 
@@ -332,7 +337,7 @@ export default function AdminPanel() {
     }
     
     // Approve request: Create user and update request status
-    const newUser = db.users.create({
+    const newUser = await db.users.create({
       name: req.name,
       email: req.email,
       role: 'vendedor',
@@ -342,8 +347,8 @@ export default function AdminPanel() {
     });
     
     if (newUser) {
-      db.requests.updateStatus(req.id, 'Aprovado');
-      loadData();
+      await db.requests.updateStatus(req.id, 'Aprovado');
+      await loadData();
       
       setPasswordModal({
         isOpen: true,
@@ -354,10 +359,10 @@ export default function AdminPanel() {
     }
   };
 
-  const handleRejectRequest = (id: string) => {
+  const handleRejectRequest = async (id: string) => {
     if (confirm('Rejeitar esta solicitação?')) {
-      db.requests.updateStatus(id, 'Rejeitado');
-      loadData();
+      await db.requests.updateStatus(id, 'Rejeitado');
+      await loadData();
     }
   };
 
@@ -365,7 +370,7 @@ export default function AdminPanel() {
     const newPassword = prompt(`Digite a nova senha para ${userToReset.name}:`);
     
     if (newPassword) {
-      const updatedUser = db.users.update(userToReset.id, {
+      const updatedUser = await db.users.update(userToReset.id, {
         password: newPassword
       });
 
@@ -376,7 +381,7 @@ export default function AdminPanel() {
           userName: updatedUser.name,
           type: 'reset'
         });
-        loadData();
+        await loadData();
       }
     }
   };

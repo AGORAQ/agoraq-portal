@@ -31,25 +31,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const login = async (email: string, password?: string) => {
-    // In a real app, this would be an API call
-    const users = db.users.getAll();
-    const normalizedEmail = email.trim().toLowerCase();
-    
-    const foundUser = users.find(u => 
-      u.email.toLowerCase() === normalizedEmail && 
-      (password ? db.utils.comparePassword(password, u.password) : true)
-    );
-    
-    if (foundUser) {
-      // Update last access
-      const updatedUser = { ...foundUser, lastAccess: new Date().toISOString() };
-      db.users.update(foundUser.id, { lastAccess: updatedUser.lastAccess });
-      
-      setUser(updatedUser);
-      localStorage.setItem('agoraq_user', JSON.stringify(updatedUser));
-      return true;
+    try {
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+      });
+
+      if (res.ok) {
+        const userData = await res.json();
+        setUser(userData);
+        localStorage.setItem('agoraq_user', JSON.stringify(userData));
+        return true;
+      }
+      return false;
+    } catch (e) {
+      console.error('Login error:', e);
+      return false;
     }
-    return false;
   };
 
   const logout = () => {

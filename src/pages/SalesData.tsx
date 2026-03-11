@@ -55,9 +55,13 @@ export default function SalesData() {
     seller: user?.name || ''
   });
 
-  const refreshData = () => {
-    setSales(db.sales.getAll());
-    setPixRequests(db.payment_requests.getAll());
+  const refreshData = async () => {
+    const [allSales, allPixRequests] = await Promise.all([
+      db.sales.getAll(),
+      db.payment_requests.getAll()
+    ]);
+    setSales(allSales);
+    setPixRequests(allPixRequests);
   };
 
   useEffect(() => {
@@ -132,7 +136,7 @@ export default function SalesData() {
     setFormData(prev => ({ ...prev, [field]: value }));
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) return;
     
@@ -141,8 +145,8 @@ export default function SalesData() {
       value: parseFloat(formData.value) || 0,
     };
 
-    const newSale = db.sales.create(saleData, user);
-    refreshData();
+    const newSale = await db.sales.create(saleData, user);
+    await refreshData();
     setIsFormOpen(false);
 
     // Motivational Success Message
@@ -256,7 +260,7 @@ export default function SalesData() {
     { name: 'Lucro Líquido', value: totalProfit },
   ];
 
-  const handlePixRequest = (e: React.FormEvent) => {
+  const handlePixRequest = async (e: React.FormEvent) => {
     e.preventDefault();
     const newRequest: Omit<PaymentRequest, 'id' | 'status' | 'data_solicitacao'> = {
       usuario_id: user?.id || '',
@@ -265,8 +269,8 @@ export default function SalesData() {
       banco_id: '',
       grupo_id: ''
     };
-    db.payment_requests.create(newRequest);
-    refreshData();
+    await db.payment_requests.create(newRequest);
+    await refreshData();
     setIsPixModalOpen(false);
     alert('Solicitação de PIX enviada com sucesso!');
   };
@@ -441,9 +445,9 @@ export default function SalesData() {
                           size="sm" 
                           variant="outline" 
                           className="text-green-600 hover:text-green-700 hover:bg-green-50"
-                          onClick={() => {
-                            db.payment_requests.update(req.id, { status: 'Pago' });
-                            refreshData();
+                          onClick={async () => {
+                            await db.payment_requests.update(req.id, { status: 'Pago' });
+                            await refreshData();
                             alert('Pagamento marcado como realizado!');
                           }}
                         >
@@ -520,8 +524,9 @@ export default function SalesData() {
       {isGlobalImporterOpen && (
         <GlobalImporter 
           type="vendas" 
-          onImportComplete={() => {
-            setSales(db.sales.getAll());
+          onImportComplete={async () => {
+            const allSales = await db.sales.getAll();
+            setSales(allSales);
           }} 
           onClose={() => setIsGlobalImporterOpen(false)} 
         />

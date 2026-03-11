@@ -51,90 +51,80 @@ export default function Dashboard() {
   const isManagement = isAdmin || isSupervisor;
 
   React.useEffect(() => {
-    const settings = db.settings.get();
-    if (settings.canvaLink) {
-      setCanvaLink(settings.canvaLink);
-    }
-    
-    // Load Monthly Goal
-    const savedGoal = localStorage.getItem(`monthly_goal_${user?.id}`);
-    if (savedGoal) setMonthlyGoal(Number(savedGoal));
+    const init = async () => {
+      const settings = await db.settings.get();
+      if (settings.canvaLink) {
+        setCanvaLink(settings.canvaLink);
+      }
+      
+      // Load Monthly Goal
+      const savedGoal = localStorage.getItem(`monthly_goal_${user?.id}`);
+      if (savedGoal) setMonthlyGoal(Number(savedGoal));
 
-    const allSales = db.sales.getAll();
-    // Filter sales if user is not management
-    const filteredSales = isManagement ? allSales : allSales.filter(s => s.seller === user?.name);
-    
-    setSales(filteredSales);
-    setRequests(db.requests.getAll());
+      const [allSales, allRequests] = await Promise.all([
+        db.sales.getAll(),
+        db.requests.getAll()
+      ]);
+      
+      // Filter sales if user is not management
+      const filteredSales = isManagement ? allSales : allSales.filter(s => s.seller === user?.name);
+      
+      setSales(filteredSales);
+      setRequests(allRequests);
 
-    // Prepare Chart Data (Last 7 days)
-    const days = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
-    const last7Days = Array.from({ length: 7 }, (_, i) => {
-      const d = new Date();
-      d.setDate(d.getDate() - (6 - i));
-      return d;
-    });
+      // Prepare Chart Data (Last 7 days)
+      const days = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+      const last7Days = Array.from({ length: 7 }, (_, i) => {
+        const d = new Date();
+        d.setDate(d.getDate() - (6 - i));
+        return d;
+      });
 
-    const newChartData = last7Days.map(date => {
-      const dateStr = date.toISOString().split('T')[0];
-      const daySales = filteredSales.filter(s => s.date === dateStr);
-      const total = daySales.reduce((acc, curr) => acc + (Number(curr.value) || 0), 0);
-      return {
-        name: days[date.getDay()],
-        vendas: total
-      };
-    });
-    setChartData(newChartData);
+      const newChartData = last7Days.map(date => {
+        const dateStr = date.toISOString().split('T')[0];
+        const daySales = filteredSales.filter(s => s.date === dateStr);
+        const total = daySales.reduce((acc, curr) => acc + (Number(curr.value) || 0), 0);
+        return {
+          name: days[date.getDay()],
+          vendas: total
+        };
+      });
+      setChartData(newChartData);
 
-    // Bank Distribution
-    const dist: Record<string, number> = {};
-    filteredSales.forEach(s => {
-      const val = Number(s.value) || 0;
-      dist[s.bank] = (dist[s.bank] || 0) + val;
-    });
-    setBankDistribution(Object.entries(dist).map(([name, value]) => ({ name, value })));
+      // Bank Distribution
+      const dist: Record<string, number> = {};
+      filteredSales.forEach(s => {
+        const val = Number(s.value) || 0;
+        dist[s.bank] = (dist[s.bank] || 0) + val;
+      });
+      setBankDistribution(Object.entries(dist).map(([name, value]) => ({ name, value })));
 
-    // Automatic Projection based on Goal
-    const now = new Date();
-    const currentMonth = now.getMonth();
-    const currentYear = now.getFullYear();
-    const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
-    const currentDay = now.getDate();
-    const remainingDays = daysInMonth - currentDay;
-    
-    const monthSales = filteredSales.filter(s => {
-      if (!s.date) return false;
-      const d = new Date(s.date);
-      return !isNaN(d.getTime()) && d.getMonth() === currentMonth && d.getFullYear() === currentYear;
-    });
-    
-    const monthTotal = monthSales.reduce((acc, curr) => acc + (Number(curr.value) || 0), 0);
-    
-    // If goal is set, calculate based on goal. Otherwise, estimate based on average.
-    let projectedTotal = 0;
-    
-    if (monthlyGoal > 0) {
-      // Logic: If we keep up the required daily pace, we hit the goal.
-      // But "Projection" usually means "where we will end up if we continue like this".
-      // However, the prompt asks to "calculate daily target".
-      // Let's store the daily target in a separate variable to display.
-      // For the "Projection" card, let's keep it as "Estimated Total" based on current pace, 
-      // but maybe add a "Goal Progress" indicator.
+      // Automatic Projection based on Goal
+      const now = new Date();
+      const currentMonth = now.getMonth();
+      const currentYear = now.getFullYear();
+      const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
+      const currentDay = now.getDate();
+      
+      const monthSales = filteredSales.filter(s => {
+        if (!s.date) return false;
+        const d = new Date(s.date);
+        return !isNaN(d.getTime()) && d.getMonth() === currentMonth && d.getFullYear() === currentYear;
+      });
+      
+      const monthTotal = monthSales.reduce((acc, curr) => acc + (Number(curr.value) || 0), 0);
       
       const dailyAvg = currentDay > 0 ? monthTotal / currentDay : 0;
-      projectedTotal = dailyAvg * daysInMonth;
-    } else {
-      const dailyAvg = currentDay > 0 ? monthTotal / currentDay : 0;
-      projectedTotal = dailyAvg * daysInMonth;
-    }
-    
-    setProjection({
-      total: projectedTotal,
-      company: 0, // Not used in new logic
-      seller: 0   // Not used in new logic
-    });
-
-  }, [user, monthlyGoal]); // Add monthlyGoal dependency
+      const projectedTotal = dailyAvg * daysInMonth;
+      
+      setProjection({
+        total: projectedTotal,
+        company: 0,
+        seller: 0
+      });
+    };
+    init();
+  }, [user, monthlyGoal, isManagement]);
 
   const handleSaveGoal = () => {
     const goal = parseFloat(tempGoal);

@@ -43,7 +43,7 @@ export default function Profile() {
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setMessage(null);
 
@@ -76,14 +76,10 @@ export default function Profile() {
         updates.password = formData.newPassword;
       }
 
-      const updatedUser = db.users.update(user.id, updates);
+      const updatedUser = await db.users.update(user.id, updates);
       
       if (updatedUser) {
         // Update local session
-        // In a real app, this would be handled by re-fetching user data or updating token
-        // Here we simulate a re-login to update context
-        // We need to manually update the user in context or force a reload
-        // For this demo, we'll just update localStorage and reload
         localStorage.setItem('agoraq_user', JSON.stringify(updatedUser));
         window.location.reload(); 
         

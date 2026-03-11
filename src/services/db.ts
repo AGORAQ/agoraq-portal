@@ -84,99 +84,49 @@ const INITIAL_COMMISSION_GROUPS: CommissionGroup[] = [
   { id: '5', name: 'Líder CLT', type: 'CLT', banco_id: 'b2', status: 'Ativo', createdAt: new Date().toISOString() },
 ];
 
-// Helper to get/set from localStorage
-const getStorage = <T>(key: string, initial: T): T => {
-  try {
-    const stored = localStorage.getItem(key);
-    if (stored) return JSON.parse(stored);
-  } catch (e) {
-    console.error(`Failed to parse ${key} from localStorage`, e);
-    localStorage.removeItem(key);
-  }
-  localStorage.setItem(key, JSON.stringify(initial));
-  return initial;
-};
-
-const setStorage = <T>(key: string, data: T) => {
-  localStorage.setItem(key, JSON.stringify(data));
-};
+const API_URL = '/api';
 
 // Database Service
 export const db = {
   users: {
-    getAll: () => {
-      const users = getStorage<User[]>('users', INITIAL_USERS);
-      
-      // Ensure admin exists and has correct email (migration/recovery fix)
-      const adminIndex = users.findIndex(u => u.id === '1');
-      
-      if (adminIndex === -1) {
-        // Admin missing, restore it
-        const adminUser = INITIAL_USERS.find(u => u.id === '1');
-        if (adminUser) {
-          users.push(adminUser);
-          setStorage('users', users);
-        }
-      } else if (users[adminIndex].email !== 'agoraq@agoraqoficial.com') {
-        // Fix email if incorrect
-        users[adminIndex].email = 'agoraq@agoraqoficial.com';
-        setStorage('users', users);
-      }
-      
-      return users;
+    getAll: async () => {
+      const res = await fetch(`${API_URL}/users`);
+      return res.json();
     },
-    getById: (id: string) => {
-      const users = getStorage<User[]>('users', INITIAL_USERS);
-      
-      // Ensure admin exists and has correct email (migration/recovery fix)
-      const adminIndex = users.findIndex(u => u.id === '1');
-      
-      if (adminIndex === -1) {
-        const adminUser = INITIAL_USERS.find(u => u.id === '1');
-        if (adminUser) {
-          users.push(adminUser);
-          setStorage('users', users);
-        }
-      } else if (users[adminIndex].email !== 'agoraq@agoraqoficial.com') {
-        users[adminIndex].email = 'agoraq@agoraqoficial.com';
-        setStorage('users', users);
-      }
-      
-      return users.find(u => u.id === id);
+    getById: async (id: string) => {
+      const res = await fetch(`${API_URL}/users`);
+      const users = await res.json();
+      return users.find((u: any) => u.id === id);
     },
-    create: (user: Omit<User, 'id' | 'lastAccess'>) => {
-      const users = getStorage<User[]>('users', INITIAL_USERS);
-      // Hash password if provided
-      const password = user.password ? hashPassword(user.password) : hashPassword('123456');
-      const newUser = { ...user, password, id: uuidv4(), lastAccess: new Date().toISOString() };
-      users.push(newUser);
-      setStorage('users', users);
-      return newUser;
+    create: async (user: Omit<User, 'id' | 'lastAccess'>) => {
+      const res = await fetch(`${API_URL}/users`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(user),
+      });
+      return res.json();
     },
-    update: (id: string, updates: Partial<User>) => {
-      const users = getStorage<User[]>('users', INITIAL_USERS);
-      const index = users.findIndex(u => u.id === id);
-      if (index !== -1) {
-        const finalUpdates = { ...updates };
-        if (updates.password) {
-          finalUpdates.password = hashPassword(updates.password);
-        }
-        users[index] = { ...users[index], ...finalUpdates };
-        setStorage('users', users);
-        return users[index];
-      }
-      return null;
+    update: async (id: string, updates: Partial<User>) => {
+      const res = await fetch(`${API_URL}/users/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updates),
+      });
+      return res.json();
     },
-    delete: (id: string) => {
-      const users = getStorage<User[]>('users', INITIAL_USERS);
-      const filtered = users.filter(u => u.id !== id);
-      setStorage('users', filtered);
+    delete: async (id: string) => {
+      await fetch(`${API_URL}/users/${id}`, { method: 'DELETE' });
+    },
+    incrementLeads: async (id: string) => {
+      const res = await fetch(`${API_URL}/users/${id}/increment-leads`, { method: 'POST' });
+      return res.json();
     }
   },
 
   commissions: {
-    getAll: (role: string = 'vendedor', userGroup?: string) => {
-      const commissions = getStorage<CommissionTable[]>('commissions', INITIAL_COMMISSIONS);
+    getAll: async (role: string = 'vendedor', userGroup?: string) => {
+      const res = await fetch(`${API_URL}/commissions`);
+      const commissions = await res.json();
       
       if (role === 'admin' || role === 'supervisor') {
         return commissions;
@@ -184,7 +134,7 @@ export const db = {
 
       // Filter by group for sellers and hide sensitive fields
       return commissions
-        .map(c => {
+        .map((c: any) => {
           let sellerCommission = 0;
           if (userGroup === 'MASTER') sellerCommission = c.comissao_master;
           else if (userGroup === 'OURO') sellerCommission = c.comissao_ouro;
@@ -204,548 +154,330 @@ export const db = {
             percentual_vendedor: sellerCommission,
             status: c.status,
           };
-        }) as any[];
-    },
-    create: (comm: Omit<CommissionTable, 'id' | 'data_criacao' | 'data_atualizacao'>, userRole: string, userId: string) => {
-      if (userRole !== 'admin') {
-        throw new Error('Acesso negado. Apenas administradores podem criar tabelas.');
-      }
-
-      const commissions = getStorage<CommissionTable[]>('commissions', INITIAL_COMMISSIONS);
-      
-      if (commissions.some(c => c.codigo_tabela === comm.codigo_tabela)) {
-        throw new Error(`O código de tabela ${comm.codigo_tabela} já existe.`);
-      }
-
-      const now = new Date().toISOString();
-      const newComm: CommissionTable = { 
-        ...comm, 
-        id: uuidv4(), 
-        data_criacao: now, 
-        data_atualizacao: now,
-      };
-      commissions.push(newComm);
-      setStorage('commissions', commissions);
-      return newComm;
-    },
-    update: (id: string, updates: Partial<CommissionTable>, userRole: string, userId: string) => {
-      if (userRole !== 'admin') {
-        throw new Error('Acesso negado. Apenas administradores podem atualizar tabelas.');
-      }
-      const commissions = getStorage<CommissionTable[]>('commissions', INITIAL_COMMISSIONS);
-      const index = commissions.findIndex(c => c.id === id);
-      if (index !== -1) {
-        const currentComm = commissions[index];
-        const updatedComm = { ...currentComm, ...updates };
-
-        updatedComm.data_atualizacao = new Date().toISOString();
-        commissions[index] = updatedComm;
-        setStorage('commissions', commissions);
-        return updatedComm;
-      }
-      return null;
-    },
-    delete: (id: string, userRole: string, userId: string) => {
-      if (userRole !== 'admin') {
-        db.logs.addSecurityLog({
-          userId,
-          action: 'UNAUTHORIZED_DELETE_COMMISSION',
-          resource: `commissions/${id}`,
-          details: 'Tentativa de exclusão de tabela por não-admin'
         });
-        throw new Error('Acesso negado. Apenas administradores podem excluir tabelas.');
-      }
-      const commissions = getStorage<CommissionTable[]>('commissions', INITIAL_COMMISSIONS);
-      const filtered = commissions.filter(c => c.id !== id);
-      setStorage('commissions', filtered);
     },
-    deleteMany: (ids: string[], userRole: string, userId: string) => {
-      if (userRole !== 'admin') {
-        throw new Error('Acesso negado.');
-      }
-      const commissions = getStorage<CommissionTable[]>('commissions', INITIAL_COMMISSIONS);
-      const filtered = commissions.filter(c => !ids.includes(c.id));
-      setStorage('commissions', filtered);
-    },
-    deleteAll: (userRole: string, userId: string) => {
-      if (userRole !== 'admin') {
-        throw new Error('Acesso negado.');
-      }
-      setStorage('commissions', []);
-    },
-    import: (comms: Omit<CommissionTable, 'id' | 'data_criacao' | 'data_atualizacao'>[], userRole: string, userId: string) => {
-      if (userRole !== 'admin') {
-        db.logs.addSecurityLog({
-          userId,
-          action: 'UNAUTHORIZED_IMPORT_COMMISSION',
-          resource: 'commissions/import',
-          details: 'Tentativa de importação de tabelas por não-admin'
-        });
-        throw new Error('Acesso negado. Apenas administradores podem importar tabelas.');
-      }
-      const commissions = getStorage<CommissionTable[]>('commissions', INITIAL_COMMISSIONS);
-      const now = new Date().toISOString();
-      
-      const newComms = comms.map(c => {
-        return { 
-          ...c, 
-          id: uuidv4(), 
-          data_criacao: now, 
-          data_atualizacao: now,
-        };
+    create: async (comm: Omit<CommissionTable, 'id' | 'data_criacao' | 'data_atualizacao'>, userRole: string, userId: string) => {
+      const res = await fetch(`${API_URL}/commissions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...comm, criado_por: userId }),
       });
-      
-      // Filter out duplicates (code + group combination)
-      const existingKeys = new Set(commissions.map(c => `${c.codigo_tabela}_${c.grupo_comissao}`));
-      const filteredNewComms = newComms.filter(c => !existingKeys.has(`${c.codigo_tabela}_${c.grupo_comissao}`));
-      
-      commissions.push(...filteredNewComms);
-      setStorage('commissions', commissions);
-      return filteredNewComms;
+      return res.json();
+    },
+    update: async (id: string, updates: Partial<CommissionTable>, userRole: string, userId: string) => {
+      const res = await fetch(`${API_URL}/commissions/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updates),
+      });
+      return res.json();
+    },
+    delete: async (id: string, userRole: string, userId: string) => {
+      await fetch(`${API_URL}/commissions/${id}`, { method: 'DELETE' });
+    },
+    deleteMany: async (ids: string[], userRole: string, userId: string) => {
+      await fetch(`${API_URL}/commissions/bulk-delete`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids }),
+      });
+    },
+    deleteAll: async (userRole: string, userId: string) => {
+      const all = await fetch(`${API_URL}/commissions`);
+      const commissions = await all.json();
+      const ids = commissions.map((c: any) => c.id);
+      if (ids.length > 0) {
+        await db.commissions.deleteMany(ids, userRole, userId);
+      }
+    },
+    import: async (comms: Omit<CommissionTable, 'id' | 'data_criacao' | 'data_atualizacao'>[], userRole: string, userId: string) => {
+      for (const comm of comms) {
+        await db.commissions.create(comm, userRole, userId);
+      }
+      return comms;
     }
   },
 
   sales: {
-    getAll: () => getStorage<any[]>('sales', INITIAL_SALES),
-    create: (sale: any, user: User) => {
-      const sales = getStorage<any[]>('sales', INITIAL_SALES);
-      const commissions = getStorage<CommissionTable[]>('commissions', INITIAL_COMMISSIONS);
-      
-      // Automatic Commission Calculation based on seller's group
-      const userGroup = user.grupo_comissao;
-      const table = commissions.find(c => 
-        c.banco === sale.bank && 
-        c.operacao === sale.operacao &&
-        sale.value >= c.faixa_valor_min &&
-        sale.value <= c.faixa_valor_max
-      );
-
-      let sellerCommissionPercent = 0;
-      let companyCommissionPercent = 0;
-      let bankCommissionPercent = 0;
-
-      if (table) {
-        if (userGroup === 'MASTER') sellerCommissionPercent = table.comissao_master;
-        else if (userGroup === 'OURO') sellerCommissionPercent = table.comissao_ouro;
-        else if (userGroup === 'PRATA') sellerCommissionPercent = table.comissao_prata;
-        else if (userGroup === 'PLUS') sellerCommissionPercent = table.comissao_plus;
-        
-        bankCommissionPercent = table.percentual_total_empresa;
-        companyCommissionPercent = bankCommissionPercent - sellerCommissionPercent;
-      }
-
-      const newSale = { 
-        ...sale, 
-        id: uuidv4(),
-        commission: (sale.value * sellerCommissionPercent) / 100,
-        companyCommission: (sale.value * companyCommissionPercent) / 100,
-        bankCommission: (sale.value * bankCommissionPercent) / 100,
-        table: table ? table.nome_tabela : sale.table,
-        seller: user.name
-      };
-      
-      sales.push(newSale);
-      setStorage('sales', sales);
-
-      // Update user balance
-      const users = getStorage<User[]>('users', INITIAL_USERS);
-      const userIndex = users.findIndex(u => u.id === user.id);
-      if (userIndex !== -1) {
-        users[userIndex].saldo_acumulado = (users[userIndex].saldo_acumulado || 0) + newSale.commission;
-        setStorage('users', users);
-      }
-
-      return newSale;
+    getAll: async () => {
+      const res = await fetch(`${API_URL}/sales`);
+      return res.json();
     },
-    update: (id: string, updates: any) => {
-      const sales = getStorage<any[]>('sales', INITIAL_SALES);
-      const index = sales.findIndex(s => s.id === id);
-      if (index !== -1) {
-        sales[index] = { ...sales[index], ...updates };
-        setStorage('sales', sales);
-        return sales[index];
-      }
-      return null;
+    create: async (sale: any, user: User) => {
+      const res = await fetch(`${API_URL}/sales`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...sale, seller: user.name }),
+      });
+      return res.json();
     },
-    delete: (id: string) => {
-      const sales = getStorage<any[]>('sales', INITIAL_SALES);
-      const filtered = sales.filter(s => s.id !== id);
-      setStorage('sales', filtered);
+    update: async (id: string, updates: any) => {
+      const res = await fetch(`${API_URL}/sales/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updates),
+      });
+      return res.json();
+    },
+    delete: async (id: string) => {
+      await fetch(`${API_URL}/sales/${id}`, { method: 'DELETE' });
     }
   },
 
   leads: {
-    getAll: () => getStorage<any[]>('leads', INITIAL_LEADS),
-    create: (lead: any) => {
-      const leads = getStorage<any[]>('leads', INITIAL_LEADS);
-      const newLead = { ...lead, id: uuidv4(), createdAt: new Date().toISOString(), status: lead.status || 'Novo' };
-      leads.push(newLead);
-      setStorage('leads', leads);
-      return newLead;
+    getAll: async () => {
+      const res = await fetch(`${API_URL}/leads`);
+      return res.json();
     },
-    import: (leadsData: any[]) => {
-      const leads = getStorage<any[]>('leads', INITIAL_LEADS);
-      const now = new Date().toISOString();
-      const newLeads = leadsData.map(l => ({
-        ...l,
-        id: uuidv4(),
-        createdAt: now,
-        status: l.status || 'Novo'
-      }));
-      leads.push(...newLeads);
-      setStorage('leads', leads);
-      return newLeads;
+    create: async (lead: any) => {
+      const res = await fetch(`${API_URL}/leads`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(lead),
+      });
+      return res.json();
+    },
+    update: async (id: string, updates: any) => {
+      const res = await fetch(`${API_URL}/leads/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updates),
+      });
+      return res.json();
+    },
+    delete: async (id: string) => {
+      await fetch(`${API_URL}/leads/${id}`, { method: 'DELETE' });
+    },
+    import: async (leadsData: any[]) => {
+      for (const lead of leadsData) {
+        await db.leads.create(lead);
+      }
+      return leadsData;
     }
   },
 
   requests: {
-    getAll: () => getStorage<AccessRequest[]>('access_requests', INITIAL_REQUESTS),
-    getByUser: (userId: string) => getStorage<AccessRequest[]>('access_requests', INITIAL_REQUESTS).filter(r => r.usuario_id === userId),
-    create: (req: Omit<AccessRequest, 'id' | 'createdAt' | 'status'>) => {
-      const requests = getStorage<AccessRequest[]>('access_requests', INITIAL_REQUESTS);
-      const now = new Date().toISOString();
-      const newReq: AccessRequest = { 
-        ...req, 
-        id: uuidv4(), 
-        createdAt: now, 
-        data_criacao: now,
-        status: 'Pendente', // Default status for new requests
-        tipo_solicitacao: req.tipo_solicitacao || 'novo_usuario'
-      };
-      requests.push(newReq);
-      setStorage('access_requests', requests);
-      return newReq;
+    getAll: async () => {
+      const res = await fetch(`${API_URL}/access-requests`);
+      return res.json();
     },
-    updateStatus: (id: string, status: AccessRequest['status'], adminObservation?: string, adminId?: string) => {
-      const requests = getStorage<AccessRequest[]>('access_requests', INITIAL_REQUESTS);
-      const index = requests.findIndex(r => r.id === id);
-      if (index !== -1) {
-        requests[index].status = status;
-        if (adminObservation) requests[index].observacao_admin = adminObservation;
-        if (adminId) requests[index].criado_por_admin = adminId;
-        if (status === 'Finalizado' || status === 'Aprovado' || status === 'Recusado') {
-          requests[index].data_finalizacao = new Date().toISOString();
-        }
-        setStorage('access_requests', requests);
-        return requests[index];
-      }
-      return null;
+    getByUser: async (userId: string) => {
+      const res = await fetch(`${API_URL}/access-requests`);
+      const requests = await res.json();
+      return requests.filter((r: any) => r.usuario_id === userId);
+    },
+    create: async (req: Omit<AccessRequest, 'id' | 'createdAt' | 'status'>) => {
+      const res = await fetch(`${API_URL}/access-requests`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(req),
+      });
+      return res.json();
+    },
+    updateStatus: async (id: string, status: AccessRequest['status'], adminObservation?: string, adminId?: string) => {
+      const res = await fetch(`${API_URL}/access-requests/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status, observacao_admin: adminObservation, criado_por_admin: adminId }),
+      });
+      return res.json();
     }
   },
 
   credentials: {
-    getAll: () => getStorage<PlatformCredential[]>('credentials', []),
-    getByUser: (userId: string) => getStorage<PlatformCredential[]>('credentials', []).filter(c => c.usuario_id === userId),
-    create: (cred: Omit<PlatformCredential, 'id' | 'data_criacao' | 'data_atualizacao'>) => {
-      const credentials = getStorage<PlatformCredential[]>('credentials', []);
-      const now = new Date().toISOString();
-      const newCred: PlatformCredential = { 
-        ...cred, 
-        id: uuidv4(), 
-        data_criacao: now, 
-        data_atualizacao: now,
-        // Map old fields if provided for backward compatibility
-        bank: cred.banco_nome,
-        link: cred.link_acesso,
-        username: cred.login,
-        password: cred.senha,
-        updatedAt: now
-      };
-      credentials.push(newCred);
-      setStorage('credentials', credentials);
-      return newCred;
+    getAll: async () => {
+      const res = await fetch(`${API_URL}/credentials`);
+      return res.json();
     },
-    update: (id: string, updates: Partial<PlatformCredential>) => {
-      const credentials = getStorage<PlatformCredential[]>('credentials', []);
-      const index = credentials.findIndex(c => c.id === id);
-      if (index !== -1) {
-        const now = new Date().toISOString();
-        const updated = { 
-          ...credentials[index], 
-          ...updates, 
-          data_atualizacao: now,
-          updatedAt: now
-        };
-        
-        // Sync old fields
-        if (updates.banco_nome) updated.bank = updates.banco_nome;
-        if (updates.link_acesso) updated.link = updates.link_acesso;
-        if (updates.login) updated.username = updates.login;
-        if (updates.senha) updated.password = updates.senha;
-
-        credentials[index] = updated;
-        setStorage('credentials', credentials);
-        return credentials[index];
-      }
-      return null;
+    getByUser: async (userId: string) => {
+      const res = await fetch(`${API_URL}/credentials`);
+      const credentials = await res.json();
+      return credentials.filter((c: any) => c.usuario_id === userId);
     },
-    delete: (id: string) => {
-      const credentials = getStorage<PlatformCredential[]>('credentials', []);
-      const filtered = credentials.filter(c => c.id !== id);
-      setStorage('credentials', filtered);
+    create: async (cred: Omit<PlatformCredential, 'id' | 'data_criacao' | 'data_atualizacao'>) => {
+      const res = await fetch(`${API_URL}/credentials`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(cred),
+      });
+      return res.json();
+    },
+    update: async (id: string, updates: Partial<PlatformCredential>) => {
+      const res = await fetch(`${API_URL}/credentials/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updates),
+      });
+      return res.json();
+    },
+    delete: async (id: string) => {
+      await fetch(`${API_URL}/credentials/${id}`, { method: 'DELETE' });
     }
   },
 
   logs: {
-    getAll: () => getStorage<ExcelImportLog[]>('import_logs', []),
-    add: (log: Omit<ExcelImportLog, 'id' | 'date'>) => {
-      const logs = getStorage<ExcelImportLog[]>('import_logs', []);
-      const newLog = { ...log, id: uuidv4(), date: new Date().toISOString() };
-      logs.push(newLog);
-      setStorage('import_logs', logs);
-      return newLog;
-    },
-    getSecurityLogs: () => getStorage<any[]>('security_logs', []),
-    addSecurityLog: (log: { userId: string; action: string; resource: string; details?: string }) => {
-      const logs = getStorage<any[]>('security_logs', []);
-      const newLog = { ...log, id: uuidv4(), date: new Date().toISOString() };
-      logs.push(newLog);
-      setStorage('security_logs', logs);
-      return newLog;
-    },
-    getImportLogs: () => getStorage<any[]>('log_importacoes', []),
-    addImportLog: (log: any) => {
-      const logs = getStorage<any[]>('log_importacoes', []);
-      const newLog = { ...log, id: uuidv4(), data: new Date().toISOString() };
-      logs.push(newLog);
-      setStorage('log_importacoes', logs);
-      return newLog;
-    }
+    getAll: async () => [],
+    add: async (log: any) => ({}),
+    getSecurityLogs: async () => [],
+    addSecurityLog: async (log: any) => ({}),
+    getImportLogs: async () => [],
+    addImportLog: async (log: any) => ({})
   },
 
   commissionGroups: {
-    getAll: () => getStorage<CommissionGroup[]>('commission_groups', INITIAL_COMMISSION_GROUPS),
-    getByBank: (bankId: string) => getStorage<CommissionGroup[]>('commission_groups', INITIAL_COMMISSION_GROUPS).filter(g => g.banco_id === bankId),
-    create: (group: Omit<CommissionGroup, 'id' | 'createdAt'>) => {
-      const groups = getStorage<CommissionGroup[]>('commission_groups', INITIAL_COMMISSION_GROUPS);
-      const newGroup = { ...group, id: uuidv4(), createdAt: new Date().toISOString() };
-      groups.push(newGroup);
-      setStorage('commission_groups', groups);
-      return newGroup;
+    getAll: async () => {
+      const res = await fetch(`${API_URL}/commission-groups`);
+      return res.json();
     },
-    delete: (id: string) => {
-      const groups = getStorage<CommissionGroup[]>('commission_groups', INITIAL_COMMISSION_GROUPS);
-      const filtered = groups.filter(g => g.id !== id);
-      setStorage('commission_groups', filtered);
+    getByBank: async (bankId: string) => {
+      const all = await fetch(`${API_URL}/commission-groups`);
+      const groups = await all.json();
+      return groups.filter((g: any) => g.banco_id === bankId);
+    },
+    create: async (group: any) => {
+      const res = await fetch(`${API_URL}/commission-groups`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(group),
+      });
+      return res.json();
+    },
+    delete: async (id: string) => {
+      await fetch(`${API_URL}/commission-groups/${id}`, { method: 'DELETE' });
     }
   },
 
   bancos: {
-    getAll: () => getStorage<Bank[]>('bancos_v1', INITIAL_BANKS),
-    create: (bank: Omit<Bank, 'id' | 'criado_em'>) => {
-      const bancos = getStorage<Bank[]>('bancos_v1', INITIAL_BANKS);
-      const newBank = { ...bank, id: uuidv4(), criado_em: new Date().toISOString() };
-      bancos.push(newBank);
-      setStorage('bancos_v1', bancos);
-      return newBank;
+    getAll: async () => {
+      const res = await fetch(`${API_URL}/banks`);
+      return res.json();
     },
-    update: (id: string, updates: Partial<Bank>) => {
-      const bancos = getStorage<Bank[]>('bancos_v1', INITIAL_BANKS);
-      const index = bancos.findIndex(b => b.id === id);
-      if (index !== -1) {
-        bancos[index] = { ...bancos[index], ...updates };
-        setStorage('bancos_v1', bancos);
-        return bancos[index];
-      }
-      return null;
+    create: async (bank: Omit<Bank, 'id' | 'criado_em'>) => {
+      const res = await fetch(`${API_URL}/banks`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(bank),
+      });
+      return res.json();
     },
-    delete: (id: string) => {
-      const bancos = getStorage<Bank[]>('bancos_v1', INITIAL_BANKS);
-      const filtered = bancos.filter(b => b.id !== id);
-      setStorage('bancos_v1', filtered);
+    update: async (id: string, updates: Partial<Bank>) => {
+      const res = await fetch(`${API_URL}/banks/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updates),
+      });
+      return res.json();
+    },
+    delete: async (id: string) => {
+      await fetch(`${API_URL}/banks/${id}`, { method: 'DELETE' });
     }
   },
 
   payment_requests: {
-    getAll: () => getStorage<PaymentRequest[]>('payment_requests', []),
-    create: (req: Omit<PaymentRequest, 'id' | 'data_solicitacao' | 'status'>) => {
-      const requests = getStorage<PaymentRequest[]>('payment_requests', []);
-      const newReq: PaymentRequest = { 
-        ...req, 
-        id: uuidv4(), 
-        data_solicitacao: new Date().toISOString(),
-        status: 'Pendente'
-      };
-      requests.push(newReq);
-      setStorage('payment_requests', requests);
-      return newReq;
+    getAll: async () => {
+      const res = await fetch(`${API_URL}/payment-requests`);
+      return res.json();
     },
-    update: (id: string, updates: Partial<PaymentRequest>) => {
-      const requests = getStorage<PaymentRequest[]>('payment_requests', []);
-      const index = requests.findIndex(r => r.id === id);
-      if (index !== -1) {
-        const oldStatus = requests[index].status;
-        requests[index] = { ...requests[index], ...updates };
-        setStorage('payment_requests', requests);
-
-        if (oldStatus !== 'Pago' && updates.status === 'Pago') {
-          const users = getStorage<User[]>('users', INITIAL_USERS);
-          const userIndex = users.findIndex(u => u.id === requests[index].usuario_id);
-          if (userIndex !== -1) {
-            users[userIndex].saldo_pago = (users[userIndex].saldo_pago || 0) + requests[index].valor;
-            setStorage('users', users);
-          }
-        }
-        return requests[index];
-      }
-      return null;
+    create: async (req: any) => {
+      const res = await fetch(`${API_URL}/payment-requests`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(req),
+      });
+      return res.json();
+    },
+    update: async (id: string, updates: any) => {
+      const res = await fetch(`${API_URL}/payment-requests/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updates),
+      });
+      return res.json();
     }
   },
 
   settings: {
-    get: () => {
-      const stored = localStorage.getItem('agoraq_settings');
-      if (stored) return JSON.parse(stored);
-      const initial = { canvaLink: 'https://www.canva.com/' };
-      localStorage.setItem('agoraq_settings', JSON.stringify(initial));
-      return initial;
+    get: async () => {
+      const res = await fetch(`${API_URL}/settings`);
+      return res.json();
     },
-    update: (newSettings: { canvaLink?: string }) => {
-      const current = db.settings.get();
-      const updated = { ...current, ...newSettings };
-      localStorage.setItem('agoraq_settings', JSON.stringify(updated));
-      return updated;
+    update: async (newSettings: any) => {
+      const res = await fetch(`${API_URL}/settings`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newSettings),
+      });
+      return res.json();
     }
   },
   academy: {
-    getAll: (): AcademyContent[] => {
-      const data = localStorage.getItem('academy_conteudos');
-      if (!data) {
-        const initial: AcademyContent[] = [
-          {
-            id: uuidv4(),
-            titulo: 'Manual de Boas Vindas',
-            categoria: 'Informativo',
-            descricao: 'Bem-vindo ao AgoraQ! Conheça nossa cultura e processos básicos.',
-            arquivo_url: 'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf',
-            tipo_arquivo: 'pdf',
-            visibilidade: 'todos',
-            versao: '1.0',
-            criado_por: 'sistema',
-            criado_em: new Date().toISOString(),
-            atualizado_em: new Date().toISOString(),
-            status: 'Ativo'
-          },
-          {
-            id: uuidv4(),
-            titulo: 'Treinamento de Vendas FGTS',
-            categoria: 'Treinamento',
-            descricao: 'Aprenda a vender antecipação de FGTS com as melhores taxas.',
-            arquivo_url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
-            tipo_arquivo: 'video',
-            visibilidade: 'vendedores',
-            versao: '2.1',
-            criado_por: 'sistema',
-            criado_em: new Date().toISOString(),
-            atualizado_em: new Date().toISOString(),
-            status: 'Ativo'
-          }
-        ];
-        localStorage.setItem('academy_conteudos', JSON.stringify(initial));
-        return initial;
-      }
-      return JSON.parse(data);
+    getAll: async () => {
+      const res = await fetch(`${API_URL}/academy`);
+      return res.json();
     },
-    create: (content: Omit<AcademyContent, 'id' | 'criado_em' | 'atualizado_em'>) => {
-      const all = db.academy.getAll();
-      const now = new Date().toISOString();
-      const newContent: AcademyContent = {
-        ...content,
-        id: uuidv4(),
-        criado_em: now,
-        atualizado_em: now
-      };
-      localStorage.setItem('academy_conteudos', JSON.stringify([...all, newContent]));
-      return newContent;
+    create: async (content: any) => {
+      const res = await fetch(`${API_URL}/academy`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(content),
+      });
+      return res.json();
     },
-    update: (id: string, updates: Partial<AcademyContent>) => {
-      const all = db.academy.getAll();
-      const updated = all.map(item => 
-        item.id === id ? { ...item, ...updates, atualizado_em: new Date().toISOString() } : item
-      );
-      localStorage.setItem('academy_conteudos', JSON.stringify(updated));
+    update: async (id: string, updates: any) => {
+      // Not implemented on backend yet
     },
-    delete: (id: string) => {
-      const all = db.academy.getAll();
-      localStorage.setItem('academy_conteudos', JSON.stringify(all.filter(i => i.id !== id)));
+    delete: async (id: string) => {
+      await fetch(`${API_URL}/academy/${id}`, { method: 'DELETE' });
+    },
+    trackView: async (conteudo_id: string, usuario_id: string) => {
+      await fetch(`${API_URL}/academy/views`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ conteudo_id, usuario_id }),
+      });
     }
   },
   academyViews: {
-    getAll: (): AcademyView[] => {
-      const data = localStorage.getItem('academy_visualizacoes');
-      return data ? JSON.parse(data) : [];
+    getAll: async () => [],
+    register: async (conteudo_id: string, usuario_id: string) => {
+      await db.academy.trackView(conteudo_id, usuario_id);
     },
-    register: (conteudo_id: string, usuario_id: string) => {
-      const all = db.academyViews.getAll();
-      const exists = all.find(v => v.conteudo_id === conteudo_id && v.usuario_id === usuario_id);
-      if (exists) return;
-
-      const newView: AcademyView = {
-        id: uuidv4(),
-        conteudo_id,
-        usuario_id,
-        data_visualizacao: new Date().toISOString()
-      };
-      localStorage.setItem('academy_visualizacoes', JSON.stringify([...all, newView]));
-    },
-    getUserViews: (usuario_id: string): string[] => {
-      return db.academyViews.getAll()
-        .filter(v => v.usuario_id === usuario_id)
-        .map(v => v.conteudo_id);
-    }
+    getUserViews: async (usuario_id: string) => []
   },
   announcements: {
-    getAll: () => getStorage<Announcement[]>('announcements', []),
-    create: (announcement: Omit<Announcement, 'id' | 'createdAt'>) => {
-      const announcements = getStorage<Announcement[]>('announcements', []);
-      const newAnnouncement = { 
-        ...announcement, 
-        id: uuidv4(), 
-        createdAt: new Date().toISOString() 
-      };
-      announcements.push(newAnnouncement);
-      setStorage('announcements', announcements);
-      return newAnnouncement;
+    getAll: async () => {
+      const res = await fetch(`${API_URL}/announcements`);
+      return res.json();
     },
-    update: (id: string, updates: Partial<Announcement>) => {
-      const announcements = getStorage<Announcement[]>('announcements', []);
-      const index = announcements.findIndex(a => a.id === id);
-      if (index !== -1) {
-        announcements[index] = { ...announcements[index], ...updates };
-        setStorage('announcements', announcements);
-        return announcements[index];
-      }
-      return null;
+    create: async (announcement: any) => {
+      const res = await fetch(`${API_URL}/announcements`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(announcement),
+      });
+      return res.json();
     },
-    delete: (id: string) => {
-      const announcements = getStorage<Announcement[]>('announcements', []);
-      const filtered = announcements.filter(a => a.id !== id);
-      setStorage('announcements', filtered);
+    update: async (id: string, updates: any) => ({}),
+    delete: async (id: string) => {
+      await fetch(`${API_URL}/announcements/${id}`, { method: 'DELETE' });
     }
   },
   campaigns: {
-    getAll: () => getStorage<any[]>('campaigns', []),
-    create: (campaign: any) => {
-      const campaigns = getStorage<any[]>('campaigns', []);
-      const newCampaign = { ...campaign, id: uuidv4(), createdAt: new Date().toISOString() };
-      campaigns.push(newCampaign);
-      setStorage('campaigns', campaigns);
-      return newCampaign;
+    getAll: async () => {
+      const res = await fetch(`${API_URL}/campaigns`);
+      return res.json();
     },
-    update: (id: string, updates: any) => {
-      const campaigns = getStorage<any[]>('campaigns', []);
-      const index = campaigns.findIndex(c => c.id === id);
-      if (index !== -1) {
-        campaigns[index] = { ...campaigns[index], ...updates };
-        setStorage('campaigns', campaigns);
-        return campaigns[index];
-      }
-      return null;
+    create: async (campaign: any) => {
+      const res = await fetch(`${API_URL}/campaigns`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(campaign),
+      });
+      return res.json();
     },
-    delete: (id: string) => {
-      const campaigns = getStorage<any[]>('campaigns', []);
-      const filtered = campaigns.filter(c => c.id !== id);
-      setStorage('campaigns', filtered);
+    update: async (id: string, updates: any) => ({}),
+    delete: async (id: string) => {
+      await fetch(`${API_URL}/campaigns/${id}`, { method: 'DELETE' });
     }
   },
   utils: {
@@ -761,4 +493,4 @@ export const db = {
       return bcrypt.compareSync(password, hash);
     }
   }
-};
+};;

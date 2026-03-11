@@ -60,7 +60,11 @@ export default function Commissions() {
   const [newCampaign, setNewCampaign] = useState({ title: '', message: '', link: '' });
 
   useEffect(() => {
-    setCampaigns(db.campaigns.getAll());
+    const loadCampaigns = async () => {
+      const all = await db.campaigns.getAll();
+      setCampaigns(all);
+    };
+    loadCampaigns();
   }, []);
 
   const [formData, setFormData] = useState<Partial<CommissionTable>>({
@@ -129,7 +133,7 @@ export default function Commissions() {
     setIsFormOpen(true);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
     if (!formData.banco || !formData.nome_tabela || !formData.produto) {
@@ -156,9 +160,9 @@ export default function Commissions() {
     };
 
     if (editingId) {
-      updateCommission(editingId, commissionData);
+      await updateCommission(editingId, commissionData);
     } else {
-      addCommission(commissionData);
+      await addCommission(commissionData);
     }
     
     setIsFormOpen(false);
@@ -210,19 +214,21 @@ export default function Commissions() {
     );
   };
 
-  const handleAddCampaign = (e: React.FormEvent) => {
+  const handleAddCampaign = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newCampaign.title || !newCampaign.message) return;
-    db.campaigns.create(newCampaign);
-    setCampaigns(db.campaigns.getAll());
+    await db.campaigns.create(newCampaign);
+    const all = await db.campaigns.getAll();
+    setCampaigns(all);
     setNewCampaign({ title: '', message: '', link: '' });
     setIsCampaignFormOpen(false);
   };
 
-  const handleDeleteCampaign = (id: string) => {
+  const handleDeleteCampaign = async (id: string) => {
     if (confirm('Excluir esta campanha?')) {
-      db.campaigns.delete(id);
-      setCampaigns(db.campaigns.getAll());
+      await db.campaigns.delete(id);
+      const all = await db.campaigns.getAll();
+      setCampaigns(all);
     }
   };
 
