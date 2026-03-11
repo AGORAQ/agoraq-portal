@@ -45,11 +45,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return { success: true };
       }
       
-      const errorData = await res.json();
-      return { success: false, error: errorData.error || 'Credenciais inválidas' };
+      let errorMessage = 'Credenciais inválidas';
+      try {
+        const errorData = await res.json();
+        errorMessage = errorData.error || errorMessage;
+      } catch (parseError) {
+        errorMessage = `Erro do servidor (${res.status})`;
+      }
+      
+      return { success: false, error: errorMessage };
     } catch (e) {
       console.error('Login error:', e);
-      return { success: false, error: 'Erro de conexão com o servidor' };
+      return { success: false, error: 'Erro de conexão: Verifique sua internet ou tente novamente.' };
     }
   };
 

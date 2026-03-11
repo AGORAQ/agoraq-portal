@@ -279,29 +279,43 @@ try {
 
 async function startServer() {
   const app = express();
-  const PORT = process.env.PORT || 3000;
+  const PORT = 3000;
 
   app.use(express.json());
+
+  // Health check
+  app.get('/api/health', (req, res) => {
+    res.json({ status: 'ok' });
+  });
 
   // --- API ROUTES ---
 
   // Auth
   app.post('/api/auth/login', (req, res) => {
-    const { email, password } = req.body;
-    const normalizedEmail = email.trim().toLowerCase();
-    const user = db.prepare('SELECT * FROM users WHERE email = ?').get(normalizedEmail) as any;
-    
-    if (!user) {
-      return res.status(401).json({ error: 'Usuário não encontrado' });
-    }
+    try {
+      const { email, password } = req.body;
+      if (!email || !password) {
+        return res.status(400).json({ error: 'E-mail e senha são obrigatórios' });
+      }
+      
+      const normalizedEmail = email.trim().toLowerCase();
+      const user = db.prepare('SELECT * FROM users WHERE email = ?').get(normalizedEmail) as any;
+      
+      if (!user) {
+        return res.status(401).json({ error: 'Usuário não encontrado' });
+      }
 
-    if (bcrypt.compareSync(password, user.password)) {
-      const lastAccess = new Date().toISOString();
-      db.prepare('UPDATE users SET lastAccess = ? WHERE id = ?').run(lastAccess, user.id);
-      const { password: _, ...userWithoutPassword } = user;
-      res.json({ ...userWithoutPassword, lastAccess });
-    } else {
-      res.status(401).json({ error: 'Senha incorreta' });
+      if (bcrypt.compareSync(password, user.password)) {
+        const lastAccess = new Date().toISOString();
+        db.prepare('UPDATE users SET lastAccess = ? WHERE id = ?').run(lastAccess, user.id);
+        const { password: _, ...userWithoutPassword } = user;
+        res.json({ ...userWithoutPassword, lastAccess });
+      } else {
+        res.status(401).json({ error: 'Senha incorreta' });
+      }
+    } catch (error) {
+      console.error('Login route error:', error);
+      res.status(500).json({ error: 'Erro interno no servidor de autenticação' });
     }
   });
 
@@ -776,8 +790,9 @@ async function startServer() {
     });
   }
 
-  app.listen(Number(PORT), '0.0.0.0', () => {
-    console.log(`Server running on http://localhost:${PORT}`);
+  console.log('Starting server on port', PORT);
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`Server running on http://0.0.0.0:${PORT}`);
   });
 }
 
