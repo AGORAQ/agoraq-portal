@@ -15,6 +15,8 @@ export interface User {
   pix_key?: string;
   saldo_acumulado?: number;
   saldo_pago?: number;
+  meta_diaria?: number;
+  // Legacy fields kept for compatibility during transition
   daily_lead_count?: number;
   last_lead_date?: string;
   monthly_goal?: number;
@@ -55,6 +57,7 @@ export interface CommissionTable {
   comissao_ouro: number;
   comissao_prata: number;
   comissao_plus: number;
+  vigencia?: string;
   status: 'Ativo' | 'Inativo';
   criado_por: string;
   data_criacao: string;
@@ -133,22 +136,61 @@ export interface PlatformCredential {
   updatedAt?: string;
 }
 
+export interface Lead {
+  id: string;
+  name: string;
+  phone: string;
+  email?: string;
+  cpf?: string;
+  city?: string;
+  banco_origem?: string;
+  status: string;
+  usuario_id?: string; // capturado_por
+  importado_por?: string;
+  capturedAt?: string;
+  createdAt: string;
+}
+
 export interface Sale {
   id: string;
+  vendedor_id: string;
+  vendedor_nome?: string;
+  lead_id?: string;
   date: string;
-  proposal: string;
+  proposal?: string;
   client: string;
-  cpf: string;
-  phone: string;
+  cpf?: string;
+  phone?: string;
   bank: string;
-  operacao: string;
-  table: string;
-  value: number;
-  commission: number;
-  companyCommission: number;
-  bankCommission: number;
-  status: 'Pendente' | 'Em Averbação' | 'Aguardando Formalização do Link' | 'Paga' | 'Cancelada';
-  seller: string;
+  produto: string;
+  tabela: string;
+  parcelas: string;
+  valor_venda: number;
+  valor_comissao: number;
+  percentual_empresa: number;
+  percentual_vendedor: number;
+  grupo_vendedor?: string;
+  status: 'Pendente' | 'Aprovada' | 'Cancelada' | 'Paga' | 'Em Averbação' | 'Aguardando Formalização do Link';
+  // Legacy fields for compatibility
+  value?: number;
+  commission?: number;
+  companyCommission?: number;
+  bankCommission?: number;
+  operacao?: string;
+  table?: string;
+  seller?: string;
+}
+
+export interface FinancialEntry {
+  id: string;
+  sale_id?: string;
+  vendedor_id: string;
+  tipo: 'Crédito' | 'Débito' | 'Estorno';
+  valor: number;
+  descricao?: string;
+  status: 'Pendente' | 'Pago' | 'Cancelado';
+  created_at: string;
+  updated_at: string;
 }
 
 export interface PaymentRequest {

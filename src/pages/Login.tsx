@@ -29,13 +29,20 @@ export default function Login() {
 
   React.useEffect(() => {
     const checkFirstRun = async () => {
+      console.log('Checking for first run...');
       try {
         const users = await db.users.getAll();
+        console.log('Users found:', users.length);
         if (users.length === 0) {
           setIsFirstRun(true);
         }
-      } catch (e) {
+      } catch (e: any) {
         console.error('Check first run error:', e);
+        // If table doesn't exist (code 42P01 in Postgres/Supabase), it's a first run
+        if (e.code === '42P01' || e.message?.includes('relation "profiles" does not exist')) {
+          console.log('Profiles table not found, assuming first run.');
+          setIsFirstRun(true);
+        }
       }
     };
     checkFirstRun();
@@ -236,6 +243,15 @@ export default function Login() {
               </button>
               <div className="text-sm text-slate-500">
                 Não tem acesso? <Link to="/solicitar-acesso" className="text-blue-600 font-medium hover:underline">Solicitar Cadastro</Link>
+              </div>
+              <div className="mt-6 pt-4 border-t border-slate-100 w-full text-center">
+                <button 
+                  type="button"
+                  onClick={() => setIsFirstRun(true)}
+                  className="text-xs text-blue-600 hover:text-blue-800 font-medium bg-blue-50 px-4 py-2 rounded-full transition-colors border-none cursor-pointer"
+                >
+                  Primeiro acesso? Configurar Administrador
+                </button>
               </div>
             </CardFooter>
           )}

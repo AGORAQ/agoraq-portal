@@ -1,5 +1,5 @@
 import { supabase } from '@/lib/supabase';
-import { User, CommissionTable, AccessRequest, PlatformCredential, Sale, Bank, PaymentRequest, Announcement, ExcelImportLog, CommissionGroup, AcademyContent, AcademyView } from '@/types';
+import { User, CommissionTable, AccessRequest, PlatformCredential, Sale, Bank, PaymentRequest, Announcement, ExcelImportLog, CommissionGroup, AcademyContent, AcademyView, Lead, FinancialEntry } from '@/types';
 
 // Database Service - Supabase Driven
 export const db = {
@@ -37,7 +37,7 @@ export const db = {
       const { data, error } = await supabase
         .from('profiles')
         .select('*')
-        .eq('auth_user_id', authId)
+        .eq('id', authId)
         .single();
       if (error) throw error;
       return mapProfileToUser(data);
@@ -213,32 +213,29 @@ export const db = {
     getAll: async () => {
       const { data, error } = await supabase
         .from('sales')
-        .select('*, profiles(nome)')
+        .select('*, profiles(nome), leads(nome, cpf)')
         .order('created_at', { ascending: false });
       if (error) throw error;
-      return data.map(s => ({
-        ...s,
-        seller: s.profiles?.nome || 'Desconhecido'
-      }));
+      return data.map(mapTableToSale);
     },
     create: async (sale: any, user: User) => {
       const { data, error } = await supabase
         .from('sales')
-        .insert([{ ...sale, vendedor_id: user.id }])
+        .insert([mapSaleToTable({ ...sale, vendedor_id: user.id })])
         .select()
         .single();
       if (error) throw error;
-      return data;
+      return mapTableToSale(data);
     },
     update: async (id: string, updates: any) => {
       const { data, error } = await supabase
         .from('sales')
-        .update(updates)
+        .update(mapSaleToTable(updates))
         .eq('id', id)
         .select()
         .single();
       if (error) throw error;
-      return data;
+      return mapTableToSale(data);
     },
     delete: async (id: string) => {
       const { error } = await supabase
@@ -246,6 +243,35 @@ export const db = {
         .delete()
         .eq('id', id);
       if (error) throw error;
+    }
+  },
+
+  financial: {
+    getAll: async (vendedorId?: string) => {
+      let query = supabase.from('financial_entries').select('*');
+      if (vendedorId) query = query.eq('vendedor_id', vendedorId);
+      const { data, error } = await query.order('created_at', { ascending: false });
+      if (error) throw error;
+      return data;
+    },
+    create: async (entry: Partial<FinancialEntry>) => {
+      const { data, error } = await supabase
+        .from('financial_entries')
+        .insert([entry])
+        .select()
+        .single();
+      if (error) throw error;
+      return data;
+    },
+    updateStatus: async (id: string, status: string) => {
+      const { data, error } = await supabase
+        .from('financial_entries')
+        .update({ status })
+        .eq('id', id)
+        .select()
+        .single();
+      if (error) throw error;
+      return data;
     }
   },
 
@@ -617,40 +643,46 @@ function mapProfileToUser(p: any): User {
     status: p.ativo ? 'Ativo' : 'Inativo',
     lastAccess: p.created_at,
     grupo_comissao: p.grupo_comissao,
-    contract_signed: p.contract_signed,
+    meta_diaria: p.meta_diaria,
+    // Legacy fields for compatibility
+    daily_goal: p.meta_diaria,
     monthly_goal: p.monthly_goal,
-    daily_goal: p.daily_goal,
     daily_lead_count: p.daily_lead_count,
-    last_lead_date: p.last_lead_date
+    last_lead_date: p.last_lead_date,
+    contract_signed: p.contract_signed
   };
 }
 
 function mapUserToProfile(u: any): any {
   const p: any = {};
-  if (u.auth_user_id) p.auth_user_id = u.auth_user_id;
+  if (u.id) p.id = u.id;
+  if (u.auth_user_id) p.id = u.auth_user_id; // Handle both cases
   if (u.name) p.nome = u.name;
   if (u.email) p.email = u.email;
   if (u.role) p.perfil = u.role;
   if (u.status) p.ativo = u.status === 'Ativo';
   if (u.grupo_comissao) p.grupo_comissao = u.grupo_comissao;
+  if (u.meta_diaria !== undefined) p.meta_diaria = u.meta_diaria;
+  // Legacy fields
   if (u.contract_signed !== undefined) p.contract_signed = u.contract_signed;
   if (u.monthly_goal !== undefined) p.monthly_goal = u.monthly_goal;
-  if (u.daily_goal !== undefined) p.daily_goal = u.daily_goal;
+  if (u.daily_goal !== undefined) p.meta_diaria = u.daily_goal;
   if (u.daily_lead_count !== undefined) p.daily_lead_count = u.daily_lead_count;
   if (u.last_lead_date !== undefined) p.last_lead_date = u.last_lead_date;
   return p;
 }
 
-function mapTableToLead(t: any): any {
+function mapTableToLead(t: any): Lead {
   return {
     id: t.id,
     name: t.nome,
     phone: t.telefone,
     email: t.email,
     cpf: t.cpf,
-    city: t.cidade,
+    banco_origem: t.banco_origem,
     status: t.status,
     usuario_id: t.capturado_por,
+    importado_por: t.importado_por,
     capturedAt: t.capturado_em,
     createdAt: t.created_at
   };
@@ -662,10 +694,11 @@ function mapLeadToTable(l: any): any {
     telefone: l.phone || l.telefone,
     email: l.email,
     cpf: l.cpf,
-    cidade: l.city || l.cidade,
+    banco_origem: l.banco_origem,
     status: l.status || 'Disponível',
     capturado_por: l.usuario_id || l.capturado_por,
-    capturado_em: l.capturedAt || l.capturado_em
+    capturado_em: l.capturedAt || l.capturado_em,
+    importado_por: l.importado_por
   };
 }
 
@@ -685,6 +718,7 @@ function mapTableToCommission(t: any): CommissionTable {
     comissao_ouro: t.grupo_ouro,
     comissao_prata: t.grupo_prata,
     comissao_plus: t.grupo_plus,
+    vigencia: t.vigencia,
     status: t.status,
     criado_por: '',
     data_criacao: t.created_at,
@@ -703,7 +737,52 @@ function mapCommissionToTable(c: any): any {
     grupo_ouro: c.comissao_ouro,
     grupo_prata: c.comissao_prata,
     grupo_plus: c.comissao_plus,
+    vigencia: c.vigencia,
     status: c.status || 'Ativo',
     origem_importacao: c.origem_importacao
   };
+}
+
+function mapTableToSale(t: any): Sale {
+  return {
+    id: t.id,
+    vendedor_id: t.vendedor_id,
+    vendedor_nome: t.profiles?.nome || 'Desconhecido',
+    lead_id: t.lead_id,
+    date: t.created_at,
+    client: t.leads?.nome || 'Cliente', // Try to get from lead join
+    cpf: t.leads?.cpf,
+    bank: t.banco,
+    produto: t.produto,
+    tabela: t.tabela,
+    parcelas: t.parcelas,
+    valor_venda: t.valor_venda,
+    valor_comissao: t.valor_comissao,
+    percentual_empresa: t.percentual_empresa,
+    percentual_vendedor: t.percentual_vendedor,
+    grupo_vendedor: t.grupo_vendedor,
+    status: t.status,
+    // Legacy mapping
+    value: t.valor_venda,
+    commission: t.valor_comissao,
+    companyCommission: t.percentual_empresa,
+    seller: t.profiles?.nome || 'Desconhecido'
+  };
+}
+
+function mapSaleToTable(s: any): any {
+  const t: any = {};
+  if (s.vendedor_id) t.vendedor_id = s.vendedor_id;
+  if (s.lead_id) t.lead_id = s.lead_id;
+  if (s.bank) t.banco = s.bank;
+  if (s.produto) t.produto = s.produto;
+  if (s.tabela) t.tabela = s.tabela;
+  if (s.parcelas) t.parcelas = s.parcelas;
+  if (s.valor_venda) t.valor_venda = s.valor_venda;
+  if (s.valor_comissao) t.valor_comissao = s.valor_comissao;
+  if (s.percentual_empresa) t.percentual_empresa = s.percentual_empresa;
+  if (s.percentual_vendedor) t.percentual_vendedor = s.percentual_vendedor;
+  if (s.grupo_vendedor) t.grupo_vendedor = s.grupo_vendedor;
+  if (s.status) t.status = s.status;
+  return t;
 }
