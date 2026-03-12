@@ -1016,8 +1016,6 @@ export default function AdminPanel() {
                       >
                         <option value="MASTER">MASTER</option>
                         <option value="OURO">OURO</option>
-                        <option value="PRATA">PRATA</option>
-                        <option value="PLUS">PLUS</option>
                       </select>
                     </div>
                     <div className="space-y-2">

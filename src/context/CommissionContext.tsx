@@ -21,7 +21,7 @@ export function CommissionProvider({ children }: { children: React.ReactNode }) 
   const { user } = useAuth();
 
   const refreshCommissions = async () => {
-    const userGroup = user?.grupo_comissao || 'PLUS';
+    const userGroup = user?.grupo_comissao || 'OURO';
     const all = await db.commissions.getAll(user?.role, userGroup);
     
     // Calculate percentual_vendedor for each table based on user's group
@@ -30,9 +30,7 @@ export function CommissionProvider({ children }: { children: React.ReactNode }) 
       switch (userGroup) {
         case 'MASTER': percentual_vendedor = c.comissao_master; break;
         case 'OURO': percentual_vendedor = c.comissao_ouro; break;
-        case 'PRATA': percentual_vendedor = c.comissao_prata; break;
-        case 'PLUS': percentual_vendedor = c.comissao_plus; break;
-        default: percentual_vendedor = c.comissao_plus;
+        default: percentual_vendedor = c.comissao_ouro;
       }
       return { ...c, percentual_vendedor };
     });

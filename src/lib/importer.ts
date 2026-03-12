@@ -67,45 +67,49 @@ const COLUMN_SYNONYMS: { [key: string]: string } = {
   'valor final': 'faixa_valor_max',
   'faixa max': 'faixa_valor_max',
   
-  'comissao empresa': 'percentual_total_empresa',
-  'comissao total empresa': 'percentual_total_empresa',
-  'comissao total (%)': 'percentual_total_empresa',
-  'comissao total': 'percentual_total_empresa',
-  'total %': 'percentual_total_empresa',
-  '% total': 'percentual_total_empresa',
-  '% empresa': 'percentual_total_empresa',
-  'comissao empresa %': 'percentual_total_empresa',
-  'percentual total empresa': 'percentual_total_empresa',
-  'total empresa': 'percentual_total_empresa',
-  'comissao_total_empresa': 'percentual_total_empresa',
+  'comissao empresa': 'comissao_total_empresa',
+  'comissao total empresa': 'comissao_total_empresa',
+  'comissao total (%)': 'comissao_total_empresa',
+  'comissao total': 'comissao_total_empresa',
+  'total %': 'comissao_total_empresa',
+  '% total': 'comissao_total_empresa',
+  '% empresa': 'comissao_total_empresa',
+  'comissao empresa %': 'comissao_total_empresa',
+  'percentual total empresa': 'comissao_total_empresa',
+  'total empresa': 'comissao_total_empresa',
+  'comissao_total_empresa': 'comissao_total_empresa',
 
-  'grupo master': 'comissao_master',
-  'master': 'comissao_master',
-  'comissao master': 'comissao_master',
-  '% master': 'comissao_master',
-  'master %': 'comissao_master',
-  'comissao master %': 'comissao_master',
+  'grupo master': 'grupo_master',
+  'master': 'grupo_master',
+  'comissao master': 'grupo_master',
+  '% master': 'grupo_master',
+  'master %': 'grupo_master',
+  'comissao master %': 'grupo_master',
+  'grupo_master': 'grupo_master',
 
-  'grupo ouro': 'comissao_ouro',
-  'ouro': 'comissao_ouro',
-  'comissao ouro': 'comissao_ouro',
-  '% ouro': 'comissao_ouro',
-  'ouro %': 'comissao_ouro',
-  'comissao ouro %': 'comissao_ouro',
+  'grupo ouro': 'grupo_ouro',
+  'ouro': 'grupo_ouro',
+  'comissao ouro': 'grupo_ouro',
+  '% ouro': 'grupo_ouro',
+  'ouro %': 'grupo_ouro',
+  'comissao ouro %': 'grupo_ouro',
+  'grupo_ouro': 'grupo_ouro',
 
-  'grupo prata': 'comissao_prata',
-  'prata': 'comissao_prata',
-  'comissao prata': 'comissao_prata',
-  '% prata': 'comissao_prata',
-  'prata %': 'comissao_prata',
-  'comissao prata %': 'comissao_prata',
+  'grupo prata': 'grupo_prata',
+  'prata': 'grupo_prata',
+  'comissao prata': 'grupo_prata',
+  '% prata': 'grupo_prata',
+  'prata %': 'grupo_prata',
+  'comissao prata %': 'grupo_prata',
+  'grupo_prata': 'grupo_prata',
 
-  'grupo plus': 'comissao_plus',
-  'plus': 'comissao_plus',
-  'comissao plus': 'comissao_plus',
-  '% plus': 'comissao_plus',
-  'plus %': 'comissao_plus',
-  'comissao plus %': 'comissao_plus',
+  'grupo plus': 'grupo',
+  'plus': 'grupo',
+  'comissao plus': 'grupo',
+  '% plus': 'grupo',
+  'plus %': 'grupo',
+  'comissao plus %': 'grupo',
+  'grupo': 'grupo',
   
   'percentual vendedor (%)': 'percentual_vendedor',
   'comissao vendedor': 'percentual_vendedor',
@@ -118,7 +122,6 @@ const COLUMN_SYNONYMS: { [key: string]: string } = {
   'percentual empresa': 'percentual_empresa',
   
   'grupo de comissao': 'grupo_comissao',
-  'grupo': 'grupo_comissao',
   'categoria': 'grupo_comissao',
   'perfil': 'grupo_comissao',
 
@@ -210,10 +213,11 @@ export const normalizeValue = (value: any): any => {
   
   // If it's already a number from XLSX
   if (typeof value === 'number') {
-    // XLSX often reads percentages as decimals (e.g. 0.12 for 12%)
-    // If the value is very small and likely a percentage, we might need to handle it.
-    // However, in this system, we'll keep the raw number and let the UI handle it or
-    // assume the user wants the raw value.
+    // XLSX often reads percentages as decimals (e.g. 0.39 for 39%)
+    // If the value is <= 1 and > 0, we treat it as a decimal percentage and multiply by 100
+    if (value > 0 && value <= 1) {
+      return parseFloat((value * 100).toFixed(4));
+    }
     return value;
   }
 
@@ -340,7 +344,7 @@ export const parseFromUrl = async (url: string): Promise<ImportResult> => {
 
 export const validateCommissions = (data: NormalizedData[]): string[] => {
   const errors: string[] = [];
-  const requiredFields = ['banco', 'produto', 'nome_tabela', 'percentual_total_empresa', 'comissao_master', 'comissao_ouro'];
+  const requiredFields = ['banco', 'produto', 'nome_tabela', 'comissao_total_empresa', 'grupo_master', 'grupo_ouro'];
   
   data.forEach((row, index) => {
     requiredFields.forEach(field => {
@@ -349,7 +353,7 @@ export const validateCommissions = (data: NormalizedData[]): string[] => {
       }
     });
     
-    ['percentual_total_empresa', 'comissao_master', 'comissao_ouro', 'comissao_prata', 'comissao_plus'].forEach(field => {
+    ['comissao_total_empresa', 'grupo_master', 'grupo_ouro', 'grupo_prata', 'grupo'].forEach(field => {
       if (row[field] !== undefined && row[field] !== null && row[field] !== '' && typeof row[field] !== 'number') {
         errors.push(`Linha ${index + 2}: '${field}' deve ser um número.`);
       }
