@@ -49,21 +49,12 @@ export default function Dashboard() {
   const [bankDistribution, setBankDistribution] = React.useState<{ name: string; value: number }[]>([]);
   const [projection, setProjection] = React.useState({ total: 0, company: 0, seller: 0 });
   const [topTables, setTopTables] = React.useState<any[]>([]);
-  const [isLocalMode, setIsLocalMode] = React.useState(false);
-  const [apiUrl, setApiUrl] = React.useState('');
 
   const isAdmin = user?.role === 'admin';
   const isSupervisor = user?.role === 'supervisor';
   const isManagement = isAdmin || isSupervisor;
 
   React.useEffect(() => {
-    const checkMode = async () => {
-      const status = await db.status.check();
-      setIsLocalMode(!status);
-      setApiUrl(localStorage.getItem('agoraq_api_url') || 'Padrão (Cloud Run)');
-    };
-    checkMode();
-
     const init = async () => {
       const settings = await db.settings.get();
       if (settings.canvaLink) {
@@ -180,28 +171,6 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-6">
-      {isLocalMode && (
-        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-start gap-3 shadow-sm animate-in fade-in slide-in-from-top-4 duration-500">
-          <div className="p-2 bg-amber-100 rounded-lg text-amber-600">
-            <AlertTriangle className="w-5 h-5" />
-          </div>
-          <div className="flex-1">
-            <h3 className="text-sm font-bold text-amber-900">Modo Local Ativo</h3>
-            <p className="text-xs text-amber-700 mt-1 leading-relaxed">
-              O sistema não conseguiu se conectar ao servidor central (<strong>{apiUrl}</strong>). Seus dados estão sendo salvos <strong>apenas neste computador</strong>. 
-              Para sincronizar dados entre diferentes PCs e dispositivos, certifique-se de usar o link oficial do Cloud Run ou configurar a API no Painel Admin.
-            </p>
-          </div>
-          <Button 
-            variant="outline" 
-            size="sm" 
-            className="border-amber-200 text-amber-700 hover:bg-amber-100 shrink-0"
-            onClick={() => window.location.reload()}
-          >
-            Tentar Reconectar
-          </Button>
-        </div>
-      )}
       <DailyWisdom />
       <Announcements />
       

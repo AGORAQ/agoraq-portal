@@ -100,12 +100,7 @@ export default function GlobalImporter({ type, onImportComplete, onClose }: Glob
     try {
       if (type === 'comissoes') {
         if (importMode === 'replace') {
-          // In a real app, we'd have a specific replace method. 
-          // For this mock db, we'll just clear and import.
-          const existing = await db.commissions.getAll('admin', undefined);
-          for (const c of existing) {
-            await db.commissions.delete(c.id, 'admin', user?.id || '');
-          }
+          await db.commissions.deleteAll('admin', user?.id || '');
         }
         
         await db.commissions.import(preview as any, 'admin', user?.id || '');

@@ -18,6 +18,8 @@ export interface User {
   daily_lead_count?: number;
   last_lead_date?: string;
   monthly_goal?: number;
+  daily_goal?: number;
+  contract_signed?: boolean;
 }
 
 export interface Bank {

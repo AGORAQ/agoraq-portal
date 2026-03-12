@@ -147,20 +147,14 @@ export default function SalesData() {
   useEffect(() => {
     const updateGoalData = () => {
       if (!user) return;
-      const today = new Date().toISOString().split('T')[0];
-      const storageKey = `daily_goal_${today}_${user.id || user.email}`;
-      const savedGoal = localStorage.getItem(storageKey);
-      setDailyGoal(savedGoal ? parseInt(savedGoal) : 0);
+      setDailyGoal(user.daily_goal || 0);
 
+      const today = new Date().toISOString().split('T')[0];
       // Calculate today's sales for the current user
       const count = sales.filter(s => 
         s.date === today && 
-        (s.seller === user.name || user.role === 'admin') // Admin sees all, seller sees theirs? 
-        // Actually, goal is usually personal. Let's filter by seller if not admin, or maybe just count user's sales.
-        // The prompt implies personal goal ("sua meta").
-        // If I am admin, I might have a personal sales goal too?
-        // Let's assume the goal tracks the logged-in user's sales.
-      ).filter(s => s.seller === user.name).length;
+        s.seller === user.name
+      ).length;
       
       setTodaySalesCount(count);
     };

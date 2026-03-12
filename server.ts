@@ -38,6 +38,7 @@ function initDb() {
       daily_lead_count INTEGER DEFAULT 0,
       last_lead_date TEXT,
       monthly_goal REAL DEFAULT 0,
+      contract_signed INTEGER DEFAULT 0,
       deleted_at TEXT
     );
 
@@ -323,7 +324,7 @@ async function startServer() {
 
   // Users
   app.get('/api/users', (req, res) => {
-    const users = db.prepare('SELECT id, name, email, role, status, lastAccess, grupo_comissao, saldo_acumulado, saldo_pago, monthly_goal FROM users WHERE deleted_at IS NULL').all();
+    const users = db.prepare('SELECT id, name, email, role, status, lastAccess, grupo_comissao, saldo_acumulado, saldo_pago, monthly_goal, contract_signed FROM users WHERE deleted_at IS NULL').all();
     res.json(users);
   });
 
@@ -570,6 +571,153 @@ async function startServer() {
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `).run(id, lead.name, lead.phone, lead.email, lead.city, lead.status || 'Novo', new Date().toISOString(), lead.usuario_id);
     res.json({ id, ...lead });
+  });
+
+  // Commissions Import
+  app.post('/api/commissions/import', (req, res) => {
+    const { comms, userId } = req.body;
+    if (!Array.isArray(comms)) return res.status(400).json({ error: 'Dados inválidos' });
+
+    const now = new Date().toISOString();
+    const insert = db.prepare(`
+      INSERT INTO commissions (
+        id, banco, produto, operacao, parcelas, codigo_tabela, nome_tabela, 
+        faixa_valor_min, faixa_valor_max, percentual_total_empresa, 
+        comissao_master, comissao_ouro, comissao_prata, comissao_plus, 
+        status, criado_por, data_criacao, data_atualizacao
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    const transaction = db.transaction((items) => {
+      for (const comm of items) {
+        insert.run(
+          uuidv4(), comm.banco, comm.produto, comm.operacao, comm.parcelas, comm.codigo_tabela, comm.nome_tabela,
+          comm.faixa_valor_min || 0, comm.faixa_valor_max || 9999999, comm.percentual_total_empresa || 0,
+          comm.comissao_master || 0, comm.comissao_ouro || 0, comm.comissao_prata || 0, comm.comissao_plus || 0,
+          'Ativo', userId, now, now
+        );
+      }
+    });
+
+    try {
+      transaction(comms);
+      res.json({ success: true, count: comms.length });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // Leads Available
+  app.get('/api/leads/available', (req, res) => {
+    const leads = db.prepare('SELECT * FROM leads WHERE usuario_id IS NULL OR usuario_id = ""').all();
+    res.json(leads);
+  });
+
+  app.delete('/api/leads/available', (req, res) => {
+    db.prepare('DELETE FROM leads WHERE usuario_id IS NULL OR usuario_id = ""').run();
+    res.json({ success: true });
+  });
+
+  app.post('/api/leads/:id/capture', (req, res) => {
+    const { id } = req.params;
+    const { userId } = req.body;
+    const now = new Date().toISOString();
+    const today = now.split('T')[0];
+
+    // Check user limit
+    const user = db.prepare('SELECT daily_lead_count, last_lead_date FROM users WHERE id = ?').get(userId) as any;
+    if (!user) return res.status(404).json({ error: 'Usuário não encontrado' });
+
+    let count = user.daily_lead_count || 0;
+    if (user.last_lead_date !== today) {
+      count = 0;
+    }
+
+    if (count >= 100) {
+      return res.status(403).json({ error: 'Você já atingiu o limite diário de 100 leads.' });
+    }
+
+    // Capture lead
+    const result = db.prepare('UPDATE leads SET usuario_id = ?, status = ?, capturedAt = ? WHERE id = ? AND (usuario_id IS NULL OR usuario_id = "")')
+      .run(userId, 'Em Atendimento', now, id);
+
+    if (result.changes === 0) {
+      return res.status(409).json({ error: 'Este lead já foi capturado por outro vendedor.' });
+    }
+
+    // Update user count
+    db.prepare('UPDATE users SET daily_lead_count = ?, last_lead_date = ? WHERE id = ?').run(count + 1, today, userId);
+
+    res.json({ success: true });
+  });
+
+  app.post('/api/leads/bulk-capture', (req, res) => {
+    const { leadIds, userId } = req.body;
+    if (!Array.isArray(leadIds) || !userId) {
+      return res.status(400).json({ error: 'Dados inválidos' });
+    }
+
+    const now = new Date().toISOString();
+    const today = now.split('T')[0];
+
+    // Check user limit
+    const user = db.prepare('SELECT daily_lead_count, last_lead_date FROM users WHERE id = ?').get(userId) as any;
+    if (!user) return res.status(404).json({ error: 'Usuário não encontrado' });
+
+    let count = user.daily_lead_count || 0;
+    if (user.last_lead_date !== today) {
+      count = 0;
+    }
+
+    const remainingLimit = 100 - count;
+    if (remainingLimit <= 0) {
+      return res.status(403).json({ error: 'Você já atingiu o limite diário de 100 leads.' });
+    }
+
+    const toCapture = leadIds.slice(0, remainingLimit);
+    let capturedCount = 0;
+
+    const transaction = db.transaction((ids) => {
+      for (const id of ids) {
+        const result = db.prepare('UPDATE leads SET usuario_id = ?, status = ?, capturedAt = ? WHERE id = ? AND (usuario_id IS NULL OR usuario_id = "")')
+          .run(userId, 'Em Atendimento', now, id);
+        if (result.changes > 0) {
+          capturedCount++;
+        }
+      }
+      db.prepare('UPDATE users SET daily_lead_count = ?, last_lead_date = ? WHERE id = ?').run(count + capturedCount, today, userId);
+    });
+
+    try {
+      transaction(toCapture);
+      res.json({ success: true, capturedCount });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.post('/api/leads/import', (req, res) => {
+    const { leads } = req.body;
+    if (!Array.isArray(leads)) return res.status(400).json({ error: 'Dados inválidos' });
+
+    const now = new Date().toISOString();
+    const insert = db.prepare(`
+      INSERT INTO leads (id, name, phone, email, city, status, createdAt, usuario_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    const transaction = db.transaction((items) => {
+      for (const lead of items) {
+        insert.run(uuidv4(), lead.name, lead.phone, lead.email, lead.city, 'Novo', now, null);
+      }
+    });
+
+    try {
+      transaction(leads);
+      res.json({ success: true, count: leads.length });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
   });
 
   // Access Requests

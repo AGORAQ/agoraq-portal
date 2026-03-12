@@ -37,19 +37,12 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = React.useState(false);
   const location = useLocation();
 
-  const [isLocalMode, setIsLocalMode] = useState(false);
-  const [apiUrl, setApiUrl] = useState('');
-
   React.useEffect(() => {
-    const checkMode = async () => {
-      const status = await db.status.check();
-      setIsLocalMode(!status);
-      setApiUrl(localStorage.getItem('agoraq_api_url') || 'Padrão (Cloud Run)');
+    // Check Supabase connection status if needed
+    const checkStatus = async () => {
+      await db.status.check();
     };
-    checkMode();
-    // Check every 30 seconds
-    const interval = setInterval(checkMode, 30000);
-    return () => clearInterval(interval);
+    checkStatus();
   }, []);
 
   const handleLogout = () => {
@@ -133,26 +126,6 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         </div>
 
         <div className="p-4 border-t border-slate-800 bg-slate-900">
-          <div 
-            className={cn(
-              "flex flex-col gap-2 px-3 py-2 rounded-lg text-[10px] font-bold uppercase tracking-wider mb-4 border transition-all",
-              isLocalMode 
-                ? "bg-amber-500/10 text-amber-400 border-amber-500/20" 
-                : "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
-            )}
-            title={isLocalMode ? `O servidor não foi detectado. API: ${apiUrl}` : `Conectado ao servidor. API: ${apiUrl}`}
-          >
-            <div className="flex items-center gap-2">
-              <div className={cn("w-1.5 h-1.5 rounded-full", isLocalMode ? "bg-amber-500 animate-pulse" : "bg-emerald-500")} />
-              {isLocalMode ? 'Modo Local (Offline)' : 'Modo Nuvem (Online)'}
-            </div>
-            {isLocalMode && (
-              <p className="normal-case font-normal text-[9px] text-amber-500/70 leading-tight">
-                Para sincronizar entre computadores, use o link oficial do Cloud Run.
-              </p>
-            )}
-          </div>
-
           <Link to="/perfil" className="flex items-center gap-3 mb-4 px-2 hover:bg-slate-800 rounded-lg p-2 transition-colors">
             <div className="w-10 h-10 rounded-full bg-blue-600 flex items-center justify-center text-white font-bold overflow-hidden">
               {user?.avatar ? (

@@ -3,34 +3,39 @@ import { FileText, CheckCircle, ExternalLink, AlertTriangle } from 'lucide-react
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { useAuth } from '@/context/AuthContext';
+import { db } from '@/services/db';
 
 export function ContractAgreementModal() {
-  const { user } = useAuth();
+  const { user, updateUser } = useAuth();
   const [isOpen, setIsOpen] = useState(false);
   const [contractTerms, setContractTerms] = useState('');
   const [signatureLink, setSignatureLink] = useState('');
   const [hasVisitedLink, setHasVisitedLink] = useState(false);
 
   useEffect(() => {
-    if (!user) return;
+    const checkContract = async () => {
+      if (!user) return;
 
-    // Check if contract is configured
-    const terms = localStorage.getItem('admin_contract_terms');
-    const link = localStorage.getItem('admin_contract_link');
+      try {
+        const settings = await db.settings.get();
+        const terms = settings?.contractTerms;
+        const link = settings?.contractLink;
 
-    if (!terms || !link) return; // No contract configured, skip
+        if (!terms || !link) return;
 
-    setContractTerms(terms);
-    setSignatureLink(link);
+        setContractTerms(terms);
+        setSignatureLink(link);
 
-    // Check if user has already signed
-    // Use email as the primary key for consistency with Admin Panel
-    const signedKey = `contract_signed_${user.email}`;
-    const hasSigned = localStorage.getItem(signedKey);
+        // Check if user has already signed using the database field
+        if (!user.contract_signed) {
+          setIsOpen(true);
+        }
+      } catch (e) {
+        console.warn('Failed to fetch contract settings', e);
+      }
+    };
 
-    if (!hasSigned) {
-      setIsOpen(true);
-    }
+    checkContract();
   }, [user]);
 
   const handleVisitLink = () => {
@@ -38,12 +43,18 @@ export function ContractAgreementModal() {
     setHasVisitedLink(true);
   };
 
-  const handleConfirmSignature = () => {
+  const handleConfirmSignature = async () => {
     if (!user) return;
-    const signedKey = `contract_signed_${user.email}`;
-    localStorage.setItem(signedKey, 'true');
-    setIsOpen(false);
-    alert('Contrato assinado com sucesso! Bem-vindo ao sistema.');
+    
+    try {
+      await db.users.update(user.id, { contract_signed: true } as any);
+      updateUser({ contract_signed: true });
+      setIsOpen(false);
+      alert('Contrato assinado com sucesso! Bem-vindo ao sistema.');
+    } catch (e) {
+      console.error('Failed to update contract status', e);
+      alert('Erro ao confirmar assinatura. Tente novamente.');
+    }
   };
 
   if (!isOpen) return null;

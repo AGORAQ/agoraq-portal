@@ -190,12 +190,25 @@ export const normalizeValue = (value: any): any => {
       numStr = numStr.replace(/\./g, '').replace(',', '.');
     } else {
       // No comma: could be US format or plain number
-      // If there are multiple dots, they are thousands.
+      // If there's exactly one dot and it's followed by 3 digits, 
+      // it's highly likely a thousands separator in BR context.
+      // Example: 1.234 -> 1234
+      // But 1.23 -> 1.23
       const dots = (numStr.match(/\./g) || []).length;
-      if (dots > 1) {
+      if (dots === 1) {
+        const parts = numStr.split('.');
+        if (parts[1].length === 3) {
+          // Ambiguous, but in BR spreadsheets without commas, 
+          // a dot followed by 3 digits is usually a thousands separator.
+          // We'll check if it's a very large number or if it looks like a year.
+          const val = parseFloat(numStr.replace('.', ''));
+          if (val > 100) { // Heuristic: if > 100, likely thousands
+             numStr = numStr.replace('.', '');
+          }
+        }
+      } else if (dots > 1) {
         numStr = numStr.replace(/\./g, '');
       }
-      // If one dot, we treat it as decimal by default (standard parseFloat)
     }
 
     const parsed = parseFloat(numStr);

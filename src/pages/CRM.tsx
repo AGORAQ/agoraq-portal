@@ -7,6 +7,7 @@ import { ExternalLink, Copy, Database, Upload, UserPlus, Download, LayoutGrid, L
 import { useAuth } from '@/context/AuthContext';
 import GlobalImporter from '@/components/GlobalImporter';
 import { db } from '@/services/db';
+import { parseFile } from '@/lib/importer';
 import * as XLSX from 'xlsx';
 
 const crms = [
@@ -103,40 +104,22 @@ export default function CRM() {
 
     try {
       // Get all unassigned leads
-      const allLeads = await db.leads.getAll();
-      const unassignedLeads = allLeads.filter((l: any) => !l.usuario_id);
+      const unassignedLeads = await db.leads.getAvailable();
       
-      for (let i = 0; i < qty; i++) {
-        // Increment count on backend for each lead
-        const result = await db.users.incrementLeads(user!.id);
-        if (result.error) {
-          alert(result.error);
-          break;
-        }
-
-        // If we have unassigned leads, take one
-        if (unassignedLeads.length > i) {
-          const leadToCapture = unassignedLeads[i];
-          await db.leads.update(leadToCapture.id, { usuario_id: user?.id });
-        } else {
-          // Fallback to creating a new lead if pool is empty
-          await db.leads.create({
-            name: `Lead Capturado ${Math.floor(Math.random() * 1000)}`,
-            phone: `(11) 9${Math.floor(Math.random() * 90000000 + 10000000)}`,
-            email: `lead${Math.floor(Math.random() * 1000)}@email.com`,
-            city: 'Captura Automática',
-            status: 'Novo',
-            usuario_id: user?.id
-          });
-        }
+      if (unassignedLeads.length < qty) {
+        alert(`Apenas ${unassignedLeads.length} leads disponíveis na base.`);
+        return;
       }
 
+      const leadIdsToCapture = unassignedLeads.slice(0, qty).map(l => l.id);
+      const result = await db.leads.bulkCapture(leadIdsToCapture, user!.id);
+
       await refreshLeads();
-      alert(`${qty} leads capturados com sucesso!`);
+      alert(`${result.capturedCount} leads capturados com sucesso!`);
       setCaptureQuantity(1);
     } catch (error: any) {
       console.error('Error capturing leads:', error);
-      alert('Erro ao capturar leads. Verifique sua conexão.');
+      alert(error.message || 'Erro ao capturar leads. Verifique sua conexão.');
     }
   };
 
@@ -152,44 +135,40 @@ export default function CRM() {
       Email: l.email,
       Cidade: l.city,
       Status: l.status,
-      Data: new Date(l.createdAt).toLocaleDateString()
+      Data: l.capturedAt ? new Date(l.capturedAt).toLocaleDateString() : new Date(l.createdAt).toLocaleDateString()
     })));
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, "Leads");
     XLSX.writeFile(workbook, `leads_export_${new Date().toISOString().split('T')[0]}.xlsx`);
   };
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    const reader = new FileReader();
-    reader.onload = async (event) => {
-      try {
-        const data = new Uint8Array(event.target?.result as ArrayBuffer);
-        const workbook = XLSX.read(data, { type: 'array' });
-        const sheetName = workbook.SheetNames[0];
-        const worksheet = workbook.Sheets[sheetName];
-        const jsonData = XLSX.utils.sheet_to_json(worksheet) as any[];
-
-        const leadsToImport = jsonData.map(row => ({
-          name: row.Nome || row.name || 'Lead Importado',
-          phone: row.Telefone || row.phone || '',
-          email: row.Email || row.email || '',
-          city: row.Cidade || row.city || 'Importado',
-          status: 'Novo',
-          usuario_id: isAdmin ? null : user?.id
-        }));
-
-        await db.leads.import(leadsToImport);
-        await refreshLeads();
-        alert(`${leadsToImport.length} leads importados com sucesso!`);
-      } catch (error) {
-        console.error('Error importing leads:', error);
-        alert('Erro ao processar o arquivo. Verifique o formato.');
+    try {
+      const { data: jsonData, errors } = await parseFile(file);
+      
+      if (errors.length > 0) {
+        alert(errors[0]);
+        return;
       }
-    };
-    reader.readAsArrayBuffer(file);
+
+      const leadsToImport = jsonData.map(row => ({
+        name: row.name || row.nome || 'Lead Importado',
+        phone: String(row.phone || row.telefone || ''),
+        email: row.email || '',
+        city: row.city || row.cidade || 'Importado',
+        status: 'Novo'
+      }));
+
+      await db.leads.import(leadsToImport);
+      await refreshLeads();
+      alert(`${leadsToImport.length} leads importados com sucesso!`);
+    } catch (error) {
+      console.error('Error importing leads:', error);
+      alert('Erro ao processar o arquivo. Verifique o formato.');
+    }
   };
 
   const handleDeleteLead = async (id: string) => {
@@ -435,10 +414,7 @@ export default function CRM() {
                   className="border-red-200 text-red-700 hover:bg-red-50"
                   onClick={async () => {
                     if (confirm('Tem certeza que deseja limpar TODA a base de leads não capturados?')) {
-                      const unassigned = leads.filter(l => !l.usuario_id);
-                      for (const l of unassigned) {
-                        await db.leads.delete(l.id);
-                      }
+                      await db.leads.deleteAllAvailable();
                       await refreshLeads();
                     }
                   }}

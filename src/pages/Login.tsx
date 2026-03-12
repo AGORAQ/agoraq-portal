@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
+import { db } from '@/services/db';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/Card';
@@ -15,7 +16,9 @@ export default function Login() {
   const [successMessage, setSuccessMessage] = useState('');
   const [loading, setLoading] = useState(false);
   const [isForgotPassword, setIsForgotPassword] = useState(false);
-  const { login, isAuthenticated } = useAuth();
+  const [isFirstRun, setIsFirstRun] = useState(false);
+  const [setupData, setSetupData] = useState({ name: '', email: '', password: '' });
+  const { login, register, isAuthenticated } = useAuth();
   const navigate = useNavigate();
 
   React.useEffect(() => {
@@ -23,6 +26,20 @@ export default function Login() {
       navigate('/');
     }
   }, [isAuthenticated, navigate]);
+
+  React.useEffect(() => {
+    const checkFirstRun = async () => {
+      try {
+        const users = await db.users.getAll();
+        if (users.length === 0) {
+          setIsFirstRun(true);
+        }
+      } catch (e) {
+        console.error('Check first run error:', e);
+      }
+    };
+    checkFirstRun();
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -39,6 +56,25 @@ export default function Login() {
       }
     } catch (err) {
       setError('Ocorreu um erro ao tentar fazer login.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSetup = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    setLoading(true);
+    try {
+      const result = await register(setupData.email, setupData.password, setupData.name, 'admin');
+      if (result.success) {
+        alert('Administrador inicial criado com sucesso!');
+        navigate('/');
+      } else {
+        setError(result.error || 'Erro ao criar administrador.');
+      }
+    } catch (err) {
+      setError('Erro ao configurar sistema.');
     } finally {
       setLoading(false);
     }
@@ -62,16 +98,62 @@ export default function Login() {
         <Card className="border-slate-200 shadow-xl">
           <CardHeader>
             <CardTitle className="text-center text-xl">
-              {isForgotPassword ? 'Recuperar Senha' : 'Acesso ao Sistema'}
+              {isFirstRun ? 'Configuração Inicial' : isForgotPassword ? 'Recuperar Senha' : 'Acesso ao Sistema'}
             </CardTitle>
             <CardDescription className="text-center">
-              {isForgotPassword 
+              {isFirstRun 
+                ? 'Crie o primeiro administrador para começar'
+                : isForgotPassword 
                 ? 'Digite seu e-mail para receber as instruções' 
                 : 'Entre com suas credenciais para continuar'}
             </CardDescription>
           </CardHeader>
           <CardContent>
-            {isForgotPassword ? (
+            {isFirstRun ? (
+              <form onSubmit={handleSetup} className="space-y-4">
+                {error && (
+                  <div className="bg-red-50 text-red-600 p-3 rounded-md text-sm flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4" />
+                    {error}
+                  </div>
+                )}
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Nome do Administrador</label>
+                  <Input 
+                    placeholder="Nome Completo" 
+                    value={setupData.name}
+                    onChange={(e) => setSetupData(prev => ({ ...prev, name: e.target.value }))}
+                    required
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">E-mail</label>
+                  <Input 
+                    type="email"
+                    placeholder="admin@agoraqoficial.com" 
+                    value={setupData.email}
+                    onChange={(e) => setSetupData(prev => ({ ...prev, email: e.target.value }))}
+                    required
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Senha</label>
+                  <Input 
+                    type="password"
+                    placeholder="Crie uma senha forte" 
+                    value={setupData.password}
+                    onChange={(e) => setSetupData(prev => ({ ...prev, password: e.target.value }))}
+                    required
+                  />
+                </div>
+                <Button type="submit" className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2" disabled={loading}>
+                  {loading ? 'Configurando...' : 'Criar Administrador e Entrar'}
+                </Button>
+                <p className="text-[10px] text-slate-400 text-center">
+                  Esta tela só aparece porque não existem usuários no banco de dados.
+                </p>
+              </form>
+            ) : isForgotPassword ? (
               <div className="space-y-6">
                 <div className="bg-blue-50 border border-blue-200 p-4 rounded-lg flex gap-3">
                   <ShieldAlert className="w-5 h-5 text-blue-600 shrink-0" />
@@ -155,23 +237,6 @@ export default function Login() {
               <div className="text-sm text-slate-500">
                 Não tem acesso? <Link to="/solicitar-acesso" className="text-blue-600 font-medium hover:underline">Solicitar Cadastro</Link>
               </div>
-              <button 
-                type="button"
-                onClick={() => {
-                  const url = prompt('Configure a URL da API para sincronização (ex: https://sua-api.run.app/api):', localStorage.getItem('agoraq_api_url') || '');
-                  if (url !== null) {
-                    if (url === '') {
-                      localStorage.removeItem('agoraq_api_url');
-                    } else {
-                      localStorage.setItem('agoraq_api_url', url);
-                    }
-                    window.location.reload();
-                  }
-                }}
-                className="text-[10px] text-slate-400 hover:text-blue-600 bg-transparent border-none cursor-pointer mt-2"
-              >
-                Configurar API de Sincronização
-              </button>
             </CardFooter>
           )}
         </Card>

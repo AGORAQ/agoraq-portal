@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { useAuth } from '@/context/AuthContext';
+import { db } from '@/services/db';
 
 export function DailyGoalModal() {
   const { user } = useAuth();
@@ -13,27 +14,27 @@ export function DailyGoalModal() {
   useEffect(() => {
     if (!user) return;
 
-    const today = new Date().toISOString().split('T')[0];
-    const storageKey = `daily_goal_${today}_${user.id || user.email}`;
-    const savedGoal = localStorage.getItem(storageKey);
-
-    if (!savedGoal) {
+    // Check if user already has a daily goal set in their profile
+    // We'll use the daily_goal field in the profiles table
+    if (!user.daily_goal) {
       setIsOpen(true);
     }
   }, [user]);
 
-  const handleSaveGoal = (e: React.FormEvent) => {
+  const handleSaveGoal = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user || !goal) return;
 
-    const today = new Date().toISOString().split('T')[0];
-    const storageKey = `daily_goal_${today}_${user.id || user.email}`;
-    
-    localStorage.setItem(storageKey, goal);
-    setIsOpen(false);
-    
-    // Optional: Trigger a custom event so other components know the goal changed
-    window.dispatchEvent(new Event('goalUpdated'));
+    try {
+      await db.users.update(user.id, { daily_goal: Number(goal) });
+      setIsOpen(false);
+      
+      // Optional: Trigger a custom event so other components know the goal changed
+      window.dispatchEvent(new Event('goalUpdated'));
+    } catch (error) {
+      console.error('Error saving daily goal:', error);
+      alert('Erro ao salvar meta diária.');
+    }
   };
 
   if (!isOpen) return null;

@@ -8,7 +8,7 @@ import { db } from '@/services/db';
 import { generateTutorialVideo } from '@/services/videoService';
 
 export default function Profile() {
-  const { user, login } = useAuth();
+  const { user, updateUser, changePassword } = useAuth();
   const [formData, setFormData] = useState({
     name: '',
     email: '',
@@ -20,6 +20,7 @@ export default function Profile() {
   const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
   const [videoLoading, setVideoLoading] = useState(false);
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
     if (user) {
@@ -46,50 +47,47 @@ export default function Profile() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setMessage(null);
+    setIsSaving(true);
 
     if (!user) return;
 
-    // Validate passwords if changing
-    if (formData.newPassword) {
-      if (formData.newPassword !== formData.confirmPassword) {
-        setMessage({ type: 'error', text: 'As novas senhas não coincidem.' });
-        return;
-      }
-      if (formData.newPassword.length < 6) {
-        setMessage({ type: 'error', text: 'A nova senha deve ter pelo menos 6 caracteres.' });
-        return;
-      }
-      // In a real app, we would verify currentPassword with backend
-      if (!db.utils.comparePassword(formData.currentPassword, user.password)) {
-         setMessage({ type: 'error', text: 'Senha atual incorreta.' });
-         return;
-      }
-    }
-
     try {
+      // Handle password change if requested
+      if (formData.newPassword) {
+        if (formData.newPassword !== formData.confirmPassword) {
+          setMessage({ type: 'error', text: 'As novas senhas não coincidem.' });
+          setIsSaving(false);
+          return;
+        }
+        if (formData.newPassword.length < 6) {
+          setMessage({ type: 'error', text: 'A nova senha deve ter pelo menos 6 caracteres.' });
+          setIsSaving(false);
+          return;
+        }
+        
+        const pwdResult = await changePassword(formData.newPassword);
+        if (!pwdResult.success) {
+          setMessage({ type: 'error', text: pwdResult.error || 'Erro ao alterar senha.' });
+          setIsSaving(false);
+          return;
+        }
+      }
+
+      // Handle profile updates
       const updates: any = {
         name: formData.name,
         avatar: formData.avatar
       };
 
-      if (formData.newPassword) {
-        updates.password = formData.newPassword;
-      }
-
-      const updatedUser = await db.users.update(user.id, updates);
+      await updateUser(updates);
       
-      if (updatedUser) {
-        // Update local session
-        localStorage.setItem('agoraq_user', JSON.stringify(updatedUser));
-        window.location.reload(); 
-        
-        setMessage({ type: 'success', text: 'Perfil atualizado com sucesso!' });
-        setFormData(prev => ({ ...prev, currentPassword: '', newPassword: '', confirmPassword: '' }));
-      } else {
-        setMessage({ type: 'error', text: 'Erro ao atualizar perfil.' });
-      }
+      setMessage({ type: 'success', text: 'Perfil atualizado com sucesso!' });
+      setFormData(prev => ({ ...prev, currentPassword: '', newPassword: '', confirmPassword: '' }));
     } catch (error) {
-      setMessage({ type: 'error', text: 'Ocorreu um erro ao salvar.' });
+      console.error('Profile update error:', error);
+      setMessage({ type: 'error', text: 'Ocorreu um erro ao salvar as alterações.' });
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -246,9 +244,18 @@ export default function Profile() {
         </Card>
 
         <div className="mt-6 flex justify-end">
-          <Button type="submit" className="bg-blue-900 hover:bg-blue-800 w-full sm:w-auto">
-            <Save className="w-4 h-4 mr-2" />
-            Salvar Alterações
+          <Button type="submit" disabled={isSaving} className="bg-blue-900 hover:bg-blue-800 w-full sm:w-auto">
+            {isSaving ? (
+              <>
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                Salvando...
+              </>
+            ) : (
+              <>
+                <Save className="w-4 h-4 mr-2" />
+                Salvar Alterações
+              </>
+            )}
           </Button>
         </div>
       </form>

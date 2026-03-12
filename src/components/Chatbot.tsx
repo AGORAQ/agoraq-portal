@@ -4,6 +4,7 @@ import { Input } from '@/components/ui/Input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { MessageCircle, X, Send, Bot, User, Loader2 } from 'lucide-react';
 import { GoogleGenAI } from "@google/genai";
+import { db } from '@/services/db';
 
 // Initialize the Google GenAI client
 // Note: In a real app, you should handle the API key more securely, perhaps via a backend proxy.
@@ -55,7 +56,16 @@ export default function Chatbot() {
 
       const model = "gemini-3-flash-preview";
       const defaultSystemInstruction = "Você é um assistente útil e experiente da empresa AgoraQ, especializado em ajudar vendedores de crédito consignado. Você responde dúvidas sobre comissões, uso do CRM, captura de leads e roteiros operacionais. Seja conciso, profissional e motivador.";
-      const systemInstruction = localStorage.getItem('ai_system_prompt') || defaultSystemInstruction;
+      
+      let systemInstruction = defaultSystemInstruction;
+      try {
+        const settings = await db.settings.get();
+        if (settings && settings.aiSystemPrompt) {
+          systemInstruction = settings.aiSystemPrompt;
+        }
+      } catch (e) {
+        console.warn('Failed to fetch AI settings, using default', e);
+      }
 
       // Construct history for context
       // Note: For a simple implementation we just send the last message with system instruction context

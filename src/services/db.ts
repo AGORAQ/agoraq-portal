@@ -1,487 +1,600 @@
-import { v4 as uuidv4 } from 'uuid';
-import bcrypt from 'bcryptjs';
-import { User, CommissionTable, AccessRequest, PlatformCredential, ExcelImportLog, CommissionGroup, AcademyContent, AcademyView, Bank, PaymentRequest, Announcement } from '@/types';
+import { supabase } from '@/lib/supabase';
+import { User, CommissionTable, AccessRequest, PlatformCredential, Sale, Bank, PaymentRequest, Announcement, ExcelImportLog, CommissionGroup, AcademyContent, AcademyView } from '@/types';
 
-// Password Hashing Helper
-const hashPassword = (password: string) => bcrypt.hashSync(password, 10);
-
-// Initial Data (Passwords are hashed)
-const INITIAL_USERS: User[] = [
-  { id: '1', name: 'Administrador', email: 'agoraq@agoraqoficial.com', role: 'admin', status: 'Ativo', lastAccess: new Date().toISOString(), password: hashPassword('admin'), saldo_acumulado: 0, saldo_pago: 0, grupo_comissao: 'MASTER' },
-];
-
-const INITIAL_BANKS: Bank[] = [];
-
-const INITIAL_COMMISSIONS: CommissionTable[] = [];
-
-const INITIAL_SALES: any[] = [];
-
-const INITIAL_LEADS: any[] = [];
-
-const INITIAL_REQUESTS: AccessRequest[] = [];
-
-const INITIAL_COMMISSION_GROUPS: CommissionGroup[] = [];
-
-// Determine the API URL
-// In production/Netlify, we can point this to the Cloud Run backend URL
-const CLOUD_RUN_URL = 'https://ais-dev-w47zxljbghf6tucdlbhe2z-410044833253.us-east1.run.app';
-const API_URL_OVERRIDE = localStorage.getItem('agoraq_api_url');
-const API_URL = API_URL_OVERRIDE || import.meta.env.VITE_API_URL || (window.location.hostname.includes('netlify.app') ? `${CLOUD_RUN_URL}/api` : '/api');
-
-// Local Storage Persistence for Static Environments (Netlify/Demo)
-const localStore = {
-  get: (key: string, fallback: any = []) => {
-    try {
-      const data = localStorage.getItem(`agoraq_${key}`);
-      if (!data) {
-        // If no data in localStorage, check if we should seed it with initial data
-        let initialData = fallback;
-        if (key === 'users') initialData = [...INITIAL_USERS];
-        if (key === 'commissions') initialData = [...INITIAL_COMMISSIONS];
-        if (key === 'banks') initialData = [...INITIAL_BANKS];
-        if (key === 'leads') initialData = [...INITIAL_LEADS];
-        if (key === 'sales') initialData = [...INITIAL_SALES];
-        if (key === 'requests') initialData = [...INITIAL_REQUESTS];
-        
-        // Seed it so it's there for next time
-        if (initialData !== fallback) {
-          localStorage.setItem(`agoraq_${key}`, JSON.stringify(initialData));
-        }
-        return initialData;
-      }
-      return JSON.parse(data);
-    } catch (e) {
-      return fallback;
-    }
-  },
-  set: (key: string, data: any) => {
-    localStorage.setItem(`agoraq_${key}`, JSON.stringify(data));
-  },
-  addItem: (key: string, item: any, fallbackData: any = []) => {
-    const items = localStore.get(key, fallbackData);
-    const newItem = { ...item, id: item.id || uuidv4(), createdAt: item.createdAt || new Date().toISOString() };
-    const newItems = [...items, newItem];
-    localStore.set(key, newItems);
-    return newItem;
-  },
-  updateItem: (key: string, id: string, updates: any, fallbackData: any = []) => {
-    const items = localStore.get(key, fallbackData);
-    const newItems = items.map((item: any) => item.id === id ? { ...item, ...updates } : item);
-    localStore.set(key, newItems);
-    return { success: true, ...updates };
-  },
-  deleteItem: (key: string, id: string, fallbackData: any = []) => {
-    const items = localStore.get(key, fallbackData);
-    const newItems = items.filter((item: any) => item.id !== id);
-    localStore.set(key, newItems);
-    return { success: true };
-  }
-};
-
-// Helper for safe fetching with fallback for static environments
-const safeFetch = async (url: string, options?: RequestInit, fallbackKey?: string, fallbackData: any = []) => {
-  // Determine if we should use local storage as fallback
-  // We use it if we are on a known static host OR if the API call fails
-  const isKnownStatic = window.location.hostname.includes('netlify.app') || 
-                        window.location.hostname.includes('github.io') || 
-                        window.location.hostname.includes('vercel.app');
-  
-  try {
-    const res = await fetch(url, options);
-    
-    // If API is working, use it
-    if (res.ok) {
-      const data = await res.json();
-      // Optionally sync to local storage for offline support
-      if (fallbackKey && options?.method === undefined) {
-        localStore.set(fallbackKey, data);
-      }
-      return data;
-    }
-    
-    // If API returns 404 or other error, and we have a fallback key, use localStorage
-    if (fallbackKey) {
-      console.warn(`API error (${res.status}) for ${url}. Falling back to localStorage[${fallbackKey}].`);
-      return handleLocalStorageFallback(options, fallbackKey, fallbackData, url);
-    }
-    
-    return fallbackData;
-  } catch (e) {
-    // Network error (API unreachable)
-    if (fallbackKey) {
-      console.warn(`API unreachable for ${url}. Falling back to localStorage[${fallbackKey}].`);
-      return handleLocalStorageFallback(options, fallbackKey, fallbackData, url);
-    }
-    return fallbackData;
-  }
-};
-
-const handleLocalStorageFallback = (options: RequestInit | undefined, key: string, fallbackData: any, url: string) => {
-  if (options?.method === 'POST') {
-    try {
-      let body = JSON.parse(options.body as string);
-      
-      // Hash password if creating a user locally
-      if (key === 'users' && body.password) {
-        body = { ...body, password: hashPassword(body.password) };
-      }
-      
-      return localStore.addItem(key, body, fallbackData);
-    } catch (e) {
-      return fallbackData;
-    }
-  }
-  if (options?.method === 'PUT') {
-    try {
-      const id = url.split('/').pop() || '';
-      let body = JSON.parse(options.body as string);
-
-      // Hash password if updating a user password locally
-      if (key === 'users' && body.password) {
-        body = { ...body, password: hashPassword(body.password) };
-      }
-
-      return localStore.updateItem(key, id, body, fallbackData);
-    } catch (e) {
-      return fallbackData;
-    }
-  }
-  if (options?.method === 'DELETE') {
-    const id = url.split('/').pop() || '';
-    return localStore.deleteItem(key, id, fallbackData);
-  }
-  // Default GET
-  return localStore.get(key, fallbackData);
-};
-
-// Database Service
+// Database Service - Supabase Driven
 export const db = {
+  API_URL: import.meta.env.VITE_SUPABASE_URL || 'Supabase',
   status: {
     check: async () => {
       try {
-        const res = await fetch(`${API_URL}/health`);
-        return res.ok;
+        const { error } = await supabase.from('profiles').select('id').limit(1);
+        return !error;
       } catch (e) {
         return false;
       }
     }
   },
+
   users: {
-    getAll: async () => safeFetch(`${API_URL}/users`, undefined, 'users', INITIAL_USERS),
-    getById: async (id: string) => {
-      const users = await safeFetch(`${API_URL}/users`, undefined, 'users', INITIAL_USERS);
-      return users.find((u: any) => u.id === id);
+    getAll: async () => {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .order('nome');
+      if (error) throw error;
+      return data.map(mapProfileToUser);
     },
-    create: async (user: Omit<User, 'id' | 'lastAccess'>) => safeFetch(`${API_URL}/users`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(user),
-    }, 'users'),
-    update: async (id: string, updates: Partial<User>) => safeFetch(`${API_URL}/users/${id}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(updates),
-    }, 'users'),
-    delete: async (id: string) => safeFetch(`${API_URL}/users/${id}`, { method: 'DELETE' }, 'users'),
-    incrementLeads: async (id: string) => {
-      try {
-        const res = await fetch(`${API_URL}/users/${id}/increment-leads`, { method: 'POST' });
-        if (res.ok) return res.json();
-      } catch (e) {
-        // Fallback
-      }
-      
-      const users = localStore.get('users', INITIAL_USERS);
-      const today = new Date().toISOString().split('T')[0];
-      const updatedUsers = users.map((u: any) => {
-        if (u.id === id) {
-          const count = u.last_lead_date === today ? (u.daily_lead_count || 0) + 1 : 1;
-          return { ...u, daily_lead_count: count, last_lead_date: today };
-        }
-        return u;
-      });
-      localStore.set('users', updatedUsers);
-      return { success: true };
+    getById: async (id: string) => {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', id)
+        .single();
+      if (error) throw error;
+      return mapProfileToUser(data);
+    },
+    getByAuthId: async (authId: string) => {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('auth_user_id', authId)
+        .single();
+      if (error) throw error;
+      return mapProfileToUser(data);
+    },
+    create: async (user: any) => {
+      const { data, error } = await supabase
+        .from('profiles')
+        .insert([mapUserToProfile(user)])
+        .select()
+        .single();
+      if (error) throw error;
+      return mapProfileToUser(data);
+    },
+    update: async (id: string, updates: Partial<User>) => {
+      const { data, error } = await supabase
+        .from('profiles')
+        .update(mapUserToProfile(updates))
+        .eq('id', id)
+        .select()
+        .single();
+      if (error) throw error;
+      return mapProfileToUser(data);
+    },
+    delete: async (id: string) => {
+      const { error } = await supabase
+        .from('profiles')
+        .delete()
+        .eq('id', id);
+      if (error) throw error;
     }
   },
 
   commissions: {
-    getAll: async (role: string = 'vendedor', userGroup?: string) => {
-      const params = new URLSearchParams({ role });
-      if (userGroup) params.append('group', userGroup);
-      return safeFetch(`${API_URL}/commissions?${params.toString()}`, undefined, 'commissions', INITIAL_COMMISSIONS);
+    getAll: async (role?: string, userGroup?: string) => {
+      const { data, error } = await supabase
+        .from('commission_tables')
+        .select('*')
+        .order('banco');
+      if (error) throw error;
+      return data.map(mapTableToCommission);
     },
-    create: async (comm: Omit<CommissionTable, 'id' | 'data_criacao' | 'data_atualizacao'>, userRole: string, userId: string) => safeFetch(`${API_URL}/commissions`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...comm, criado_por: userId }),
-    }, 'commissions'),
-    update: async (id: string, updates: Partial<CommissionTable>, userRole: string, userId: string) => safeFetch(`${API_URL}/commissions/${id}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(updates),
-    }, 'commissions'),
-    delete: async (id: string, userRole: string, userId: string) => safeFetch(`${API_URL}/commissions/${id}`, { method: 'DELETE' }, 'commissions'),
-    deleteMany: async (ids: string[], userRole: string, userId: string) => {
-      try {
-        const res = await fetch(`${API_URL}/commissions/bulk-delete`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ ids }),
-        });
-        if (res.ok) return res.json();
-      } catch (e) {
-        // Fallback
-      }
-      
-      const items = localStore.get('commissions');
-      localStore.set('commissions', items.filter((i: any) => !ids.includes(i.id)));
-      return { success: true };
+    create: async (comm: any, userRole?: string, userId?: string) => {
+      const { data, error } = await supabase
+        .from('commission_tables')
+        .insert([mapCommissionToTable(comm)])
+        .select()
+        .single();
+      if (error) throw error;
+      return mapTableToCommission(data);
     },
-    deleteAll: async (userRole: string, userId: string) => {
-      try {
-        const res = await fetch(`${API_URL}/commissions/delete-all`, { method: 'POST' });
-        if (res.ok) return res.json();
-      } catch (e) {
-        // Fallback
-      }
-      
-      localStore.set('commissions', []);
-      return { success: true };
+    update: async (id: string, updates: any, userRole?: string, userId?: string) => {
+      const { data, error } = await supabase
+        .from('commission_tables')
+        .update(mapCommissionToTable(updates))
+        .eq('id', id)
+        .select()
+        .single();
+      if (error) throw error;
+      return mapTableToCommission(data);
     },
-    import: async (comms: Omit<CommissionTable, 'id' | 'data_criacao' | 'data_atualizacao'>[], userRole: string, userId: string) => {
-      // Try API first
-      try {
-        // For bulk import, we might want a specific endpoint, but for now we'll try to loop or just use local if it fails
-        // Actually, let's just use local if we're in a static-ish environment to be safe
-        const isStatic = window.location.hostname.includes('netlify.app') || 
-                         window.location.hostname.includes('github.io') || 
-                         window.location.hostname.includes('vercel.app');
-        
-        if (!isStatic) {
-          for (const comm of comms) {
-            await db.commissions.create(comm, userRole, userId);
-          }
-          return comms;
-        }
-      } catch (e) {
-        // Fallback to local
-      }
+    delete: async (id: string, userRole?: string, userId?: string) => {
+      const { error } = await supabase
+        .from('commission_tables')
+        .delete()
+        .eq('id', id);
+      if (error) throw error;
+    },
+    deleteMany: async (ids: string[], userRole?: string, userId?: string) => {
+      const { error } = await supabase
+        .from('commission_tables')
+        .delete()
+        .in('id', ids);
+      if (error) throw error;
+    },
+    deleteAll: async (userRole?: string, userId?: string) => {
+      const { error } = await supabase
+        .from('commission_tables')
+        .delete()
+        .neq('id', '00000000-0000-0000-0000-000000000000');
+      if (error) throw error;
+    },
+    import: async (comms: any[], userRole?: string, userId?: string) => {
+      const { data, error } = await supabase
+        .from('commission_tables')
+        .insert(comms.map(mapCommissionToTable))
+        .select();
+      if (error) throw error;
+      return data.map(mapTableToCommission);
+    }
+  },
 
-      const existing = localStore.get('commissions');
-      const now = new Date().toISOString();
-      const newComms = comms.map(c => ({ 
-        ...c, 
-        id: uuidv4(),
-        status: 'Ativo',
-        data_criacao: now,
-        data_atualizacao: now,
-        criado_por: userId
-      }));
-      localStore.set('commissions', [...existing, ...newComms]);
-      return newComms;
+  leads: {
+    getAll: async () => {
+      const { data, error } = await supabase
+        .from('leads')
+        .select('*')
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      return data.map(mapTableToLead);
+    },
+    getAvailable: async () => {
+      const { data, error } = await supabase
+        .from('leads')
+        .select('*')
+        .eq('status', 'Disponível')
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      return data.map(mapTableToLead);
+    },
+    capture: async (leadId: string, userId: string) => {
+      const { data, error } = await supabase
+        .from('leads')
+        .update({
+          capturado_por: userId,
+          capturado_em: new Date().toISOString(),
+          status: 'Capturado'
+        })
+        .eq('id', leadId)
+        .eq('status', 'Disponível')
+        .select()
+        .single();
+      if (error) throw error;
+      return mapTableToLead(data);
+    },
+    bulkCapture: async (leadIds: string[], userId: string) => {
+      const { data, error } = await supabase
+        .from('leads')
+        .update({
+          capturado_por: userId,
+          capturado_em: new Date().toISOString(),
+          status: 'Capturado'
+        })
+        .in('id', leadIds)
+        .eq('status', 'Disponível')
+        .select();
+      if (error) throw error;
+      return { capturedCount: data?.length || 0, leads: data.map(mapTableToLead) };
+    },
+    create: async (lead: any) => {
+      const { data, error } = await supabase
+        .from('leads')
+        .insert([mapLeadToTable(lead)])
+        .select()
+        .single();
+      if (error) throw error;
+      return mapTableToLead(data);
+    },
+    import: async (leads: any[]) => {
+      const { data, error } = await supabase
+        .from('leads')
+        .insert(leads.map(mapLeadToTable))
+        .select();
+      if (error) throw error;
+      return data.map(mapTableToLead);
+    },
+    delete: async (id: string) => {
+      const { error } = await supabase
+        .from('leads')
+        .delete()
+        .eq('id', id);
+      if (error) throw error;
+    },
+    deleteAllAvailable: async () => {
+      const { error } = await supabase
+        .from('leads')
+        .delete()
+        .eq('status', 'Disponível');
+      if (error) throw error;
     }
   },
 
   sales: {
-    getAll: async () => safeFetch(`${API_URL}/sales`, undefined, 'sales', INITIAL_SALES),
-    create: async (sale: any, user: User) => safeFetch(`${API_URL}/sales`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...sale, seller: user.name }),
-    }, 'sales'),
-    update: async (id: string, updates: any) => safeFetch(`${API_URL}/sales/${id}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(updates),
-    }, 'sales'),
-    delete: async (id: string) => safeFetch(`${API_URL}/sales/${id}`, { method: 'DELETE' }, 'sales')
-  },
-
-  leads: {
-    getAll: async () => safeFetch(`${API_URL}/leads`, undefined, 'leads', INITIAL_LEADS),
-    create: async (lead: any) => safeFetch(`${API_URL}/leads`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(lead),
-    }, 'leads'),
-    update: async (id: string, updates: any) => safeFetch(`${API_URL}/leads/${id}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(updates),
-    }, 'leads'),
-    delete: async (id: string) => safeFetch(`${API_URL}/leads/${id}`, { method: 'DELETE' }, 'leads'),
-    import: async (leadsData: any[]) => {
-      try {
-        const isStatic = window.location.hostname.includes('netlify.app') || 
-                         window.location.hostname.includes('github.io') || 
-                         window.location.hostname.includes('vercel.app');
-        
-        if (!isStatic) {
-          for (const lead of leadsData) {
-            await db.leads.create(lead);
-          }
-          return leadsData;
-        }
-      } catch (e) {
-        // Fallback
-      }
-
-      const existing = localStore.get('leads');
-      const now = new Date().toISOString();
-      const newLeads = leadsData.map(l => ({ 
-        ...l, 
-        id: uuidv4(),
-        createdAt: now,
-        status: l.status || 'Novo'
+    getAll: async () => {
+      const { data, error } = await supabase
+        .from('sales')
+        .select('*, profiles(nome)')
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      return data.map(s => ({
+        ...s,
+        seller: s.profiles?.nome || 'Desconhecido'
       }));
-      localStore.set('leads', [...existing, ...newLeads]);
-      return newLeads;
+    },
+    create: async (sale: any, user: User) => {
+      const { data, error } = await supabase
+        .from('sales')
+        .insert([{ ...sale, vendedor_id: user.id }])
+        .select()
+        .single();
+      if (error) throw error;
+      return data;
+    },
+    update: async (id: string, updates: any) => {
+      const { data, error } = await supabase
+        .from('sales')
+        .update(updates)
+        .eq('id', id)
+        .select()
+        .single();
+      if (error) throw error;
+      return data;
+    },
+    delete: async (id: string) => {
+      const { error } = await supabase
+        .from('sales')
+        .delete()
+        .eq('id', id);
+      if (error) throw error;
     }
   },
 
   requests: {
-    getAll: async () => safeFetch(`${API_URL}/access-requests`, undefined, 'requests', INITIAL_REQUESTS),
+    getAll: async () => {
+      const { data, error } = await supabase
+        .from('access_requests')
+        .select('*')
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      return data;
+    },
     getByUser: async (userId: string) => {
-      const requests = await safeFetch(`${API_URL}/access-requests`, undefined, 'requests', INITIAL_REQUESTS);
-      return requests.filter((r: any) => r.usuario_id === userId);
+      const { data, error } = await supabase
+        .from('access_requests')
+        .select('*')
+        .eq('usuario_id', userId)
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      return data;
     },
-    create: async (req: Omit<AccessRequest, 'id' | 'createdAt' | 'status'>) => safeFetch(`${API_URL}/access-requests`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(req),
-    }, 'requests'),
-    updateStatus: async (id: string, status: AccessRequest['status'], adminObservation?: string, adminId?: string) => safeFetch(`${API_URL}/access-requests/${id}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ status, observacao_admin: adminObservation, criado_por_admin: adminId }),
-    }, 'requests')
-  },
-
-  credentials: {
-    getAll: async () => safeFetch(`${API_URL}/credentials`, undefined, 'credentials'),
-    getByUser: async (userId: string) => {
-      const credentials = await safeFetch(`${API_URL}/credentials`, undefined, 'credentials');
-      return credentials.filter((c: any) => c.usuario_id === userId);
+    create: async (req: any) => {
+      const { data, error } = await supabase
+        .from('access_requests')
+        .insert([req])
+        .select()
+        .single();
+      if (error) throw error;
+      return data;
     },
-    create: async (cred: Omit<PlatformCredential, 'id' | 'data_criacao' | 'data_atualizacao'>) => safeFetch(`${API_URL}/credentials`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(cred),
-    }, 'credentials'),
-    update: async (id: string, updates: Partial<PlatformCredential>) => safeFetch(`${API_URL}/credentials/${id}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(updates),
-    }, 'credentials'),
-    delete: async (id: string) => safeFetch(`${API_URL}/credentials/${id}`, { method: 'DELETE' }, 'credentials')
-  },
-
-  logs: {
-    getAll: async () => [],
-    add: async (log: any) => ({}),
-    getSecurityLogs: async () => [],
-    addSecurityLog: async (log: any) => ({}),
-    getImportLogs: async () => [],
-    addImportLog: async (log: any) => ({})
-  },
-
-  commissionGroups: {
-    getAll: async () => safeFetch(`${API_URL}/commission-groups`, undefined, 'commissionGroups', INITIAL_COMMISSION_GROUPS),
-    getByBank: async (bankId: string) => {
-      const groups = await safeFetch(`${API_URL}/commission-groups`, undefined, 'commissionGroups', INITIAL_COMMISSION_GROUPS);
-      return groups.filter((g: any) => g.banco_id === bankId);
-    },
-    create: async (group: any) => safeFetch(`${API_URL}/commission-groups`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(group),
-    }, 'commissionGroups'),
-    delete: async (id: string) => safeFetch(`${API_URL}/commission-groups/${id}`, { method: 'DELETE' }, 'commissionGroups')
+    updateStatus: async (id: string, status: string, observation?: string, adminId?: string) => {
+      const { data, error } = await supabase
+        .from('access_requests')
+        .update({ status, observation, criado_por_admin: adminId })
+        .eq('id', id)
+        .select()
+        .single();
+      if (error) throw error;
+      return data;
+    }
   },
 
   bancos: {
-    getAll: async () => safeFetch(`${API_URL}/banks`, undefined, 'banks', INITIAL_BANKS),
-    create: async (bank: Omit<Bank, 'id' | 'criado_em'>) => safeFetch(`${API_URL}/banks`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(bank),
-    }, 'banks'),
-    update: async (id: string, updates: Partial<Bank>) => safeFetch(`${API_URL}/banks/${id}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(updates),
-    }, 'banks'),
-    delete: async (id: string) => safeFetch(`${API_URL}/banks/${id}`, { method: 'DELETE' }, 'banks')
+    getAll: async () => {
+      const { data, error } = await supabase
+        .from('banks')
+        .select('*')
+        .order('nome_banco');
+      if (error) throw error;
+      return data;
+    },
+    create: async (bank: any) => {
+      const { data, error } = await supabase
+        .from('banks')
+        .insert([bank])
+        .select()
+        .single();
+      if (error) throw error;
+      return data;
+    },
+    update: async (id: string, updates: any) => {
+      const { data, error } = await supabase
+        .from('banks')
+        .update(updates)
+        .eq('id', id)
+        .select()
+        .single();
+      if (error) throw error;
+      return data;
+    },
+    delete: async (id: string) => {
+      const { error } = await supabase
+        .from('banks')
+        .delete()
+        .eq('id', id);
+      if (error) throw error;
+    }
+  },
+
+  commissionGroups: {
+    getAll: async () => {
+      const { data, error } = await supabase
+        .from('commission_groups')
+        .select('*')
+        .order('name');
+      if (error) throw error;
+      return data;
+    },
+    getByBank: async (bankId: string) => {
+      const { data, error } = await supabase
+        .from('commission_groups')
+        .select('*')
+        .eq('banco_id', bankId)
+        .order('name');
+      if (error) throw error;
+      return data;
+    },
+    create: async (group: any) => {
+      const { data, error } = await supabase
+        .from('commission_groups')
+        .insert([group])
+        .select()
+        .single();
+      if (error) throw error;
+      return data;
+    },
+    delete: async (id: string) => {
+      const { error } = await supabase
+        .from('commission_groups')
+        .delete()
+        .eq('id', id);
+      if (error) throw error;
+    }
+  },
+
+  credentials: {
+    getAll: async () => {
+      const { data, error } = await supabase
+        .from('platform_credentials')
+        .select('*')
+        .order('banco_nome');
+      if (error) throw error;
+      return data;
+    },
+    getByUser: async (userId: string) => {
+      const { data, error } = await supabase
+        .from('platform_credentials')
+        .select('*')
+        .eq('usuario_id', userId)
+        .order('banco_nome');
+      if (error) throw error;
+      return data;
+    },
+    create: async (cred: any) => {
+      const { data, error } = await supabase
+        .from('platform_credentials')
+        .insert([cred])
+        .select()
+        .single();
+      if (error) throw error;
+      return data;
+    },
+    update: async (id: string, updates: any) => {
+      const { data, error } = await supabase
+        .from('platform_credentials')
+        .update(updates)
+        .eq('id', id)
+        .select()
+        .single();
+      if (error) throw error;
+      return data;
+    },
+    delete: async (id: string) => {
+      const { error } = await supabase
+        .from('platform_credentials')
+        .delete()
+        .eq('id', id);
+      if (error) throw error;
+    }
   },
 
   payment_requests: {
-    getAll: async () => safeFetch(`${API_URL}/payment-requests`, undefined, 'payment_requests'),
-    create: async (req: any) => safeFetch(`${API_URL}/payment-requests`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(req),
-    }, 'payment_requests'),
-    update: async (id: string, updates: any) => safeFetch(`${API_URL}/payment-requests/${id}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(updates),
-    }, 'payment_requests')
+    getAll: async () => {
+      const { data, error } = await supabase
+        .from('payment_requests')
+        .select('*')
+        .order('data_solicitacao', { ascending: false });
+      if (error) throw error;
+      return data;
+    },
+    create: async (req: any) => {
+      const { data, error } = await supabase
+        .from('payment_requests')
+        .insert([req])
+        .select()
+        .single();
+      if (error) throw error;
+      return data;
+    },
+    update: async (id: string, updates: any) => {
+      const { data, error } = await supabase
+        .from('payment_requests')
+        .update(updates)
+        .eq('id', id)
+        .select()
+        .single();
+      if (error) throw error;
+      return data;
+    }
   },
 
-  settings: {
-    get: async () => safeFetch(`${API_URL}/settings`, undefined, 'settings', {}),
-    update: async (newSettings: any) => safeFetch(`${API_URL}/settings`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(newSettings),
-    }, 'settings')
+  announcements: {
+    getAll: async () => {
+      const { data, error } = await supabase
+        .from('announcements')
+        .select('*')
+        .order('date', { ascending: false });
+      if (error) throw error;
+      return data;
+    },
+    create: async (ann: any) => {
+      const { data, error } = await supabase
+        .from('announcements')
+        .insert([ann])
+        .select()
+        .single();
+      if (error) throw error;
+      return data;
+    },
+    update: async (id: string, updates: any) => {
+      const { data, error } = await supabase
+        .from('announcements')
+        .update(updates)
+        .eq('id', id)
+        .select()
+        .single();
+      if (error) throw error;
+      return data;
+    },
+    delete: async (id: string) => {
+      const { error } = await supabase
+        .from('announcements')
+        .delete()
+        .eq('id', id);
+      if (error) throw error;
+    }
   },
+
   academy: {
-    getAll: async () => safeFetch(`${API_URL}/academy`, undefined, 'academy'),
-    create: async (content: any) => safeFetch(`${API_URL}/academy`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(content),
-    }, 'academy'),
-    update: async (id: string, updates: any) => ({}),
-    delete: async (id: string) => safeFetch(`${API_URL}/academy/${id}`, { method: 'DELETE' }, 'academy'),
-    trackView: async (conteudo_id: string, usuario_id: string) => safeFetch(`${API_URL}/academy/views`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ conteudo_id, usuario_id }),
-    }, 'academyViews')
+    getAll: async () => {
+      const { data, error } = await supabase
+        .from('academy_content')
+        .select('*')
+        .order('titulo');
+      if (error) throw error;
+      return data;
+    },
+    create: async (content: any) => {
+      const { data, error } = await supabase
+        .from('academy_content')
+        .insert([content])
+        .select()
+        .single();
+      if (error) throw error;
+      return data;
+    },
+    update: async (id: string, updates: any) => {
+      const { data, error } = await supabase
+        .from('academy_content')
+        .update(updates)
+        .eq('id', id)
+        .select()
+        .single();
+      if (error) throw error;
+      return data;
+    },
+    delete: async (id: string) => {
+      const { error } = await supabase
+        .from('academy_content')
+        .delete()
+        .eq('id', id);
+      if (error) throw error;
+    },
+    trackView: async (conteudo_id: string, usuario_id: string) => {
+      const { data, error } = await supabase
+        .from('academy_views')
+        .insert([{ conteudo_id, usuario_id, data_visualizacao: new Date().toISOString() }])
+        .select()
+        .single();
+      if (error) throw error;
+      return data;
+    }
   },
+
   academyViews: {
-    getAll: async () => safeFetch(`${API_URL}/academy/views`, undefined, 'academyViews'),
+    getAll: async () => {
+      const { data, error } = await supabase
+        .from('academy_views')
+        .select('*');
+      if (error) throw error;
+      return data;
+    },
     register: async (conteudo_id: string, usuario_id: string) => {
       await db.academy.trackView(conteudo_id, usuario_id);
     },
     getUserViews: async (usuario_id: string) => {
-      const views = await safeFetch(`${API_URL}/academy/views`, undefined, 'academyViews');
-      return views.filter((v: any) => v.usuario_id === usuario_id);
+      const { data, error } = await supabase
+        .from('academy_views')
+        .select('*')
+        .eq('usuario_id', usuario_id);
+      if (error) throw error;
+      return data;
     }
   },
-  announcements: {
-    getAll: async () => safeFetch(`${API_URL}/announcements`, undefined, 'announcements'),
-    create: async (announcement: any) => safeFetch(`${API_URL}/announcements`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(announcement),
-    }, 'announcements'),
-    update: async (id: string, updates: any) => ({}),
-    delete: async (id: string) => safeFetch(`${API_URL}/announcements/${id}`, { method: 'DELETE' }, 'announcements')
-  },
+
   campaigns: {
-    getAll: async () => safeFetch(`${API_URL}/campaigns`, undefined, 'campaigns'),
-    create: async (campaign: any) => safeFetch(`${API_URL}/campaigns`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(campaign),
-    }, 'campaigns'),
-    update: async (id: string, updates: any) => ({}),
-    delete: async (id: string) => safeFetch(`${API_URL}/campaigns/${id}`, { method: 'DELETE' }, 'campaigns')
+    getAll: async () => {
+      const { data, error } = await supabase
+        .from('campaigns')
+        .select('*')
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      return data;
+    },
+    create: async (campaign: any) => {
+      const { data, error } = await supabase
+        .from('campaigns')
+        .insert([campaign])
+        .select()
+        .single();
+      if (error) throw error;
+      return data;
+    },
+    delete: async (id: string) => {
+      const { error } = await supabase
+        .from('campaigns')
+        .delete()
+        .eq('id', id);
+      if (error) throw error;
+    }
   },
+
+  settings: {
+    get: async () => {
+      const { data, error } = await supabase
+        .from('app_settings')
+        .select('*')
+        .single();
+      if (error && error.code !== 'PGRST116') throw error;
+      return data || { canvaLink: 'https://www.canva.com/' };
+    },
+    update: async (newSettings: any) => {
+      const { data, error } = await supabase
+        .from('app_settings')
+        .upsert({ id: 1, ...newSettings })
+        .select()
+        .single();
+      if (error) throw error;
+      return data;
+    }
+  },
+
+  logs: {
+    add: async (log: any) => {
+      const { error } = await supabase.from('import_logs').insert([log]);
+      if (error) console.error('Log error:', error);
+    }
+  },
+
   utils: {
     generatePassword: (length: number = 10) => {
       const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*";
@@ -490,9 +603,107 @@ export const db = {
         retVal += charset.charAt(Math.floor(Math.random() * n));
       }
       return retVal;
-    },
-    comparePassword: (password: string, hash: string) => {
-      return bcrypt.compareSync(password, hash);
     }
   }
-};;
+};
+
+// Mappers
+function mapProfileToUser(p: any): User {
+  return {
+    id: p.id,
+    name: p.nome,
+    email: p.email,
+    role: p.perfil,
+    status: p.ativo ? 'Ativo' : 'Inativo',
+    lastAccess: p.created_at,
+    grupo_comissao: p.grupo_comissao,
+    contract_signed: p.contract_signed,
+    monthly_goal: p.monthly_goal,
+    daily_goal: p.daily_goal,
+    daily_lead_count: p.daily_lead_count,
+    last_lead_date: p.last_lead_date
+  };
+}
+
+function mapUserToProfile(u: any): any {
+  const p: any = {};
+  if (u.auth_user_id) p.auth_user_id = u.auth_user_id;
+  if (u.name) p.nome = u.name;
+  if (u.email) p.email = u.email;
+  if (u.role) p.perfil = u.role;
+  if (u.status) p.ativo = u.status === 'Ativo';
+  if (u.grupo_comissao) p.grupo_comissao = u.grupo_comissao;
+  if (u.contract_signed !== undefined) p.contract_signed = u.contract_signed;
+  if (u.monthly_goal !== undefined) p.monthly_goal = u.monthly_goal;
+  if (u.daily_goal !== undefined) p.daily_goal = u.daily_goal;
+  if (u.daily_lead_count !== undefined) p.daily_lead_count = u.daily_lead_count;
+  if (u.last_lead_date !== undefined) p.last_lead_date = u.last_lead_date;
+  return p;
+}
+
+function mapTableToLead(t: any): any {
+  return {
+    id: t.id,
+    name: t.nome,
+    phone: t.telefone,
+    email: t.email,
+    cpf: t.cpf,
+    city: t.cidade,
+    status: t.status,
+    usuario_id: t.capturado_por,
+    capturedAt: t.capturado_em,
+    createdAt: t.created_at
+  };
+}
+
+function mapLeadToTable(l: any): any {
+  return {
+    nome: l.name || l.nome,
+    telefone: l.phone || l.telefone,
+    email: l.email,
+    cpf: l.cpf,
+    cidade: l.city || l.cidade,
+    status: l.status || 'Disponível',
+    capturado_por: l.usuario_id || l.capturado_por,
+    capturado_em: l.capturedAt || l.capturado_em
+  };
+}
+
+function mapTableToCommission(t: any): CommissionTable {
+  return {
+    id: t.id,
+    banco: t.banco,
+    produto: t.produto,
+    operacao: t.tabela,
+    parcelas: t.parcelas,
+    codigo_tabela: t.tabela,
+    nome_tabela: t.tabela,
+    faixa_valor_min: 0,
+    faixa_valor_max: 9999999,
+    percentual_total_empresa: t.comissao_total_empresa,
+    comissao_master: t.grupo_master,
+    comissao_ouro: t.grupo_ouro,
+    comissao_prata: t.grupo_prata,
+    comissao_plus: t.grupo_plus,
+    status: t.status,
+    criado_por: '',
+    data_criacao: t.created_at,
+    data_atualizacao: t.updated_at
+  };
+}
+
+function mapCommissionToTable(c: any): any {
+  return {
+    banco: c.banco,
+    produto: c.produto,
+    tabela: c.operacao || c.nome_tabela,
+    parcelas: c.parcelas,
+    comissao_total_empresa: c.percentual_total_empresa,
+    grupo_master: c.comissao_master,
+    grupo_ouro: c.comissao_ouro,
+    grupo_prata: c.comissao_prata,
+    grupo_plus: c.comissao_plus,
+    status: c.status || 'Ativo',
+    origem_importacao: c.origem_importacao
+  };
+}

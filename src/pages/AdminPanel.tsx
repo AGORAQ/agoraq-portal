@@ -22,6 +22,7 @@ import {
   Building2,
   Upload,
   AlertTriangle,
+  CheckCircle2,
   DollarSign,
   ArrowRight,
   Bot,
@@ -38,6 +39,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { db } from '@/services/db';
+import { parseFile } from '@/lib/importer';
 import { User, CommissionGroup, AccessRequest, Bank, CommissionTable } from '@/types';
 import * as XLSX from 'xlsx';
 
@@ -681,48 +683,54 @@ export default function AdminPanel() {
                       const input = document.createElement('input');
                       input.type = 'file';
                       input.accept = '.xlsx, .xls';
-                      input.onchange = (e) => {
+                      input.onchange = async (e) => {
                         const file = (e.target as HTMLInputElement).files?.[0];
                         if (file) {
-                          const reader = new FileReader();
-                          reader.onload = async (event) => {
-                            try {
-                              const data = new Uint8Array(event.target?.result as ArrayBuffer);
-                              const workbook = XLSX.read(data, { type: 'array' });
-                              const sheetName = workbook.SheetNames[0];
-                              const worksheet = workbook.Sheets[sheetName];
-                              const jsonData = XLSX.utils.sheet_to_json(worksheet) as any[];
+                          try {
+                            const { data: jsonData, errors } = await parseFile(file);
+                            
+                            if (errors.length > 0) {
+                              alert(errors[0]);
+                              return;
+                            }
 
-                              const bank = banks.find(b => b.id === selectedBankForConfig);
-                              if (!bank) return;
+                            const bank = banks.find(b => b.id === selectedBankForConfig);
+                            if (!bank) return;
 
-                              const commsToImport = jsonData.map(row => ({
+                            const commsToImport = jsonData.map(row => {
+                              // Helper to parse percentages that might be 0.15 or 15
+                              const parsePct = (val: any) => {
+                                const n = Number(val || 0);
+                                if (n > 0 && n < 1) return n * 100;
+                                return n;
+                              };
+
+                              return {
                                 banco: bank.nome_banco,
-                                produto: row.Produto || row.produto || bank.tipo_produto,
-                                operacao: row.Operação || row.operacao || 'Normal',
-                                parcelas: String(row.Parcelas || row.parcelas || '84x'),
-                                codigo_tabela: row['Código Tabela'] || row.codigo_tabela || 'TAB_' + Math.random().toString(36).substring(7),
-                                nome_tabela: row['Nome Tabela'] || row.nome_tabela || 'Tabela Importada',
-                                faixa_valor_min: Number(row['Valor Mín'] || row.faixa_valor_min || 0),
-                                faixa_valor_max: Number(row['Valor Máx'] || row.faixa_valor_max || 999999),
-                                percentual_total_empresa: Number(row['% Empresa'] || row.percentual_total_empresa || 0),
-                                comissao_master: Number(row['% Master'] || row.comissao_master || 0),
-                                comissao_ouro: Number(row['% Ouro'] || row.comissao_ouro || 0),
-                                comissao_prata: Number(row['% Prata'] || row.comissao_prata || 0),
-                                comissao_plus: Number(row['% Plus'] || row.comissao_plus || 0),
+                                produto: row.produto || row.product || bank.tipo_produto,
+                                operacao: row.operacao || row.operation || 'Normal',
+                                parcelas: String(row.parcelas || row.term || '84x'),
+                                codigo_tabela: row.codigo_tabela || row.code || 'TAB_' + Math.random().toString(36).substring(7),
+                                nome_tabela: row.nome_tabela || row.table_name || 'Tabela Importada',
+                                faixa_valor_min: Number(row.faixa_valor_min || 0),
+                                faixa_valor_max: Number(row.faixa_valor_max || 999999),
+                                percentual_total_empresa: parsePct(row.percentual_empresa || row.percentual_total_empresa),
+                                comissao_master: parsePct(row.comissao_master),
+                                comissao_ouro: parsePct(row.comissao_ouro),
+                                comissao_prata: parsePct(row.comissao_prata),
+                                comissao_plus: parsePct(row.comissao_plus),
                                 status: 'Ativo' as const,
                                 criado_por: user?.id || 'admin'
-                              }));
+                              };
+                            });
 
-                              await db.commissions.import(commsToImport, user?.role || 'admin', user?.id || '1');
-                              alert(`${commsToImport.length} tabelas importadas com sucesso!`);
-                              loadData();
-                            } catch (error) {
-                              console.error('Error importing commissions:', error);
-                              alert('Erro ao processar o arquivo. Verifique o formato.');
-                            }
-                          };
-                          reader.readAsArrayBuffer(file);
+                            await db.commissions.import(commsToImport, user?.role || 'admin', user?.id || '1');
+                            alert(`${commsToImport.length} tabelas importadas com sucesso!`);
+                            loadData();
+                          } catch (error) {
+                            console.error('Error importing commissions:', error);
+                            alert('Erro ao processar o arquivo. Verifique o formato.');
+                          }
                         }
                       };
                       input.click();
@@ -799,7 +807,7 @@ export default function AdminPanel() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Settings className="w-5 h-5 text-blue-600" />
-                Configurações do Dashboard
+                Configurações do Sistema
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-6">
@@ -826,124 +834,71 @@ export default function AdminPanel() {
             </CardContent>
           </Card>
 
-          <Card className="mt-6 border-blue-200">
+          <Card className="mt-6 border-slate-200">
             <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-blue-600">
+              <CardTitle className="flex items-center gap-2 text-slate-700">
                 <RefreshCw className="w-5 h-5" />
-                Sincronização em Nuvem (Multi-Dispositivo)
+                Sincronização de Dados
               </CardTitle>
               <CardDescription>
-                Configure o endereço do servidor central para que os dados sejam os mesmos em todos os computadores.
+                O sistema está sincronizado com o servidor central.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
-              <div className="bg-blue-50 p-4 rounded-lg border border-blue-100">
-                <p className="text-sm text-blue-800">
-                  <strong>Como funciona:</strong> Se você estiver usando o Netlify, os dados são salvos apenas no seu navegador por padrão. Para sincronizar com outros PCs, você deve apontar para o servidor oficial do Cloud Run.
+              <div className="bg-emerald-50 p-4 rounded-lg border border-emerald-100">
+                <p className="text-sm text-emerald-800 flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4" />
+                  Conectado ao servidor oficial: <strong>{db.API_URL}</strong>
                 </p>
-              </div>
-
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">URL do Servidor (API)</label>
-                  <div className="flex gap-2">
-                    <Input 
-                      placeholder="https://sua-api.run.app/api" 
-                      value={localStorage.getItem('agoraq_api_url') || ''}
-                      onChange={(e) => {
-                        if (e.target.value) {
-                          localStorage.setItem('agoraq_api_url', e.target.value);
-                        } else {
-                          localStorage.removeItem('agoraq_api_url');
-                        }
-                        // Force re-render if needed, but simple reload is safer
-                      }}
-                    />
-                    <Button 
-                      variant="outline" 
-                      onClick={() => {
-                        localStorage.setItem('agoraq_api_url', 'https://ais-dev-w47zxljbghf6tucdlbhe2z-410044833253.us-east1.run.app/api');
-                        window.location.reload();
-                      }}
-                    >
-                      Usar Padrão
-                    </Button>
-                  </div>
-                  <p className="text-[10px] text-slate-500">
-                    Após alterar este campo, a página será recarregada para aplicar a nova conexão.
-                  </p>
-                </div>
-
-                <div className="pt-2 flex justify-end">
-                  <Button onClick={() => window.location.reload()} className="bg-blue-900 hover:bg-blue-800">
-                    <RefreshCw className="w-4 h-4 mr-2" />
-                    Aplicar e Recarregar
-                  </Button>
-                </div>
               </div>
             </CardContent>
           </Card>
 
-          <Card className="mt-6 border-red-200">
+          <Card className="mt-6 border-amber-200">
             <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-red-600">
+              <CardTitle className="flex items-center gap-2 text-amber-600">
                 <AlertTriangle className="w-5 h-5" />
-                Manutenção do Sistema (Local)
+                Ferramentas de Sistema
               </CardTitle>
               <CardDescription>
-                Ferramentas para gerenciar dados salvos localmente no navegador.
+                Ferramentas para manutenção e backup de dados.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
-              <div className="bg-red-50 p-4 rounded-lg border border-red-100">
-                <p className="text-sm text-red-800">
-                  <strong>Atenção:</strong> Limpar os dados locais removerá todas as informações que ainda não foram sincronizadas com a nuvem. Use apenas se estiver enfrentando problemas de persistência.
-                </p>
-              </div>
-
               <div className="flex flex-wrap gap-4">
                 <Button 
-                  variant="destructive" 
+                  variant="outline" 
+                  className="border-amber-200 text-amber-700 hover:bg-amber-50"
                   onClick={() => {
-                    if (confirm('Tem certeza que deseja limpar TODOS os dados locais? Esta ação é irreversível.')) {
-                      const keys = Object.keys(localStorage);
-                      keys.forEach(key => {
-                        if (key.startsWith('agoraq_')) {
-                          localStorage.removeItem(key);
-                        }
-                      });
-                      alert('Dados locais limpos com sucesso! O sistema será reiniciado.');
+                    if (confirm('Tem certeza que deseja limpar o cache do sistema?')) {
+                      localStorage.clear();
+                      alert('Cache limpo com sucesso! O sistema será reiniciado.');
                       window.location.reload();
                     }
                   }}
                 >
                   <Trash2 className="w-4 h-4 mr-2" />
-                  Limpar Cache de Dados Local
+                  Limpar Cache do Sistema
                 </Button>
 
                 <Button 
                   variant="outline" 
                   onClick={() => {
-                    const data: any = {};
-                    Object.keys(localStorage).forEach(key => {
-                      if (key.startsWith('agoraq_')) {
-                        try {
-                          data[key] = JSON.parse(localStorage.getItem(key) || '[]');
-                        } catch (e) {
-                          data[key] = localStorage.getItem(key);
-                        }
-                      }
-                    });
+                    const data: any = {
+                      export_date: new Date().toISOString(),
+                      app: 'AgoraQ'
+                    };
+                    // Export relevant settings or logs if needed
                     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
                     const url = URL.createObjectURL(blob);
                     const a = document.createElement('a');
                     a.href = url;
-                    a.download = `agoraq_backup_${new Date().toISOString()}.json`;
+                    a.download = `agoraq_system_export_${new Date().toISOString()}.json`;
                     a.click();
                   }}
                 >
                   <Upload className="w-4 h-4 mr-2" />
-                  Exportar Backup Local (JSON)
+                  Exportar Relatório de Sistema
                 </Button>
               </div>
             </CardContent>
@@ -1145,8 +1100,7 @@ export default function AdminPanel() {
                   </thead>
                   <tbody>
                     {filteredUsers.map((u) => {
-                      const contractKey = `contract_signed_${u.email}`;
-                      const isContractSigned = localStorage.getItem(contractKey) === 'true';
+                      const isContractSigned = u.contract_signed;
 
                       return (
                         <tr key={u.id} className="border-b hover:bg-slate-50/50">
@@ -1181,11 +1135,15 @@ export default function AdminPanel() {
                                 <Button 
                                   size="sm" 
                                   className="h-7 text-xs px-3 bg-blue-600 hover:bg-blue-700 text-white w-full max-w-[100px]"
-                                  onClick={() => {
+                                  onClick={async () => {
                                     if(confirm(`Deseja liberar o acesso ao sistema para ${u.name} sem a assinatura do contrato?`)) {
-                                      localStorage.setItem(contractKey, 'true');
-                                      // Forçar atualização da interface
-                                      setUsers([...users]);
+                                      try {
+                                        await db.users.update(u.id, { contract_signed: true } as any);
+                                        const updatedUsers = users.map(user => user.id === u.id ? { ...user, contract_signed: true } : user);
+                                        setUsers(updatedUsers);
+                                      } catch (e) {
+                                        alert('Erro ao atualizar status do contrato');
+                                      }
                                     }
                                   }}
                                 >
@@ -1196,11 +1154,15 @@ export default function AdminPanel() {
                                   size="sm" 
                                   variant="outline" 
                                   className="h-7 text-xs px-3 border-red-200 text-red-600 hover:bg-red-50 w-full max-w-[100px]"
-                                  onClick={() => {
+                                  onClick={async () => {
                                     if(confirm(`Deseja revogar a assinatura de contrato de ${u.name}? O usuário será bloqueado no próximo acesso.`)) {
-                                      localStorage.removeItem(contractKey);
-                                      // Forçar atualização da interface
-                                      setUsers([...users]);
+                                      try {
+                                        await db.users.update(u.id, { contract_signed: false } as any);
+                                        const updatedUsers = users.map(user => user.id === u.id ? { ...user, contract_signed: false } : user);
+                                        setUsers(updatedUsers);
+                                      } catch (e) {
+                                        alert('Erro ao atualizar status do contrato');
+                                      }
                                     }
                                   }}
                                 >
