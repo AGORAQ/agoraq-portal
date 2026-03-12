@@ -164,7 +164,7 @@ export default function Credentials() {
                   >
                     <option value="">Selecione um Banco</option>
                     {banks.map(bank => (
-                      <option key={bank.id} value={bank.nome_banco}>{bank.nome_banco}</option>
+                      <option key={bank.id} value={bank.nome}>{bank.nome}</option>
                     ))}
                     <option value="Outros">Outros</option>
                   </select>

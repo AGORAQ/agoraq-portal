@@ -64,7 +64,7 @@ export default function FinancialReport() {
 
   const filteredData = useMemo(() => {
     return sales.filter(s => {
-      const matchesBank = bankFilter === 'all' || s.bank === banks.find(b => b.id === bankFilter)?.nome_banco;
+      const matchesBank = bankFilter === 'all' || s.bank === banks.find(b => b.id === bankFilter)?.nome;
       const matchesGroup = groupFilter === 'all' || s.table === groups.find(g => g.id === groupFilter)?.name;
       const matchesDate = (!startDate || new Date(s.date) >= new Date(startDate)) && 
                          (!endDate || new Date(s.date) <= new Date(endDate));
@@ -85,10 +85,10 @@ export default function FinancialReport() {
   const chartData = useMemo(() => {
     const data: any[] = [];
     banks.forEach(b => {
-      const bankSales = filteredData.filter(s => s.bank === b.nome_banco);
+      const bankSales = filteredData.filter(s => s.bank === b.nome);
       if (bankSales.length > 0) {
         data.push({
-          name: b.nome_banco,
+          name: b.nome,
           receita: bankSales.reduce((acc, s) => acc + (s.bankCommission || 0), 0),
           lucro: bankSales.reduce((acc, s) => acc + (s.companyCommission || 0), 0),
           comissao: bankSales.reduce((acc, s) => acc + (s.commission || 0), 0),
@@ -163,7 +163,7 @@ export default function FinancialReport() {
                 onChange={(e) => setBankFilter(e.target.value)}
               >
                 <option value="all">Todos os Bancos</option>
-                {banks.map(b => <option key={b.id} value={b.id}>{b.nome_banco}</option>)}
+                {banks.map(b => <option key={b.id} value={b.id}>{b.nome}</option>)}
               </select>
             </div>
             <div>

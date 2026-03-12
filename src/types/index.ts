@@ -188,6 +188,7 @@ export interface FinancialEntry {
   tipo: 'Crédito' | 'Débito' | 'Estorno';
   valor: number;
   descricao?: string;
+  pix_key?: string;
   status: 'Pendente' | 'Pago' | 'Cancelado';
   created_at: string;
   updated_at: string;

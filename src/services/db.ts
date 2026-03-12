@@ -319,23 +319,32 @@ export const db = {
       const { data, error } = await supabase
         .from('banks')
         .select('*')
-        .order('nome_banco');
+        .order('nome');
       if (error) throw error;
       return data;
     },
     create: async (bank: any) => {
       const { data, error } = await supabase
         .from('banks')
-        .insert([bank])
+        .insert([{
+          nome: bank.nome || bank.nome_banco,
+          cor: bank.cor || '#000000',
+          status: bank.status || 'Ativo'
+        }])
         .select()
         .single();
       if (error) throw error;
       return data;
     },
     update: async (id: string, updates: any) => {
+      const mappedUpdates: any = {};
+      if (updates.nome || updates.nome_banco) mappedUpdates.nome = updates.nome || updates.nome_banco;
+      if (updates.cor) mappedUpdates.cor = updates.cor;
+      if (updates.status) mappedUpdates.status = updates.status;
+
       const { data, error } = await supabase
         .from('banks')
-        .update(updates)
+        .update(mappedUpdates)
         .eq('id', id)
         .select()
         .single();
@@ -436,25 +445,40 @@ export const db = {
   payment_requests: {
     getAll: async () => {
       const { data, error } = await supabase
-        .from('payment_requests')
+        .from('financial_entries')
         .select('*')
-        .order('data_solicitacao', { ascending: false });
+        .order('created_at', { ascending: false });
       if (error) throw error;
-      return data;
+      return data.map((d: any) => ({
+        ...d,
+        usuario_id: d.usuario_id || d.vendedor_id,
+        data_solicitacao: d.data_solicitacao || d.created_at,
+        chave_pix: d.chave_pix || d.pix_key
+      }));
     },
     create: async (req: any) => {
       const { data, error } = await supabase
-        .from('payment_requests')
-        .insert([req])
+        .from('financial_entries')
+        .insert([{
+          ...req,
+          vendedor_id: req.usuario_id || req.vendedor_id,
+          tipo: req.tipo || 'Débito',
+          pix_key: req.chave_pix || req.pix_key
+        }])
         .select()
         .single();
       if (error) throw error;
       return data;
     },
     update: async (id: string, updates: any) => {
+      const { usuario_id, chave_pix, ...rest } = updates;
+      const mappedUpdates: any = { ...rest };
+      if (usuario_id) mappedUpdates.vendedor_id = usuario_id;
+      if (chave_pix) mappedUpdates.pix_key = chave_pix;
+
       const { data, error } = await supabase
-        .from('payment_requests')
-        .update(updates)
+        .from('financial_entries')
+        .update(mappedUpdates)
         .eq('id', id)
         .select()
         .single();

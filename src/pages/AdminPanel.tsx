@@ -88,7 +88,7 @@ export default function AdminPanel() {
   const [isBankFormOpen, setIsBankFormOpen] = useState(false);
   const [editingBank, setEditingBank] = useState<Bank | null>(null);
   const [bankFormData, setBankFormData] = useState<Partial<Bank>>({
-    nome_banco: '', tipo_produto: 'Ambos', percentual_maximo: 15, status: 'Ativo'
+    nome: '', status: 'Ativo'
   });
   const [selectedBankForConfig, setSelectedBankForConfig] = useState<string>('');
   
@@ -272,21 +272,19 @@ export default function AdminPanel() {
 
   const handleBankSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!bankFormData.nome_banco) return;
+    if (!bankFormData.nome) return;
     
     if (editingBank) {
       await db.bancos.update(editingBank.id, {
-        nome_banco: bankFormData.nome_banco,
-        tipo_produto: bankFormData.tipo_produto as any,
-        percentual_maximo: bankFormData.percentual_maximo || 15,
+        nome: bankFormData.nome,
+        cor: bankFormData.cor,
         status: bankFormData.status as any
       });
       alert('Banco atualizado com sucesso!');
     } else {
       await db.bancos.create({
-        nome_banco: bankFormData.nome_banco,
-        tipo_produto: bankFormData.tipo_produto as any,
-        percentual_maximo: bankFormData.percentual_maximo || 15,
+        nome: bankFormData.nome,
+        cor: bankFormData.cor,
         status: bankFormData.status as any
       });
       alert('Banco cadastrado com sucesso!');
@@ -295,7 +293,7 @@ export default function AdminPanel() {
     await loadData();
     setIsBankFormOpen(false);
     setEditingBank(null);
-    setBankFormData({ nome_banco: '', tipo_produto: 'Ambos', percentual_maximo: 15, status: 'Ativo' });
+    setBankFormData({ nome: '', status: 'Ativo' });
   };
 
   const handleDeleteBank = async (id: string) => {
@@ -575,27 +573,17 @@ export default function AdminPanel() {
               </CardHeader>
               <CardContent className="p-6">
                 <form onSubmit={handleBankSubmit} className="space-y-4">
-                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div className="space-y-2">
                       <label className="text-sm font-medium">Nome do Banco</label>
-                      <Input required value={bankFormData.nome_banco} onChange={e => setBankFormData({...bankFormData, nome_banco: e.target.value})} placeholder="Ex: Banco Pan" />
+                      <Input required value={bankFormData.nome} onChange={e => setBankFormData({...bankFormData, nome: e.target.value})} placeholder="Ex: Banco Pan" />
                     </div>
                     <div className="space-y-2">
-                      <label className="text-sm font-medium">Produto</label>
-                      <select 
-                        className="flex h-10 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm"
-                        value={bankFormData.tipo_produto}
-                        onChange={e => setBankFormData({...bankFormData, tipo_produto: e.target.value as any})}
-                      >
-                        <option value="FGTS">FGTS</option>
-                        <option value="CLT">CLT</option>
-                        <option value="Outros">Outros</option>
-                        <option value="Ambos">Ambos</option>
-                      </select>
-                    </div>
-                    <div className="space-y-2">
-                      <label className="text-sm font-medium">Percentual Máximo (%)</label>
-                      <Input type="number" step="0.01" value={bankFormData.percentual_maximo} onChange={e => setBankFormData({...bankFormData, percentual_maximo: parseFloat(e.target.value)})} />
+                      <label className="text-sm font-medium">Cor (Hex)</label>
+                      <div className="flex gap-2">
+                        <Input value={bankFormData.cor} onChange={e => setBankFormData({...bankFormData, cor: e.target.value})} placeholder="#000000" />
+                        <div className="w-10 h-10 rounded border" style={{ backgroundColor: bankFormData.cor || '#000' }} />
+                      </div>
                     </div>
                     <div className="space-y-2">
                       <label className="text-sm font-medium">Status</label>
@@ -631,38 +619,32 @@ export default function AdminPanel() {
                         <Building2 className="w-6 h-6" />
                       </div>
                       <div className="flex flex-col">
-                        <Button variant="ghost" size="icon" className="h-6 w-6 text-blue-600" onClick={(e) => {
-                          e.stopPropagation();
-                          setEditingBank(bank);
-                          setBankFormData({
-                            nome_banco: bank.nome_banco,
-                            tipo_produto: bank.tipo_produto,
-                            percentual_maximo: bank.percentual_maximo,
-                            status: bank.status
-                          });
-                          setIsBankFormOpen(true);
-                        }}>
-                          <Edit className="w-3 h-3" />
-                        </Button>
-                        <Button variant="ghost" size="icon" className="h-6 w-6 text-red-600" onClick={(e) => {
-                          e.stopPropagation();
-                          handleDeleteBank(bank.id);
-                        }}>
-                          <Trash2 className="w-3 h-3" />
-                        </Button>
+                        <h3 className="font-bold text-lg text-slate-900">{bank.nome}</h3>
+                        <div className="flex items-center gap-2 mt-1">
+                          <div className="w-3 h-3 rounded-full" style={{ backgroundColor: bank.cor || '#000' }} />
+                          <Badge variant={bank.status === 'Ativo' ? 'success' : 'secondary'} className="text-[10px]">{bank.status}</Badge>
+                        </div>
                       </div>
                     </div>
-                    <Badge variant={bank.status === 'Ativo' ? 'success' : 'secondary'}>{bank.status}</Badge>
-                  </div>
-                  <h3 className="font-bold text-lg text-slate-900">{bank.nome_banco}</h3>
-                  <div className="mt-4 space-y-2">
-                    <div className="flex justify-between text-sm">
-                      <span className="text-slate-500">Produto:</span>
-                      <span className="font-medium">{bank.tipo_produto}</span>
-                    </div>
-                    <div className="flex justify-between text-sm">
-                      <span className="text-slate-500">Máximo:</span>
-                      <span className="font-bold text-blue-600">{bank.percentual_maximo}%</span>
+                    <div className="flex flex-col gap-1">
+                      <Button variant="ghost" size="icon" className="h-6 w-6 text-blue-600" onClick={(e) => {
+                        e.stopPropagation();
+                        setEditingBank(bank);
+                        setBankFormData({
+                          nome: bank.nome,
+                          cor: bank.cor,
+                          status: bank.status
+                        });
+                        setIsBankFormOpen(true);
+                      }}>
+                        <Edit className="w-3 h-3" />
+                      </Button>
+                      <Button variant="ghost" size="icon" className="h-6 w-6 text-red-600" onClick={(e) => {
+                        e.stopPropagation();
+                        handleDeleteBank(bank.id);
+                      }}>
+                        <Trash2 className="w-3 h-3" />
+                      </Button>
                     </div>
                   </div>
                 </CardContent>
@@ -675,7 +657,7 @@ export default function AdminPanel() {
               <CardHeader className="border-b bg-slate-50">
                 <div className="flex justify-between items-center">
                   <div>
-                    <CardTitle>Configuração: {banks.find(b => b.id === selectedBankForConfig)?.nome_banco}</CardTitle>
+                    <CardTitle>Configuração: {banks.find(b => b.id === selectedBankForConfig)?.nome}</CardTitle>
                     <CardDescription>Gerencie grupos e tabelas de comissão vinculados a este banco.</CardDescription>
                   </div>
                   <div className="flex gap-2">
