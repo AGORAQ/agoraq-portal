@@ -329,6 +329,12 @@ async function startServer() {
     res.json(users);
   });
 
+  app.get('/api/users/:id', (req, res) => {
+    const user = db.prepare('SELECT id, name, email, role, status, lastAccess, grupo_comissao, saldo_acumulado, saldo_pago, monthly_goal, contract_signed FROM users WHERE id = ?').get(req.params.id);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    res.json(user);
+  });
+
   app.post('/api/users', (req, res) => {
     const { name, email, role, status, grupo_comissao, password } = req.body;
     const id = uuidv4();
@@ -489,6 +495,18 @@ async function startServer() {
       comm.status, comm.criado_por, now, now
     );
     res.json({ id, ...comm, data_criacao: now, data_atualizacao: now });
+  });
+
+  app.put('/api/commissions/:id', (req, res) => {
+    const { id } = req.params;
+    const updates = req.body;
+    const fields = Object.keys(updates).filter(k => k !== 'id');
+    if (fields.length > 0) {
+      const setClause = fields.map(f => `${f} = ?`).join(', ');
+      const values = fields.map(f => updates[f]);
+      db.prepare(`UPDATE commissions SET ${setClause}, data_atualizacao = ? WHERE id = ?`).run(...values, new Date().toISOString(), id);
+    }
+    res.json({ success: true });
   });
 
   app.delete('/api/commissions/:id', (req, res) => {
