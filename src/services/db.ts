@@ -616,7 +616,14 @@ export const db = {
 
   logs: {
     add: async (log: any) => {
-      const { error } = await supabase.from('import_logs').insert([log]);
+      const mappedLog = {
+        file_name: log.fileName,
+        user_name: log.user,
+        lines_processed: log.linesProcessed,
+        errors_found: log.errorsFound,
+        errors: log.errors
+      };
+      const { error } = await supabase.from('import_logs').insert([mappedLog]);
       if (error) console.error('Log error:', error);
     }
   },

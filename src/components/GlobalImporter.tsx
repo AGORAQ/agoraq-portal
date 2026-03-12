@@ -129,8 +129,10 @@ export default function GlobalImporter({ type, onImportComplete, onClose }: Glob
       alert(`Importação concluída! ${preview.length} registros processados.`);
       onImportComplete();
       onClose();
-    } catch (error) {
-      alert(`Erro na importação: ${error}`);
+    } catch (error: any) {
+      console.error('Erro na importação:', error);
+      const errorMessage = error?.message || error?.details || JSON.stringify(error);
+      alert(`Erro na importação: ${errorMessage}`);
     } finally {
       setLoading(false);
     }

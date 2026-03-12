@@ -43,10 +43,13 @@ const COLUMN_SYNONYMS: { [key: string]: string } = {
   'parcelas': 'parcelas',
   'n parcelas': 'parcelas',
   'numero de parcelas': 'parcelas',
+  'prazo meses': 'parcelas',
+  'prazo_meses': 'parcelas',
   
   'operacao': 'operacao',
   'tipo': 'operacao',
   'tipo de operacao': 'operacao',
+  'modalidade': 'operacao',
 
   'valor min': 'faixa_valor_min',
   'valor minimo': 'faixa_valor_min',
@@ -67,30 +70,36 @@ const COLUMN_SYNONYMS: { [key: string]: string } = {
   '% total': 'percentual_total_empresa',
   'percentual_total_empresa': 'percentual_total_empresa',
   '% empresa': 'percentual_total_empresa',
+  'comissao_empresa': 'percentual_total_empresa',
+  'total_empresa': 'percentual_total_empresa',
 
   'grupo master': 'comissao_master',
   'master': 'comissao_master',
   'comissao_master': 'comissao_master',
   'comissao master': 'comissao_master',
   '% master': 'comissao_master',
+  'master %': 'comissao_master',
 
   'grupo ouro': 'comissao_ouro',
   'ouro': 'comissao_ouro',
   'comissao_ouro': 'comissao_ouro',
   'comissao ouro': 'comissao_ouro',
   '% ouro': 'comissao_ouro',
+  'ouro %': 'comissao_ouro',
 
   'grupo prata': 'comissao_prata',
   'prata': 'comissao_prata',
   'comissao_prata': 'comissao_prata',
   'comissao prata': 'comissao_prata',
   '% prata': 'comissao_prata',
+  'prata %': 'comissao_prata',
 
   'grupo plus': 'comissao_plus',
   'plus': 'comissao_plus',
   'comissao_plus': 'comissao_plus',
   'comissao plus': 'comissao_plus',
   '% plus': 'comissao_plus',
+  'plus %': 'comissao_plus',
   
   'percentual vendedor (%)': 'percentual_vendedor',
   'comissao vendedor': 'percentual_vendedor',
@@ -107,6 +116,15 @@ const COLUMN_SYNONYMS: { [key: string]: string } = {
   'categoria': 'grupo_comissao',
   'perfil': 'grupo_comissao',
   'grupo_comissao': 'grupo_comissao',
+
+  'vigencia': 'vigencia',
+  'data vigencia': 'vigencia',
+  'validade': 'vigencia',
+  'inicio': 'vigencia',
+  
+  'status': 'status',
+  'situacao': 'status',
+  'ativo': 'status',
 
   // Leads
   'nome': 'name',
@@ -130,6 +148,11 @@ const COLUMN_SYNONYMS: { [key: string]: string } = {
   'estado': 'state',
   'cpf': 'cpf',
   'documento': 'cpf',
+  'banco de origem': 'banco_origem',
+  'banco origem': 'banco_origem',
+  'origem': 'banco_origem',
+  'importado por': 'importado_por',
+  'importado_por': 'importado_por',
 
   // Sales
   'valor da venda': 'valor_venda',
@@ -177,6 +200,12 @@ export const normalizeValue = (value: any): any => {
     let cleanValue = value.trim();
     if (cleanValue === '') return null;
     
+    // If it contains letters (other than R, $, %) or ranges, keep as string
+    // This handles "1 a 12", "84x", "Acima de 12", etc.
+    if (/[a-df-qs-z]/i.test(cleanValue.replace(/R\$|%/gi, '')) || /\b(a|ate|de|x|acima|abaixo)\b/i.test(cleanValue)) {
+      return cleanValue;
+    }
+
     // Remove currency and spaces
     let numStr = cleanValue.replace('R$', '').replace(/\s/g, '');
     
@@ -192,17 +221,12 @@ export const normalizeValue = (value: any): any => {
       // No comma: could be US format or plain number
       // If there's exactly one dot and it's followed by 3 digits, 
       // it's highly likely a thousands separator in BR context.
-      // Example: 1.234 -> 1234
-      // But 1.23 -> 1.23
       const dots = (numStr.match(/\./g) || []).length;
       if (dots === 1) {
         const parts = numStr.split('.');
         if (parts[1].length === 3) {
-          // Ambiguous, but in BR spreadsheets without commas, 
-          // a dot followed by 3 digits is usually a thousands separator.
-          // We'll check if it's a very large number or if it looks like a year.
           const val = parseFloat(numStr.replace('.', ''));
-          if (val > 100) { // Heuristic: if > 100, likely thousands
+          if (val > 100) { 
              numStr = numStr.replace('.', '');
           }
         }
@@ -212,7 +236,9 @@ export const normalizeValue = (value: any): any => {
     }
 
     const parsed = parseFloat(numStr);
-    if (!isNaN(parsed)) return parsed;
+    if (!isNaN(parsed) && /^-?\d*\.?\d*$/.test(numStr)) {
+      return parsed;
+    }
     
     return cleanValue;
   }
