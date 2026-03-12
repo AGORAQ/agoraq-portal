@@ -8,6 +8,7 @@ import { fileURLToPath } from 'url';
 import bcrypt from 'bcryptjs';
 import { v4 as uuidv4 } from 'uuid';
 import dotenv from 'dotenv';
+import { createClient } from '@supabase/supabase-js';
 
 dotenv.config();
 
@@ -292,7 +293,108 @@ async function startServer() {
     res.json({ status: 'ok' });
   });
 
+  // Supabase Admin Client
+  const supabaseAdmin = process.env.VITE_SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY
+    ? createClient(process.env.VITE_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, {
+        auth: {
+          autoRefreshToken: false,
+          persistSession: false
+        }
+      })
+    : null;
+
   // --- API ROUTES ---
+
+  // Supabase Admin Routes
+  app.post('/api/admin/create-user', async (req, res) => {
+    try {
+      if (!supabaseAdmin) {
+        return res.status(500).json({ error: 'Supabase Admin not configured. Please set SUPABASE_SERVICE_ROLE_KEY.' });
+      }
+
+      const { email, password, name, role, status, grupo_comissao } = req.body;
+
+      if (!email || !password) {
+        return res.status(400).json({ error: 'Email and password are required' });
+      }
+
+      // 1. Create user in auth.users
+      const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
+        email,
+        password,
+        email_confirm: true,
+        user_metadata: { name, role }
+      });
+
+      if (authError) {
+        console.error('Auth Error:', authError);
+        return res.status(400).json({ error: authError.message });
+      }
+
+      const userId = authData.user.id;
+
+      // 2. The trigger handle_new_user should have created the profile.
+      // We complement it now.
+      const { error: profileError } = await supabaseAdmin
+        .from('profiles')
+        .update({
+          nome: name,
+          perfil: role,
+          grupo_comissao: grupo_comissao,
+          ativo: status === 'Ativo',
+          meta_diaria: 0
+        })
+        .eq('id', userId);
+
+      if (profileError) {
+        console.error('Profile Update Error:', profileError);
+        // We don't return error here because the user was created successfully in Auth
+      }
+
+      res.json({ success: true, user: authData.user });
+    } catch (error: any) {
+      console.error('Create user error:', error);
+      res.status(500).json({ error: error.message || 'Internal server error' });
+    }
+  });
+
+  // Admin reset password
+  app.post('/api/admin/reset-password', async (req, res) => {
+    try {
+      if (!supabaseAdmin) {
+        return res.status(500).json({ error: 'Supabase Admin not configured.' });
+      }
+
+      const { userId, newPassword } = req.body;
+      
+      const { error } = await supabaseAdmin.auth.admin.updateUserById(userId, {
+        password: newPassword
+      });
+      
+      if (error) throw error;
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error('Admin reset password error:', error);
+      res.status(500).json({ error: error.message || 'Erro ao resetar senha' });
+    }
+  });
+
+  // Check if first run
+  app.get('/api/admin/check-first-run', async (req, res) => {
+    try {
+      if (!supabaseAdmin) {
+        return res.json({ isFirstRun: true });
+      }
+      const { count, error } = await supabaseAdmin
+        .from('profiles')
+        .select('*', { count: 'exact', head: true });
+      
+      if (error) throw error;
+      res.json({ isFirstRun: count === 0 });
+    } catch (error: any) {
+      res.json({ isFirstRun: true }); 
+    }
+  });
 
   // Auth
   app.post('/api/auth/login', (req, res) => {

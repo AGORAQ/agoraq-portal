@@ -31,18 +31,14 @@ export default function Login() {
     const checkFirstRun = async () => {
       console.log('Checking for first run...');
       try {
-        const users = await db.users.getAll();
-        console.log('Users found:', users.length);
-        if (users.length === 0) {
+        const response = await fetch('/api/admin/check-first-run');
+        const data = await response.json();
+        if (data.isFirstRun) {
           setIsFirstRun(true);
         }
       } catch (e: any) {
         console.error('Check first run error:', e);
-        // If table doesn't exist (code 42P01 in Postgres/Supabase), it's a first run
-        if (e.code === '42P01' || e.message?.includes('relation "profiles" does not exist')) {
-          console.log('Profiles table not found, assuming first run.');
-          setIsFirstRun(true);
-        }
+        setIsFirstRun(true);
       }
     };
     checkFirstRun();

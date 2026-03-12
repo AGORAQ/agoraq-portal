@@ -70,11 +70,11 @@ export default function UserRequests() {
       setRequests(userRequests);
     }
     const allGroups = await db.commissionGroups.getAll();
-    setFgtsGroups(allGroups.filter(g => g.type === 'FGTS' && g.status === 'Ativo'));
-    setCltGroups(allGroups.filter(g => g.type === 'CLT' && g.status === 'Ativo'));
-    setOthersGroups(allGroups.filter(g => g.type === 'Outros' && g.status === 'Ativo'));
+    setFgtsGroups(allGroups);
+    setCltGroups(allGroups);
+    setOthersGroups(allGroups);
     const allBanks = await db.bancos.getAll();
-    setAvailableBanks(allBanks.map(b => b.nome_banco));
+    setAvailableBanks(allBanks.map(b => b.nome));
   };
 
   useEffect(() => {

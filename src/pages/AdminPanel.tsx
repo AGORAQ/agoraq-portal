@@ -98,7 +98,7 @@ export default function AdminPanel() {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [formData, setFormData] = useState<Partial<User>>({
-    name: '', email: '', role: 'vendedor', status: 'Ativo', grupo_comissao: 'PLUS', password: ''
+    name: '', email: '', role: 'vendedor', status: 'Ativo', grupo_comissao: 'OURO', password: ''
   });
 
   // Commission Groups State
@@ -241,29 +241,42 @@ export default function AdminPanel() {
       // Use provided password or generate one
       const finalPassword = formData.password || db.utils.generatePassword(12);
       
-      const newUser = await db.users.create({
-        name: formData.name || '',
-        email: formData.email || '',
-        role: formData.role as any,
-        status: formData.status as any,
-        password: finalPassword,
-        grupo_comissao: formData.grupo_comissao as any,
-        bancos_permitidos: formData.bancos_permitidos
-      });
+      try {
+        const response = await fetch('/api/admin/create-user', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: formData.name,
+            email: formData.email,
+            password: finalPassword,
+            role: formData.role,
+            status: formData.status,
+            grupo_comissao: formData.grupo_comissao
+          })
+        });
 
-      if (newUser) {
+        const result = await response.json();
+
+        if (!response.ok) {
+          throw new Error(result.error || 'Erro ao criar usuário');
+        }
+
         setPasswordModal({
           isOpen: true,
           password: finalPassword as any,
-          userName: newUser.name,
+          userName: formData.name,
           type: 'create'
         });
+      } catch (error: any) {
+        console.error('Error creating user:', error);
+        alert('Erro ao criar usuário: ' + error.message);
+        return;
       }
     }
     await loadData();
     setIsFormOpen(false);
     setEditingUser(null);
-    setFormData({ name: '', email: '', role: 'vendedor', status: 'Ativo', grupo_comissao: 'PLUS', password: '' });
+    setFormData({ name: '', email: '', role: 'vendedor', status: 'Ativo', grupo_comissao: 'OURO', password: '' });
   };
 
   const handleTestEmail = async () => {
@@ -338,25 +351,30 @@ export default function AdminPanel() {
     }
     
     // Approve request: Create user and update request status
-    const newUser = await db.users.create({
-      name: req.name,
-      email: req.email,
-      role: 'vendedor',
-      status: 'Ativo',
-      password: finalPassword,
-      grupo_comissao: 'PLUS' // Default group for new requests
-    });
-    
-    if (newUser) {
-      await db.requests.updateStatus(req.id, 'Aprovado');
-      await loadData();
-      
-      setPasswordModal({
-        isOpen: true,
-        password: finalPassword as any,
-        userName: newUser.name,
-        type: 'create'
+    try {
+      const newUser = await db.users.create({
+        name: req.name,
+        email: req.email,
+        role: 'vendedor',
+        status: 'Ativo',
+        password: finalPassword,
+        grupo_comissao: 'OURO' // Default group for new requests
       });
+      
+      if (newUser) {
+        await db.requests.updateStatus(req.id, 'Aprovado');
+        await loadData();
+        
+        setPasswordModal({
+          isOpen: true,
+          password: finalPassword as any,
+          userName: newUser.name,
+          type: 'create'
+        });
+      }
+    } catch (error: any) {
+      console.error('Error approving request:', error);
+      alert(error.message || 'Erro ao aprovar solicitação.');
     }
   };
 
@@ -371,18 +389,19 @@ export default function AdminPanel() {
     const newPassword = prompt(`Digite a nova senha para ${userToReset.name}:`);
     
     if (newPassword) {
-      const updatedUser = await db.users.update(userToReset.id, {
-        password: newPassword
-      });
+      try {
+        await db.users.resetPassword(userToReset.id, newPassword);
 
-      if (updatedUser) {
         setPasswordModal({
           isOpen: true,
           password: newPassword as any,
-          userName: updatedUser.name,
+          userName: userToReset.name,
           type: 'reset'
         });
         await loadData();
+      } catch (error: any) {
+        console.error('Error resetting password:', error);
+        alert(error.message || 'Erro ao resetar senha.');
       }
     }
   };
@@ -1016,25 +1035,6 @@ export default function AdminPanel() {
                       >
                         <option value="MASTER">MASTER</option>
                         <option value="OURO">OURO</option>
-                      </select>
-                    </div>
-                    <div className="space-y-2">
-                      <label className="text-sm font-medium">Banco</label>
-                      <select 
-                        className="flex h-10 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm"
-                        value={formData.bancos_permitidos?.[0] || ''}
-                        onChange={e => {
-                          const bankId = e.target.value;
-                          setFormData(prev => ({ 
-                            ...prev, 
-                            bancos_permitidos: [bankId]
-                          }));
-                        }}
-                      >
-                        <option value="">Selecione um banco...</option>
-                        {banks.map(b => (
-                          <option key={b.id} value={b.id}>{b.nome_banco}</option>
-                        ))}
                       </select>
                     </div>
                   </div>

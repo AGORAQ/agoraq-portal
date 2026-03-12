@@ -82,27 +82,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const register = async (email: string, password: string, name: string, role: 'admin' | 'vendedor') => {
     try {
-      const { data, error } = await supabase.auth.signUp({
+      // Use the server-side endpoint for user creation
+      // This handles both auth.users and profiles table
+      const newUser = await db.users.create({
+        name,
         email,
         password,
+        role,
+        status: 'Ativo',
+        grupo_comissao: role === 'admin' ? 'MASTER' : 'OURO'
       });
 
-      if (error) throw error;
-
-      if (data.user) {
-        const profile = await db.users.create({
-          auth_user_id: data.user.id,
-          name,
-          email,
-          role,
-          status: 'Ativo',
-          grupo_comissao: 'MASTER'
-        });
-        setUser(profile);
-        return { success: true };
+      if (newUser) {
+        // Log in the user after registration
+        return await login(email, password);
       }
       
-      return { success: false, error: 'Erro ao criar conta' };
+      return { success: false, error: 'Erro ao criar perfil' };
     } catch (e: any) {
       console.error('Register error:', e);
       return { success: false, error: e.message || 'Erro ao tentar criar conta.' };

@@ -185,11 +185,13 @@ export interface FinancialEntry {
   id: string;
   sale_id?: string;
   vendedor_id: string;
+  vendedor_nome?: string;
   tipo: 'Crédito' | 'Débito' | 'Estorno';
   valor: number;
   descricao?: string;
   pix_key?: string;
   status: 'Pendente' | 'Pago' | 'Cancelado';
+  data_vencimento?: string;
   created_at: string;
   updated_at: string;
 }

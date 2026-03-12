@@ -215,7 +215,8 @@ export const normalizeValue = (value: any): any => {
   if (typeof value === 'number') {
     // XLSX often reads percentages as decimals (e.g. 0.39 for 39%)
     // If the value is <= 1 and > 0, we treat it as a decimal percentage and multiply by 100
-    if (value > 0 && value <= 1) {
+    // However, if it's a very small number like 0.003, it should become 0.3
+    if (value > 0 && value < 1) {
       return parseFloat((value * 100).toFixed(4));
     }
     return value;
