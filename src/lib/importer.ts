@@ -20,22 +20,26 @@ const COLUMN_SYNONYMS: { [key: string]: string } = {
   'bank': 'banco',
   'instituicao': 'banco',
   'nome do banco': 'banco',
+  'nome banco': 'banco',
   
   'produto': 'produto',
   'product': 'produto',
   'servico': 'produto',
   'convenio': 'produto',
+  'operacao': 'produto',
   
   'codigo da tabela': 'codigo_tabela',
   'cod tabela': 'codigo_tabela',
-  'codigo_tabela': 'codigo_tabela',
+  'codigo tabela': 'codigo_tabela',
   'codigo': 'codigo_tabela',
   'cod': 'codigo_tabela',
+  'id tabela': 'codigo_tabela',
   
   'nome da tabela': 'nome_tabela',
   'tabela': 'nome_tabela',
-  'nome_tabela': 'nome_tabela',
   'nome tabela': 'nome_tabela',
+  'descricao': 'nome_tabela',
+  'descricao da tabela': 'nome_tabela',
   
   'prazo': 'parcelas',
   'term': 'parcelas',
@@ -44,83 +48,85 @@ const COLUMN_SYNONYMS: { [key: string]: string } = {
   'n parcelas': 'parcelas',
   'numero de parcelas': 'parcelas',
   'prazo meses': 'parcelas',
-  'prazo_meses': 'parcelas',
+  'qtd parcelas': 'parcelas',
   
-  'operacao': 'operacao',
   'tipo': 'operacao',
   'tipo de operacao': 'operacao',
   'modalidade': 'operacao',
+  'tipo operacao': 'operacao',
 
   'valor min': 'faixa_valor_min',
   'valor minimo': 'faixa_valor_min',
   'min': 'faixa_valor_min',
   'valor inicial': 'faixa_valor_min',
+  'faixa min': 'faixa_valor_min',
   
   'valor max': 'faixa_valor_max',
   'valor maximo': 'faixa_valor_max',
   'max': 'faixa_valor_max',
   'valor final': 'faixa_valor_max',
+  'faixa max': 'faixa_valor_max',
   
   'comissao empresa': 'percentual_total_empresa',
   'comissao total empresa': 'percentual_total_empresa',
-  'comissao_total_empresa': 'percentual_total_empresa',
   'comissao total (%)': 'percentual_total_empresa',
   'comissao total': 'percentual_total_empresa',
   'total %': 'percentual_total_empresa',
   '% total': 'percentual_total_empresa',
-  'percentual_total_empresa': 'percentual_total_empresa',
   '% empresa': 'percentual_total_empresa',
-  'comissao_empresa': 'percentual_total_empresa',
-  'total_empresa': 'percentual_total_empresa',
+  'comissao empresa %': 'percentual_total_empresa',
+  'percentual total empresa': 'percentual_total_empresa',
+  'total empresa': 'percentual_total_empresa',
+  'comissao_total_empresa': 'percentual_total_empresa',
 
   'grupo master': 'comissao_master',
   'master': 'comissao_master',
-  'comissao_master': 'comissao_master',
   'comissao master': 'comissao_master',
   '% master': 'comissao_master',
   'master %': 'comissao_master',
+  'comissao master %': 'comissao_master',
 
   'grupo ouro': 'comissao_ouro',
   'ouro': 'comissao_ouro',
-  'comissao_ouro': 'comissao_ouro',
   'comissao ouro': 'comissao_ouro',
   '% ouro': 'comissao_ouro',
   'ouro %': 'comissao_ouro',
+  'comissao ouro %': 'comissao_ouro',
 
   'grupo prata': 'comissao_prata',
   'prata': 'comissao_prata',
-  'comissao_prata': 'comissao_prata',
   'comissao prata': 'comissao_prata',
   '% prata': 'comissao_prata',
   'prata %': 'comissao_prata',
+  'comissao prata %': 'comissao_prata',
 
   'grupo plus': 'comissao_plus',
   'plus': 'comissao_plus',
-  'comissao_plus': 'comissao_plus',
   'comissao plus': 'comissao_plus',
   '% plus': 'comissao_plus',
   'plus %': 'comissao_plus',
+  'comissao plus %': 'comissao_plus',
   
   'percentual vendedor (%)': 'percentual_vendedor',
   'comissao vendedor': 'percentual_vendedor',
   'vendedor %': 'percentual_vendedor',
   '% vendedor': 'percentual_vendedor',
-  'percentual_vendedor': 'percentual_vendedor',
+  'percentual vendedor': 'percentual_vendedor',
   
   'percentual empresa (%)': 'percentual_empresa',
   'empresa %': 'percentual_empresa',
-  'percentual_empresa': 'percentual_empresa',
+  'percentual empresa': 'percentual_empresa',
   
   'grupo de comissao': 'grupo_comissao',
   'grupo': 'grupo_comissao',
   'categoria': 'grupo_comissao',
   'perfil': 'grupo_comissao',
-  'grupo_comissao': 'grupo_comissao',
 
   'vigencia': 'vigencia',
   'data vigencia': 'vigencia',
   'validade': 'vigencia',
   'inicio': 'vigencia',
+  'data inicio': 'vigencia',
   
   'status': 'status',
   'situacao': 'status',
@@ -137,9 +143,10 @@ const COLUMN_SYNONYMS: { [key: string]: string } = {
   'celular': 'phone',
   'phone': 'phone',
   'whatsapp': 'phone',
+  'tel': 'phone',
   
   'email': 'email',
-  'e-mail': 'email',
+  'e mail': 'email',
   
   'cidade': 'city',
   'city': 'city',
@@ -148,27 +155,31 @@ const COLUMN_SYNONYMS: { [key: string]: string } = {
   'estado': 'state',
   'cpf': 'cpf',
   'documento': 'cpf',
+  'cpf cliente': 'cpf',
   'banco de origem': 'banco_origem',
   'banco origem': 'banco_origem',
   'origem': 'banco_origem',
   'importado por': 'importado_por',
-  'importado_por': 'importado_por',
 
   // Sales
   'valor da venda': 'valor_venda',
   'valor venda': 'valor_venda',
   'valor': 'valor_venda',
   'venda': 'valor_venda',
+  'montante': 'valor_venda',
   
   'nome do cliente': 'cliente',
+  'cliente nome': 'cliente',
   
   'data': 'data',
   'data da venda': 'data',
   'periodo': 'data',
+  'data venda': 'data',
   
   'proposta': 'proposta',
   'n proposta': 'proposta',
   'numero proposta': 'proposta',
+  'contrato': 'proposta',
   
   'cpf do cliente': 'cpf',
 };
@@ -187,56 +198,62 @@ export const normalizeHeader = (header: string): string => {
   const noSpaces = normalized.replace(/\s/g, '');
   if (COLUMN_SYNONYMS[noSpaces]) return COLUMN_SYNONYMS[noSpaces];
 
-  return normalized.replace(/\s+/g, '_');
+  // If it's already snake_case and matches a known field, return it
+  const asSnake = normalized.replace(/\s+/g, '_');
+  if (Object.values(COLUMN_SYNONYMS).includes(asSnake)) return asSnake;
+
+  return asSnake;
 };
 
 export const normalizeValue = (value: any): any => {
   if (value === null || value === undefined || value === '') return null;
   
-  // If it's already a number, just return it
-  if (typeof value === 'number') return value;
+  // If it's already a number from XLSX
+  if (typeof value === 'number') {
+    // XLSX often reads percentages as decimals (e.g. 0.12 for 12%)
+    // If the value is very small and likely a percentage, we might need to handle it.
+    // However, in this system, we'll keep the raw number and let the UI handle it or
+    // assume the user wants the raw value.
+    return value;
+  }
 
   if (typeof value === 'string') {
     let cleanValue = value.trim();
     if (cleanValue === '') return null;
     
-    // If it contains letters (other than R, $, %) or ranges, keep as string
-    // This handles "1 a 12", "84x", "Acima de 12", etc.
-    if (/[a-df-qs-z]/i.test(cleanValue.replace(/R\$|%/gi, '')) || /\b(a|ate|de|x|acima|abaixo)\b/i.test(cleanValue)) {
+    // If it's a range or has letters, keep as string (e.g. "1 a 12", "84x")
+    // But allow R$ and % to be stripped for numeric conversion
+    const stripped = cleanValue.replace(/R\$|%/gi, '').trim();
+    
+    // Check if it's strictly numeric (allowing for BR separators)
+    const isNumericCandidate = /^[0-9.,\s\-]+$/.test(stripped);
+    
+    if (!isNumericCandidate) {
       return cleanValue;
     }
 
     // Remove currency and spaces
-    let numStr = cleanValue.replace('R$', '').replace(/\s/g, '');
+    let numStr = stripped.replace(/\s/g, '');
     
-    // Check if it's a percentage
-    const isPercentage = numStr.includes('%');
-    if (isPercentage) numStr = numStr.replace('%', '');
-
     // Brazilian number logic
-    if (numStr.includes(',')) {
-      // Has comma: definitely BR format. Dots are thousands, comma is decimal.
+    if (numStr.includes(',') && numStr.includes('.')) {
+      // Both separators: 1.234,56 -> 1234.56
       numStr = numStr.replace(/\./g, '').replace(',', '.');
-    } else {
-      // No comma: could be US format or plain number
-      // If there's exactly one dot and it's followed by 3 digits, 
-      // it's highly likely a thousands separator in BR context.
-      const dots = (numStr.match(/\./g) || []).length;
-      if (dots === 1) {
-        const parts = numStr.split('.');
-        if (parts[1].length === 3) {
-          const val = parseFloat(numStr.replace('.', ''));
-          if (val > 100) { 
-             numStr = numStr.replace('.', '');
-          }
-        }
-      } else if (dots > 1) {
-        numStr = numStr.replace(/\./g, '');
+    } else if (numStr.includes(',')) {
+      // Only comma: 1,23 -> 1.23 OR 1.234 (thousands)
+      // If there are 3 digits after comma, it's ambiguous.
+      // But usually comma is decimal in BR.
+      numStr = numStr.replace(',', '.');
+    } else if (numStr.includes('.')) {
+      // Only dot: 1.234 -> 1234 (thousands) OR 1.23 (decimal)
+      const parts = numStr.split('.');
+      if (parts[parts.length - 1].length === 3 && parseFloat(numStr.replace('.', '')) > 100) {
+        numStr = numStr.replace('.', '');
       }
     }
 
     const parsed = parseFloat(numStr);
-    if (!isNaN(parsed) && /^-?\d*\.?\d*$/.test(numStr)) {
+    if (!isNaN(parsed)) {
       return parsed;
     }
     
