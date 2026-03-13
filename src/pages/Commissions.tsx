@@ -25,6 +25,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useCommission } from '@/context/CommissionContext';
+import { useNotification } from '@/context/NotificationContext';
 import { CommissionTable } from '@/types';
 import { BANK_OPTIONS } from '@/constants';
 import GlobalImporter from '@/components/GlobalImporter';
@@ -33,6 +34,7 @@ import * as XLSX from 'xlsx';
 
 export default function Commissions() {
   const { user } = useAuth();
+  const { notify, confirm } = useNotification();
   const { 
     commissions, 
     addCommission, 
@@ -160,7 +162,7 @@ export default function Commissions() {
     e.preventDefault();
     
     if (!formData.banco || !formData.nome_tabela || !formData.produto) {
-      alert('Preencha todos os campos obrigatórios.');
+      notify('error', 'Preencha todos os campos obrigatórios.');
       return;
     }
 
@@ -184,10 +186,10 @@ export default function Commissions() {
     try {
       if (editingId) {
         await updateCommission(editingId, commissionData);
-        alert('Tabela atualizada com sucesso!');
+        notify('success', 'Tabela atualizada com sucesso!');
       } else {
         await addCommission(commissionData);
-        alert('Tabela cadastrada com sucesso!');
+        notify('success', 'Tabela cadastrada com sucesso!');
       }
       
       setIsFormOpen(false);
@@ -195,7 +197,7 @@ export default function Commissions() {
       setEditingId(null);
     } catch (error: any) {
       console.error('Erro ao salvar comissão:', error);
-      alert('Erro ao salvar comissão: ' + (error.message || 'Erro desconhecido'));
+      notify('error', 'Erro ao salvar comissão: ' + (error.message || 'Erro desconhecido'));
     } finally {
       setIsSaving(false);
     }
@@ -256,17 +258,17 @@ export default function Commissions() {
       setCampaigns(all);
       setNewCampaign({ title: '', message: '', link: '' });
       setIsCampaignFormOpen(false);
-      alert('Campanha criada com sucesso!');
+      notify('success', 'Campanha criada com sucesso!');
     } catch (error: any) {
       console.error('Erro ao salvar campanha:', error);
-      alert('Erro ao salvar campanha: ' + (error.message || 'Erro desconhecido'));
+      notify('error', 'Erro ao salvar campanha: ' + (error.message || 'Erro desconhecido'));
     } finally {
       setIsSaving(false);
     }
   };
 
   const handleDeleteCampaign = async (id: string) => {
-    if (confirm('Excluir esta campanha?')) {
+    if (await confirm({ message: 'Excluir esta campanha?', type: 'danger' })) {
       await db.campaigns.delete(id);
       const all = await db.campaigns.getAll();
       setCampaigns(all);
@@ -316,9 +318,11 @@ export default function Commissions() {
                 size="sm" 
                 className="text-red-600 border-red-200 hover:bg-red-50"
                 disabled={selectedIds.length === 0}
-                onClick={() => {
-                  deleteManyCommissions(selectedIds);
-                  setSelectedIds([]);
+                onClick={async () => {
+                  if (await confirm({ message: `Excluir ${selectedIds.length} tabelas selecionadas?`, type: 'danger' })) {
+                    deleteManyCommissions(selectedIds);
+                    setSelectedIds([]);
+                  }
                 }}
               >
                 <Trash2 className="w-4 h-4 mr-2" />
@@ -328,7 +332,11 @@ export default function Commissions() {
                 variant="outline" 
                 size="sm" 
                 className="text-red-700 border-red-300 hover:bg-red-100"
-                onClick={deleteAllCommissions}
+                onClick={async () => {
+                  if (await confirm({ message: 'Tem certeza que deseja excluir TODAS as tabelas de comissão?', type: 'danger' })) {
+                    deleteAllCommissions();
+                  }
+                }}
               >
                 <Trash2 className="w-4 h-4 mr-2" />
                 Excluir Tudo
@@ -533,7 +541,11 @@ export default function Commissions() {
                                 <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-500 hover:text-blue-600" onClick={() => handleEdit(comm)}>
                                   <Edit className="h-4 w-4" />
                                 </Button>
-                                <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-500 hover:text-red-600" onClick={() => deleteCommission(comm.id)}>
+                                <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-500 hover:text-red-600" onClick={async () => {
+                                  if (await confirm({ message: 'Excluir esta tabela de comissão?', type: 'danger' })) {
+                                    deleteCommission(comm.id);
+                                  }
+                                }}>
                                   <Trash2 className="h-4 w-4" />
                                 </Button>
                               </div>

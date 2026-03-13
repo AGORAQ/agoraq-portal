@@ -4,10 +4,12 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { useAuth } from '@/context/AuthContext';
+import { useNotification } from '@/context/NotificationContext';
 import { db } from '@/services/db';
 
 export function DailyGoalModal() {
   const { user } = useAuth();
+  const { notify } = useNotification();
   const [isOpen, setIsOpen] = useState(false);
   const [goal, setGoal] = useState('');
 
@@ -33,7 +35,7 @@ export function DailyGoalModal() {
       window.dispatchEvent(new Event('goalUpdated'));
     } catch (error) {
       console.error('Error saving daily goal:', error);
-      alert('Erro ao salvar meta diária.');
+      notify('error', 'Erro ao salvar meta diária.');
     }
   };
 

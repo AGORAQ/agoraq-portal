@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import { CommissionTable } from '@/types';
 import { db } from '@/services/db';
 import { useAuth } from './AuthContext';
+import { useNotification } from './NotificationContext';
 
 interface CommissionContextType {
   commissions: CommissionTable[];
@@ -19,6 +20,7 @@ const CommissionContext = createContext<CommissionContextType | undefined>(undef
 export function CommissionProvider({ children }: { children: React.ReactNode }) {
   const [commissions, setCommissions] = useState<CommissionTable[]>([]);
   const { user } = useAuth();
+  const { notify, confirm } = useNotification();
 
   const refreshCommissions = async () => {
     const userGroup = user?.grupo_comissao || 'OURO';
@@ -52,7 +54,7 @@ export function CommissionProvider({ children }: { children: React.ReactNode }) 
       await db.commissions.create({ ...commission, status: 'Ativo' }, user.role, user.id);
       await refreshCommissions();
     } catch (error: any) {
-      alert(error.message);
+      notify('error', error.message);
     }
   };
 
@@ -62,42 +64,42 @@ export function CommissionProvider({ children }: { children: React.ReactNode }) 
       await db.commissions.update(id, updates, user.role, user.id);
       await refreshCommissions();
     } catch (error: any) {
-      alert(error.message);
+      notify('error', error.message);
     }
   };
 
   const deleteCommission = async (id: string) => {
     if (!user) return;
-    if (confirm('Tem certeza que deseja excluir esta tabela?')) {
+    if (await confirm({ message: 'Tem certeza que deseja excluir esta tabela?', type: 'danger' })) {
       try {
         await db.commissions.delete(id, user.role, user.id);
         await refreshCommissions();
       } catch (error: any) {
-        alert(error.message);
+        notify('error', error.message);
       }
     }
   };
 
   const deleteManyCommissions = async (ids: string[]) => {
     if (!user) return;
-    if (confirm(`Tem certeza que deseja excluir ${ids.length} tabelas selecionadas?`)) {
+    if (await confirm({ message: `Tem certeza que deseja excluir ${ids.length} tabelas selecionadas?`, type: 'danger' })) {
       try {
         await db.commissions.deleteMany(ids, user.role, user.id);
         await refreshCommissions();
       } catch (error: any) {
-        alert(error.message);
+        notify('error', error.message);
       }
     }
   };
 
   const deleteAllCommissions = async () => {
     if (!user) return;
-    if (confirm('ATENÇÃO: Tem certeza que deseja excluir TODAS as tabelas de comissão? Esta ação não pode ser desfeita.')) {
+    if (await confirm({ message: 'ATENÇÃO: Tem certeza que deseja excluir TODAS as tabelas de comissão? Esta ação não pode ser desfeita.', type: 'danger' })) {
       try {
         await db.commissions.deleteAll(user.role, user.id);
         await refreshCommissions();
       } catch (error: any) {
-        alert(error.message);
+        notify('error', error.message);
       }
     }
   };
@@ -116,9 +118,9 @@ export function CommissionProvider({ children }: { children: React.ReactNode }) 
       });
 
       await refreshCommissions();
-      alert(`${imported.length} tabelas importadas com sucesso!`);
+      notify('success', `${imported.length} tabelas importadas com sucesso!`);
     } catch (error: any) {
-      alert(error.message);
+      notify('error', error.message);
       // Log the error
       await db.logs.add({
         user: user.name,

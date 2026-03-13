@@ -11,6 +11,7 @@ import {
   Sparkles, Loader2, Play, ArrowUp, ArrowDown
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
+import { useNotification } from '@/context/NotificationContext';
 import { db } from '@/services/db';
 import { AcademyContent, CommissionGroup } from '@/types';
 import { GoogleGenAI } from "@google/genai";
@@ -26,6 +27,7 @@ declare global {
 
 export default function Academy() {
   const { user } = useAuth();
+  const { notify, confirm } = useNotification();
   const isAdmin = user?.role === 'admin';
 
   const [contents, setContents] = useState<AcademyContent[]>([]);
@@ -80,12 +82,12 @@ export default function Academy() {
     e.preventDefault();
     console.log('handleSubmit iniciado', formData);
     if (!formData.titulo || !formData.categoria) {
-      alert('Título e Categoria são obrigatórios.');
+      notify('error', 'Título e Categoria são obrigatórios.');
       return;
     }
 
     if (!formData.arquivo_url && formData.tipo_arquivo !== 'link') {
-      alert('Por favor, forneça um link ou arquivo.');
+      notify('error', 'Por favor, forneça um link ou arquivo.');
       return;
     }
 
@@ -123,10 +125,10 @@ export default function Academy() {
         status: 'Ativo',
         versao: '1.0'
       });
-      alert('Conteúdo salvo com sucesso!');
+      notify('success', 'Conteúdo salvo com sucesso!');
     } catch (error: any) {
       console.error('Erro ao salvar conteúdo:', error);
-      alert(`Erro ao salvar: ${error.message || 'Erro desconhecido'}`);
+      notify('error', `Erro ao salvar: ${error.message || 'Erro desconhecido'}`);
     } finally {
       setIsSaving(false);
     }
@@ -140,7 +142,7 @@ export default function Academy() {
   };
 
   const handleDelete = async (id: string) => {
-    if (confirm('Tem certeza que deseja excluir este conteúdo?')) {
+    if (await confirm({ message: 'Tem certeza que deseja excluir este conteúdo?', type: 'danger' })) {
       await db.academy.delete(id);
       await loadData();
     }
@@ -193,7 +195,7 @@ export default function Academy() {
           setVideoModalUrl(blobUrl);
         } catch (error) {
           console.error('Error loading video:', error);
-          alert('Não foi possível carregar o vídeo. Verifique sua conexão ou chave de API.');
+          notify('error', 'Não foi possível carregar o vídeo. Verifique sua conexão ou chave de API.');
         } finally {
           setIsVideoLoading(false);
         }
@@ -277,13 +279,13 @@ export default function Academy() {
       setIsGeneratingVideo(false);
       setGenerationProgress('');
       setAiPrompt('');
-      alert('Treinamento gerado com sucesso!');
+      notify('success', 'Treinamento gerado com sucesso!');
 
     } catch (error: any) {
       console.error('Erro ao gerar treinamento:', error);
       setIsGeneratingVideo(false);
       setGenerationProgress('');
-      alert(`Erro ao gerar treinamento: ${error.message}`);
+      notify('error', `Erro ao gerar treinamento: ${error.message}`);
     }
   };
 
@@ -293,7 +295,7 @@ export default function Academy() {
 
     // Limit file size to 10MB for base64 storage
     if (file.size > 10 * 1024 * 1024) {
-      alert('O arquivo é muito grande. O limite é 10MB para upload direto. Para arquivos maiores, use um link externo.');
+      notify('warning', 'O arquivo é muito grande. O limite é 10MB para upload direto. Para arquivos maiores, use um link externo.');
       return;
     }
 
@@ -320,13 +322,13 @@ export default function Academy() {
       };
       reader.onerror = () => {
         console.error('Erro ao ler arquivo');
-        alert('Erro ao carregar o arquivo. Tente novamente.');
+        notify('error', 'Erro ao carregar o arquivo. Tente novamente.');
         setIsUploading(false);
       };
       reader.readAsDataURL(file);
     } catch (error) {
       console.error('Erro no upload:', error);
-      alert('Erro ao processar o upload.');
+      notify('error', 'Erro ao processar o upload.');
       setIsUploading(false);
     }
   };

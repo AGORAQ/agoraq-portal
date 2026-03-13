@@ -4,11 +4,13 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { User, Lock, Camera, Save, AlertCircle, Video, Download, Loader2 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
+import { useNotification } from '@/context/NotificationContext';
 import { db } from '@/services/db';
 import { generateTutorialVideo } from '@/services/videoService';
 
 export default function Profile() {
   const { user, updateUser, changePassword } = useAuth();
+  const { notify } = useNotification();
   const [formData, setFormData] = useState({
     name: '',
     email: '',
@@ -17,10 +19,9 @@ export default function Profile() {
     newPassword: '',
     confirmPassword: ''
   });
-  const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
-  const [videoLoading, setVideoLoading] = useState(false);
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [videoLoading, setVideoLoading] = useState(false);
 
   useEffect(() => {
     if (user) {
@@ -46,7 +47,6 @@ export default function Profile() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setMessage(null);
     setIsSaving(true);
 
     if (!user) return;
@@ -55,19 +55,19 @@ export default function Profile() {
       // Handle password change if requested
       if (formData.newPassword) {
         if (formData.newPassword !== formData.confirmPassword) {
-          setMessage({ type: 'error', text: 'As novas senhas não coincidem.' });
+          notify('error', 'As novas senhas não coincidem.');
           setIsSaving(false);
           return;
         }
         if (formData.newPassword.length < 6) {
-          setMessage({ type: 'error', text: 'A nova senha deve ter pelo menos 6 caracteres.' });
+          notify('error', 'A nova senha deve ter pelo menos 6 caracteres.');
           setIsSaving(false);
           return;
         }
         
         const pwdResult = await changePassword(formData.newPassword);
         if (!pwdResult.success) {
-          setMessage({ type: 'error', text: pwdResult.error || 'Erro ao alterar senha.' });
+          notify('error', pwdResult.error || 'Erro ao alterar senha.');
           setIsSaving(false);
           return;
         }
@@ -81,11 +81,11 @@ export default function Profile() {
 
       await updateUser(updates);
       
-      setMessage({ type: 'success', text: 'Perfil atualizado com sucesso!' });
+      notify('success', 'Perfil atualizado com sucesso!');
       setFormData(prev => ({ ...prev, currentPassword: '', newPassword: '', confirmPassword: '' }));
     } catch (error) {
       console.error('Profile update error:', error);
-      setMessage({ type: 'error', text: 'Ocorreu um erro ao salvar as alterações.' });
+      notify('error', 'Ocorreu um erro ao salvar as alterações.');
     } finally {
       setIsSaving(false);
     }
@@ -93,19 +93,18 @@ export default function Profile() {
 
   const handleGenerateVideo = async () => {
     setVideoLoading(true);
-    setMessage(null);
     try {
       const url = await generateTutorialVideo();
       if (url) {
         setVideoUrl(url);
-        setMessage({ type: 'success', text: 'Vídeo tutorial gerado com sucesso! Clique no botão de download abaixo.' });
+        notify('success', 'Vídeo tutorial gerado com sucesso! Clique no botão de download abaixo.');
       }
     } catch (error: any) {
       console.error(error);
       if (error.message?.includes("API Key not found")) {
-        setMessage({ type: 'error', text: 'Chave de API não encontrada. Por favor, selecione uma chave de API paga nas configurações do AI Studio para gerar vídeos.' });
+        notify('error', 'Chave de API não encontrada. Por favor, selecione uma chave de API paga nas configurações do AI Studio para gerar vídeos.');
       } else {
-        setMessage({ type: 'error', text: 'Erro ao gerar vídeo. Tente novamente mais tarde.' });
+        notify('error', 'Erro ao gerar vídeo. Tente novamente mais tarde.');
       }
     } finally {
       setVideoLoading(false);
@@ -134,20 +133,13 @@ export default function Profile() {
       document.body.removeChild(a);
     } catch (error) {
       console.error("Download error:", error);
-      setMessage({ type: 'error', text: 'Erro ao baixar o vídeo.' });
+      notify('error', 'Erro ao baixar o vídeo.');
     }
   };
 
   return (
     <div className="max-w-2xl mx-auto space-y-6">
       <h1 className="text-2xl font-bold text-slate-900">Meu Perfil</h1>
-
-      {message && (
-        <div className={`p-4 rounded-lg flex items-center gap-2 ${message.type === 'success' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>
-          <AlertCircle className="w-5 h-5" />
-          {message.text}
-        </div>
-      )}
 
       <form onSubmit={handleSubmit}>
         <Card>

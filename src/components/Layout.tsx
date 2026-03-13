@@ -58,23 +58,24 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     external?: boolean;
   }
 
-  // Define all possible items in order
-  const allNavItems: NavigationItem[] = [
-    { icon: LayoutDashboard, label: 'Dashboard', path: '/' },
-    { icon: UserPlus, label: 'Solicitar Usuário', path: '/solicitar-usuario' },
-    { icon: KeyRound, label: 'Usuário Bancos', path: '/credenciais' },
-    { icon: Table2, label: 'Tabela de Comissão', path: '/comissoes' },
-    { icon: DollarSign, label: 'Vendas', path: '/vendas' },
-    { icon: Cpu, label: 'Gestão de Automação', path: '/crm' },
-    { icon: Wallet, label: 'Financeiro', path: '/financeiro' },
-    { icon: BarChart3, label: 'Relatório Financeiro', path: '/admin/financeiro', adminOnly: true },
-    { icon: GraduationCap, label: 'AgoraQ Academy', path: '/academy' },
-    { icon: HeadphonesIcon, label: 'Suporte', path: '/suporte' },
-    { icon: Settings, label: 'Administração', path: '/admin', adminOnly: true },
-  ];
+  // Memoize navigation items to avoid recalculating on every render
+  const navItems = React.useMemo(() => {
+    const allNavItems: NavigationItem[] = [
+      { icon: LayoutDashboard, label: 'Dashboard', path: '/' },
+      { icon: UserPlus, label: 'Solicitar Usuário', path: '/solicitar-usuario' },
+      { icon: KeyRound, label: 'Usuário Bancos', path: '/credenciais' },
+      { icon: Table2, label: 'Tabela de Comissão', path: '/comissoes' },
+      { icon: DollarSign, label: 'Vendas', path: '/vendas' },
+      { icon: Cpu, label: 'Gestão de Automação', path: '/crm' },
+      { icon: Wallet, label: 'Financeiro', path: '/financeiro' },
+      { icon: BarChart3, label: 'Relatório Financeiro', path: '/admin/financeiro', adminOnly: true },
+      { icon: GraduationCap, label: 'AgoraQ Academy', path: '/academy' },
+      { icon: HeadphonesIcon, label: 'Suporte', path: '/suporte' },
+      { icon: Settings, label: 'Administração', path: '/admin', adminOnly: true },
+    ];
 
-  // Filter items based on role
-  const navItems = allNavItems.filter(item => !item.adminOnly || user?.role === 'admin');
+    return allNavItems.filter(item => !item.adminOnly || user?.role === 'admin');
+  }, [user?.role]);
 
   // Add Payment Alerts for Admin (special case, maybe keep it separate or integrate? User didn't list it in the main order but "Sistema de Alertas" is separate. The prompt says "Reorganizar o menu lateral...". It didn't mention "Alertas Pagamento" explicitly in the list, but maybe it's part of "Administração" or "Financeiro". I'll keep it if it was there, or remove if it's redundant. The prompt listed specific items. "Alertas Pagamento" was in the previous code. I'll remove it from the sidebar if it's not in the requested list, or maybe "Financeiro" covers it? "Financeiro" usually is for the user. "Relatório Financeiro" is for admin. I'll stick to the requested list. The "Alertas Pagamento" link might be accessible via the new Alert System).
 

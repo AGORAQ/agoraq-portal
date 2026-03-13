@@ -232,6 +232,7 @@ export const db = {
         });
 
         try {
+          console.log(`Enviando lote de comissões ${i / CHUNK_SIZE + 1} para o Supabase...`);
           // Explicitly list columns to avoid schema cache issues with non-existent columns like 'codigo_tabela'
           const { data, error } = await supabase
             .from('commission_tables')
@@ -247,12 +248,19 @@ export const db = {
                 .from('commissions')
                 .insert(normalizedChunk)
                 .select('id, banco, produto, tabela, parcelas, comissao_total_empresa, grupo_master, grupo_ouro, grupo_prata, grupo_plus, status, vigencia');
-              if (error2) throw error2;
-              if (data2) results.push(...data2);
+              if (error2) {
+                console.error('Fallback table also failed:', error2);
+                throw error2;
+              }
+              if (data2) {
+                console.log('Lote processado com sucesso na tabela de fallback.');
+                results.push(...data2);
+              }
             } else {
               throw error;
             }
           } else if (data) {
+            console.log('Lote processado com sucesso na tabela principal.');
             results.push(...data);
           }
         } catch (chunkError: any) {
@@ -393,9 +401,14 @@ export const db = {
       let processed = 0;
       const results = [];
 
+      if (total === 0) {
+        console.warn('Import called with empty leads array');
+        return [];
+      }
+
       for (let i = 0; i < total; i += CHUNK_SIZE) {
         const chunk = leads.slice(i, i + CHUNK_SIZE);
-        console.log(`Processing leads chunk ${i / CHUNK_SIZE + 1} of ${Math.ceil(total / CHUNK_SIZE)}`);
+        console.log(`Processing leads chunk ${i / CHUNK_SIZE + 1} of ${Math.ceil(total / CHUNK_SIZE)} (${chunk.length} items)`);
         
         const normalizedChunk = chunk.map(l => {
           const mapped = mapLeadToTable(l);
@@ -412,6 +425,7 @@ export const db = {
         });
 
         try {
+          console.log(`Sending chunk to Supabase...`);
           const { data, error } = await supabase
             .from('leads')
             .insert(normalizedChunk)
@@ -421,7 +435,12 @@ export const db = {
             console.error('Error importing leads chunk:', error);
             throw error;
           }
-          if (data) results.push(...data);
+          if (data) {
+            console.log(`Chunk processed successfully. ${data.length} items saved.`);
+            results.push(...data);
+          } else {
+            console.warn('Supabase returned no data for chunk');
+          }
         } catch (chunkError: any) {
           console.error('Fatal error in leads chunk:', chunkError);
           throw new Error(`Erro no lote de leads ${i / CHUNK_SIZE + 1}: ${chunkError.message || 'Erro desconhecido'}`);
@@ -433,7 +452,7 @@ export const db = {
         }
       }
 
-      console.log('Leads import finished successfully');
+      console.log('Leads import finished successfully. Total results:', results.length);
       return results.map(mapTableToLead);
     },
     delete: async (id: string) => {

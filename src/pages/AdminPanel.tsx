@@ -44,9 +44,11 @@ import { User, CommissionGroup, AccessRequest, Bank, CommissionTable } from '@/t
 import * as XLSX from 'xlsx';
 import { runImportTests } from '@/tests/importTests';
 import { Loader2, Database, UserPlus } from 'lucide-react';
+import { useNotification } from '@/context/NotificationContext';
 
 export default function AdminPanel() {
   const { user } = useAuth();
+  const { notify, confirm, prompt } = useNotification();
   const location = useLocation();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<'users' | 'requests' | 'commission_groups' | 'integrations' | 'contract' | 'settings' | 'banks' | 'ai_training'>('users');
@@ -144,15 +146,15 @@ export default function AdminPanel() {
   const [isSaving, setIsSaving] = useState(false);
 
   const handleRunTests = async () => {
-    if (!confirm('Deseja rodar os testes de integridade do sistema? Isso criará dados de teste.')) return;
+    if (!await confirm({ message: 'Deseja rodar os testes de integridade do sistema? Isso criará dados de teste.' })) return;
     setIsTesting(true);
     const success = await runImportTests();
     setIsTesting(false);
     if (success) {
-      alert('Testes concluídos com sucesso! Verifique o console para detalhes.');
+      notify('success', 'Testes concluídos com sucesso! Verifique o console para detalhes.');
       loadData();
     } else {
-      alert('Falha nos testes. Verifique o console para erros.');
+      notify('error', 'Falha nos testes. Verifique o console para erros.');
     }
   };
 
@@ -204,10 +206,10 @@ export default function AdminPanel() {
     setIsSaving(true);
     try {
       await db.settings.update({ contractTerms, signatureLink });
-      alert('Configurações do contrato salvas com sucesso!');
+      notify('success', 'Configurações do contrato salvas com sucesso!');
     } catch (error: any) {
       console.error('Erro ao salvar contrato:', error);
-      alert('Erro ao salvar contrato: ' + (error.message || 'Erro desconhecido'));
+      notify('error', 'Erro ao salvar contrato: ' + (error.message || 'Erro desconhecido'));
     } finally {
       setIsSaving(false);
     }
@@ -217,10 +219,10 @@ export default function AdminPanel() {
     setIsSaving(true);
     try {
       await db.settings.update({ canvaLink });
-      alert('Configurações do sistema salvas com sucesso!');
+      notify('success', 'Configurações do sistema salvas com sucesso!');
     } catch (error: any) {
       console.error('Erro ao salvar configurações:', error);
-      alert('Erro ao salvar configurações: ' + (error.message || 'Erro desconhecido'));
+      notify('error', 'Erro ao salvar configurações: ' + (error.message || 'Erro desconhecido'));
     } finally {
       setIsSaving(false);
     }
@@ -230,10 +232,10 @@ export default function AdminPanel() {
     setIsSaving(true);
     try {
       await db.settings.update({ aiSystemPrompt });
-      alert('Configurações da IA salvas com sucesso!');
+      notify('success', 'Configurações da IA salvas com sucesso!');
     } catch (error: any) {
       console.error('Erro ao salvar IA:', error);
-      alert('Erro ao salvar IA: ' + (error.message || 'Erro desconhecido'));
+      notify('error', 'Erro ao salvar IA: ' + (error.message || 'Erro desconhecido'));
     } finally {
       setIsSaving(false);
     }
@@ -264,7 +266,7 @@ export default function AdminPanel() {
   };
 
   const handleDelete = async (id: string) => {
-    if (confirm('Tem certeza que deseja remover este usuário?')) {
+    if (await confirm({ message: 'Tem certeza que deseja remover este usuário?', type: 'danger' })) {
       await db.users.delete(id);
       await loadData();
     }
@@ -280,7 +282,7 @@ export default function AdminPanel() {
           delete updates.password;
         }
         await db.users.update(editingUser.id, updates);
-        alert('Usuário atualizado com sucesso!');
+        notify('success', 'Usuário atualizado com sucesso!');
       } else {
         // Use provided password or generate one
         const finalPassword = formData.password || db.utils.generatePassword(12);
@@ -307,14 +309,14 @@ export default function AdminPanel() {
       setFormData({ name: '', email: '', role: 'vendedor', status: 'Ativo', grupo_comissao: 'OURO', password: '' });
     } catch (error: any) {
       console.error('Erro ao salvar usuário:', error);
-      alert('Erro ao salvar usuário: ' + (error.message || 'Erro desconhecido'));
+      notify('error', 'Erro ao salvar usuário: ' + (error.message || 'Erro desconhecido'));
     } finally {
       setIsSaving(false);
     }
   };
 
   const handleTestEmail = async () => {
-    alert("O serviço de e-mail foi desativado. As senhas agora são geradas localmente.");
+    notify('info', "O serviço de e-mail foi desativado. As senhas agora são geradas localmente.");
   };
 
   const handleBankSubmit = async (e: React.FormEvent) => {
@@ -329,14 +331,14 @@ export default function AdminPanel() {
           cor: bankFormData.cor,
           status: bankFormData.status as any
         });
-        alert('Banco atualizado com sucesso!');
+        notify('success', 'Banco atualizado com sucesso!');
       } else {
         await db.bancos.create({
           nome: bankFormData.nome,
           cor: bankFormData.cor,
           status: bankFormData.status as any
         });
-        alert('Banco cadastrado com sucesso!');
+        notify('success', 'Banco cadastrado com sucesso!');
       }
       
       await loadData();
@@ -345,14 +347,14 @@ export default function AdminPanel() {
       setBankFormData({ nome: '', status: 'Ativo' });
     } catch (error: any) {
       console.error('Erro ao salvar banco:', error);
-      alert('Erro ao salvar banco: ' + (error.message || 'Erro desconhecido'));
+      notify('error', 'Erro ao salvar banco: ' + (error.message || 'Erro desconhecido'));
     } finally {
       setIsSaving(false);
     }
   };
 
   const handleDeleteBank = async (id: string) => {
-    if (confirm('Tem certeza que deseja remover este banco? Todos os grupos vinculados também serão afetados.')) {
+    if (await confirm({ message: 'Tem certeza que deseja remover este banco? Todos os grupos vinculados também serão afetados.', type: 'danger' })) {
       await db.bancos.delete(id);
       await loadData();
     }
@@ -361,7 +363,7 @@ export default function AdminPanel() {
   const handleGroupSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!groupFormData.name || !groupFormData.banco_id) {
-      alert('Nome do grupo e Banco são obrigatórios.');
+      notify('warning', 'Nome do grupo e Banco são obrigatórios.');
       return;
     }
     
@@ -377,17 +379,17 @@ export default function AdminPanel() {
       await loadData();
       setIsGroupFormOpen(false);
       setGroupFormData({ name: '', type: 'FGTS', status: 'Ativo', banco_id: '' });
-      alert('Grupo cadastrado com sucesso!');
+      notify('success', 'Grupo cadastrado com sucesso!');
     } catch (error: any) {
       console.error('Erro ao salvar grupo:', error);
-      alert('Erro ao salvar grupo: ' + (error.message || 'Erro desconhecido'));
+      notify('error', 'Erro ao salvar grupo: ' + (error.message || 'Erro desconhecido'));
     } finally {
       setIsSaving(false);
     }
   };
 
   const handleDeleteGroup = async (id: string) => {
-    if (confirm('Remover este grupo?')) {
+    if (await confirm({ message: 'Remover este grupo?', type: 'danger' })) {
       await db.commissionGroups.delete(id);
       await loadData();
     }
@@ -395,7 +397,11 @@ export default function AdminPanel() {
 
   const handleApproveRequest = async (req: AccessRequest) => {
     let finalPassword = db.utils.generatePassword(12);
-    const manualPassword = prompt(`Defina uma senha para ${req.name} (ou deixe em branco para gerar automaticamente):`);
+    const manualPassword = await prompt({
+      title: 'Aprovar Solicitação',
+      message: `Defina uma senha para ${req.name} (ou deixe em branco para gerar automaticamente):`,
+      placeholder: 'Senha personalizada'
+    });
     
     if (manualPassword !== null && manualPassword !== '') {
       finalPassword = manualPassword;
@@ -425,19 +431,23 @@ export default function AdminPanel() {
       }
     } catch (error: any) {
       console.error('Error approving request:', error);
-      alert(error.message || 'Erro ao aprovar solicitação.');
+      notify('error', error.message || 'Erro ao aprovar solicitação.');
     }
   };
 
   const handleRejectRequest = async (id: string) => {
-    if (confirm('Rejeitar esta solicitação?')) {
+    if (await confirm({ message: 'Rejeitar esta solicitação?', type: 'danger' })) {
       await db.requests.updateStatus(id, 'Rejeitado');
       await loadData();
     }
   };
 
   const handleResetPassword = async (userToReset: User) => {
-    const newPassword = prompt(`Digite a nova senha para ${userToReset.name}:`);
+    const newPassword = await prompt({
+      title: 'Resetar Senha',
+      message: `Digite a nova senha para ${userToReset.name}:`,
+      placeholder: 'Nova senha'
+    });
     
     if (newPassword) {
       try {
@@ -452,7 +462,7 @@ export default function AdminPanel() {
         await loadData();
       } catch (error: any) {
         console.error('Error resetting password:', error);
-        alert(error.message || 'Erro ao resetar senha.');
+        notify('error', error.message || 'Erro ao resetar senha.');
       }
     }
   };
@@ -742,7 +752,7 @@ export default function AdminPanel() {
                             const { data: jsonData, errors } = await parseFile(file);
                             
                             if (errors.length > 0) {
-                              alert(errors[0]);
+                              notify('error', errors[0]);
                               return;
                             }
 
@@ -777,11 +787,11 @@ export default function AdminPanel() {
                             });
 
                             await db.commissions.import(commsToImport, user?.role || 'admin', user?.id || '1');
-                            alert(`${commsToImport.length} tabelas importadas com sucesso!`);
+                            notify('success', `${commsToImport.length} tabelas importadas com sucesso!`);
                             loadData();
                           } catch (error) {
                             console.error('Error importing commissions:', error);
-                            alert('Erro ao processar o arquivo. Verifique o formato.');
+                            notify('error', 'Erro ao processar o arquivo. Verifique o formato.');
                           }
                         }
                       };
@@ -921,11 +931,11 @@ export default function AdminPanel() {
                 <Button 
                   variant="outline" 
                   className="border-amber-200 text-amber-700 hover:bg-amber-50"
-                  onClick={() => {
-                    if (confirm('Tem certeza que deseja limpar o cache do sistema?')) {
+                  onClick={async () => {
+                    if (await confirm({ message: 'Tem certeza que deseja limpar o cache do sistema?', type: 'danger' })) {
                       localStorage.clear();
-                      alert('Cache limpo com sucesso! O sistema será reiniciado.');
-                      window.location.reload();
+                      notify('success', 'Cache limpo com sucesso! O sistema será reiniciado.');
+                      setTimeout(() => window.location.reload(), 1500);
                     }
                   }}
                 >
@@ -1340,7 +1350,7 @@ export default function AdminPanel() {
                   className="bg-white hover:bg-blue-100 text-blue-700 border-blue-200"
                   onClick={() => {
                     navigator.clipboard.writeText(`${window.location.origin}/solicitar-acesso`);
-                    alert('Link copiado para a área de transferência!');
+                    notify('success', 'Link copiado para a área de transferência!');
                   }}
                 >
                   Copiar
@@ -1447,12 +1457,12 @@ export default function AdminPanel() {
                   </div>
                   <Button variant="outline" onClick={() => {
                     navigator.clipboard.writeText(apiKey);
-                    alert('Chave de API copiada!');
+                    notify('success', 'Chave de API copiada!');
                   }}>
                     Copiar
                   </Button>
-                  <Button variant="outline" className="text-red-600 hover:text-red-700 hover:bg-red-50" onClick={() => {
-                    if(confirm('Tem certeza? A chave antiga deixará de funcionar imediatamente.')) {
+                  <Button variant="outline" className="text-red-600 hover:text-red-700 hover:bg-red-50" onClick={async () => {
+                    if(await confirm({ message: 'Tem certeza? A chave antiga deixará de funcionar imediatamente.', type: 'danger' })) {
                       setApiKey('sk_live_' + Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15));
                     }
                   }}>
@@ -1499,7 +1509,7 @@ export default function AdminPanel() {
                     />
                     <Button disabled={!isWebhookActive} onClick={async () => {
                       await db.settings.update({ webhookUrl, isWebhookActive });
-                      alert('Configurações de Webhook salvas!');
+                      notify('success', 'Configurações de Webhook salvas!');
                     }}>
                       Salvar
                     </Button>

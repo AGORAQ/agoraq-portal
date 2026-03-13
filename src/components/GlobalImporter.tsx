@@ -18,6 +18,7 @@ import { parseFile, parseFromUrl, validateCommissions, validateLeads, Normalized
 import { useAuth } from '@/context/AuthContext';
 import { db } from '@/services/db';
 import { Input } from '@/components/ui/Input';
+import { useNotification } from '@/context/NotificationContext';
 
 interface GlobalImporterProps {
   type: 'comissoes' | 'vendas' | 'leads';
@@ -27,6 +28,7 @@ interface GlobalImporterProps {
 
 export default function GlobalImporter({ type, onImportComplete, onClose }: GlobalImporterProps) {
   const { user } = useAuth();
+  const { notify } = useNotification();
   const [file, setFile] = useState<File | null>(null);
   const [url, setUrl] = useState('');
   const [loading, setLoading] = useState(false);
@@ -99,18 +101,22 @@ export default function GlobalImporter({ type, onImportComplete, onClose }: Glob
     
     setLoading(true);
     try {
+      console.log('Iniciando importação global:', type, preview.length, 'registros');
       if (type === 'comissoes') {
         if (importMode === 'replace') {
+          console.log('Limpando comissões existentes...');
           await db.commissions.deleteAll('admin', user?.id || '');
         }
         
         await db.commissions.import(preview as any, 'admin', user?.id || '', (p) => setProgress(p));
       } else if (type === 'vendas' && user) {
-        // Implement sales import if needed
-        for (const sale of preview) {
-          await db.sales.create(sale, user);
+        console.log('Importando vendas...');
+        for (let i = 0; i < preview.length; i++) {
+          await db.sales.create(preview[i], user);
+          setProgress(Math.round(((i + 1) / preview.length) * 100));
         }
       } else if (type === 'leads') {
+        console.log('Importando leads...');
         const leadsWithAssignment = preview.map(l => ({
           ...l,
           usuario_id: null // Admins import to the general pool
@@ -118,16 +124,18 @@ export default function GlobalImporter({ type, onImportComplete, onClose }: Glob
         await db.leads.import(leadsWithAssignment, (p) => setProgress(p));
       }
 
+      console.log('Registrando log...');
       // Log the import
       await db.logs.add({
         fileName: file?.name || 'import_global',
         user: user?.name || 'Admin',
         linesProcessed: preview.length,
         errorsFound: errors.length,
-        errors: errors.length > 0 ? errors : undefined
+        errors: errors.length > 0 ? errors : undefined,
+        status: 'success'
       });
 
-      alert(`Importação concluída! ${preview.length} registros processados.`);
+      notify('success', `Importação concluída! ${preview.length} registros processados.`);
       onImportComplete();
       onClose();
     } catch (error: any) {
@@ -138,8 +146,9 @@ export default function GlobalImporter({ type, onImportComplete, onClose }: Glob
       if (error?.details) errorMessage += ` (${error.details})`;
       if (error?.hint) errorMessage += ` - Dica: ${error.hint}`;
       
-      alert(`Erro na importação: ${errorMessage}`);
+      notify('error', `Erro na importação: ${errorMessage}`);
     } finally {
+      console.log('Fim do processo de importação (finally).');
       setLoading(false);
     }
   };

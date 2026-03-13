@@ -20,6 +20,7 @@ import {
 import { db } from '@/services/db';
 import { Bank, CommissionGroup, Sale, PaymentRequest } from '@/types';
 import { formatCurrency } from '@/lib/utils';
+import { useNotification } from '@/context/NotificationContext';
 import * as XLSX from 'xlsx';
 import { 
   BarChart, 
@@ -36,6 +37,7 @@ import {
 } from 'recharts';
 
 export default function FinancialReport() {
+  const { notify } = useNotification();
   const [banks, setBanks] = useState<Bank[]>([]);
   const [groups, setGroups] = useState<CommissionGroup[]>([]);
   const [sales, setSales] = useState<Sale[]>([]);
@@ -116,7 +118,7 @@ export default function FinancialReport() {
 
   const handleExport = () => {
     if (filteredData.length === 0) {
-      alert('Não há dados para exportar.');
+      notify('error', 'Não há dados para exportar.');
       return;
     }
 

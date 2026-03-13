@@ -5,12 +5,14 @@ import { Input } from '@/components/ui/Input';
 import { Badge } from '@/components/ui/Badge';
 import { Search, Plus, Filter, X, Save, History, Trash2, AlertCircle, Mail, RefreshCw } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
+import { useNotification } from '@/context/NotificationContext';
 import { db } from '@/services/db';
 import { AccessRequest, CommissionGroup } from '@/types';
 import { BANK_OPTIONS } from '@/constants';
 
 export default function UserRequests() {
   const { user } = useAuth();
+  const { notify } = useNotification();
   const isAdmin = user?.role === 'admin';
 
   const [requests, setRequests] = useState<AccessRequest[]>([]);
@@ -120,7 +122,7 @@ export default function UserRequests() {
     e.preventDefault();
     
     if (!formData.name || !formData.email || !formData.bank || !formData.sellerName || !formData.cpf || !formData.fgtsGroup || !formData.cltGroup) {
-      alert('Preencha os campos obrigatórios (incluindo grupos de comissão).');
+      notify('error', 'Preencha os campos obrigatórios (incluindo grupos de comissão).');
       return;
     }
 
@@ -135,7 +137,7 @@ export default function UserRequests() {
     );
 
     if (pendingRequest) {
-      alert('Já existe uma solicitação pendente para este banco e CPF.');
+      notify('error', 'Já existe uma solicitação pendente para este banco e CPF.');
       return;
     }
 
@@ -182,14 +184,14 @@ export default function UserRequests() {
       cep: '', street: '', number: '', complement: '', neighborhood: '', city: '', state: '', requestedAccessType: ''
     });
 
-    alert(`Solicitação enviada com sucesso!\n\nUm e-mail de notificação foi enviado para: agoraq@agoraqoficial.com.br`);
+    notify('success', `Solicitação enviada com sucesso!\n\nUm e-mail de notificação foi enviado para: agoraq@agoraqoficial.com.br`);
   };
 
   const handleResetSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (!resetFormData.bank || !resetFormData.reason) {
-      alert('Preencha todos os campos.');
+      notify('error', 'Preencha todos os campos.');
       return;
     }
 
@@ -207,7 +209,7 @@ export default function UserRequests() {
     );
 
     if (pendingRequest) {
-      alert('Já existe uma solicitação pendente para este banco.');
+      notify('error', 'Já existe uma solicitação pendente para este banco.');
       return;
     }
 
@@ -227,12 +229,12 @@ export default function UserRequests() {
     await refreshRequests();
     setIsResetFormOpen(false);
     setResetFormData({ bank: '', reason: '' });
-    alert('Solicitação de reset de senha enviada com sucesso!');
+    notify('success', 'Solicitação de reset de senha enviada com sucesso!');
   };
 
   const updateStatus = async (id: string, newStatus: AccessRequest['status']) => {
     if (newStatus === 'Recusado' && !adminObservation) {
-      alert('Para recusar, é obrigatório informar o motivo na observação.');
+      notify('error', 'Para recusar, é obrigatório informar o motivo na observação.');
       return;
     }
     
@@ -242,7 +244,7 @@ export default function UserRequests() {
     if (newStatus === 'Finalizado' || newStatus === 'Aprovado') {
       const req = requests.find(r => r.id === id);
       if (req) {
-        alert(`Status atualizado para ${newStatus}. O usuário deve ser informado manualmente ou via Admin Panel.`);
+        notify('info', `Status atualizado para ${newStatus}. O usuário deve ser informado manualmente ou via Admin Panel.`);
       }
     }
 
@@ -275,7 +277,7 @@ export default function UserRequests() {
     setSelectedRequest(null);
     setApprovalFormData({ login: '', senha: '', link_acesso: '', observation: '' });
     await refreshRequests();
-    alert('Credencial cadastrada e solicitação finalizada com sucesso!');
+    notify('success', 'Credencial cadastrada e solicitação finalizada com sucesso!');
   };
 
   const handleAddBank = () => {

@@ -3,13 +3,15 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Badge } from '@/components/ui/Badge';
-import { Plus, Edit, Trash2, X, Save, Video, AlertTriangle, Info, Bell, Calendar } from 'lucide-react';
+import { Plus, Edit, Trash2, X, Save, Video, AlertTriangle, Info, Bell, Calendar, RefreshCw } from 'lucide-react';
 import { db } from '@/services/db';
 import { Announcement } from '@/types';
 import { useAuth } from '@/context/AuthContext';
+import { useNotification } from '@/context/NotificationContext';
 
 export default function AdminAnnouncements() {
   const { user } = useAuth();
+  const { notify, confirm } = useNotification();
   const isAdmin = user?.role === 'admin';
 
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
@@ -41,7 +43,7 @@ export default function AdminAnnouncements() {
     e.preventDefault();
     
     if (!formData.title || !formData.message || !formData.date) {
-      alert('Preencha os campos obrigatórios.');
+      notify('error', 'Preencha os campos obrigatórios.');
       return;
     }
 
@@ -49,10 +51,10 @@ export default function AdminAnnouncements() {
     try {
       if (editingId) {
         await db.announcements.update(editingId, formData);
-        alert('Aviso atualizado com sucesso!');
+        notify('success', 'Aviso atualizado com sucesso!');
       } else {
         await db.announcements.create(formData as any);
-        alert('Aviso criado com sucesso!');
+        notify('success', 'Aviso criado com sucesso!');
       }
 
       await refreshAnnouncements();
@@ -61,7 +63,7 @@ export default function AdminAnnouncements() {
       setFormData({ type: 'Aviso', active: true, date: new Date().toISOString().split('T')[0] });
     } catch (error: any) {
       console.error('Erro ao salvar aviso:', error);
-      alert('Erro ao salvar aviso: ' + (error.message || 'Erro desconhecido'));
+      notify('error', 'Erro ao salvar aviso: ' + (error.message || 'Erro desconhecido'));
     } finally {
       setIsSaving(false);
     }
@@ -74,7 +76,7 @@ export default function AdminAnnouncements() {
   };
 
   const handleDelete = async (id: string) => {
-    if (confirm('Tem certeza que deseja excluir este aviso?')) {
+    if (await confirm({ message: 'Tem certeza que deseja excluir este aviso?', type: 'danger' })) {
       await db.announcements.delete(id);
       await refreshAnnouncements();
     }

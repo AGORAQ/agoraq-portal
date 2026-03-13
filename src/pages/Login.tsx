@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
+import { useNotification } from '@/context/NotificationContext';
 import { db } from '@/services/db';
 import { supabase } from '@/lib/supabase';
 import { Button } from '@/components/ui/Button';
@@ -20,6 +21,7 @@ export default function Login() {
   const [isFirstRun, setIsFirstRun] = useState(false);
   const [setupData, setSetupData] = useState({ name: '', email: '', password: '' });
   const { login, register, isAuthenticated } = useAuth();
+  const { notify } = useNotification();
   const navigate = useNavigate();
 
   React.useEffect(() => {
@@ -86,7 +88,7 @@ export default function Login() {
     try {
       const result = await register(setupData.email, setupData.password, setupData.name, 'admin');
       if (result.success) {
-        alert('Administrador inicial criado com sucesso!');
+        notify('success', 'Administrador inicial criado com sucesso!');
         navigate('/');
       } else {
         setError(result.error || 'Erro ao criar administrador.');

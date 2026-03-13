@@ -5,11 +5,13 @@ import { Input } from '@/components/ui/Input';
 import { Badge } from '@/components/ui/Badge';
 import { Search, Plus, Eye, EyeOff, Copy, ExternalLink, Edit, Trash2, Save, X } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
+import { useNotification } from '@/context/NotificationContext';
 import { db } from '@/services/db';
 import { PlatformCredential, Bank, User } from '@/types';
 
 export default function Credentials() {
   const { user } = useAuth();
+  const { notify, confirm } = useNotification();
   const isAdmin = user?.role === 'admin' || user?.role === 'supervisor';
 
   const [credentials, setCredentials] = useState<PlatformCredential[]>([]);
@@ -56,7 +58,7 @@ export default function Credentials() {
 
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text);
-    // Could add toast here
+    notify('success', 'Copiado para a área de transferência!');
   };
 
   const handleInputChange = (field: keyof PlatformCredential, value: string) => {
@@ -66,7 +68,7 @@ export default function Credentials() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.banco_nome || !formData.login || !formData.link_acesso || !formData.usuario_id) {
-      alert('Preencha os campos obrigatórios (Banco, Link, Usuário e Vendedor).');
+      notify('error', 'Preencha os campos obrigatórios (Banco, Link, Usuário e Vendedor).');
       return;
     }
 
@@ -85,10 +87,10 @@ export default function Credentials() {
     try {
       if (editingId) {
         await db.credentials.update(editingId, credData as any);
-        alert('Credencial atualizada com sucesso!');
+        notify('success', 'Credencial atualizada com sucesso!');
       } else {
         await db.credentials.create(credData);
-        alert('Credencial cadastrada com sucesso!');
+        notify('success', 'Credencial cadastrada com sucesso!');
       }
 
       await refreshData();
@@ -97,7 +99,7 @@ export default function Credentials() {
       setEditingId(null);
     } catch (error: any) {
       console.error('Erro ao salvar credencial:', error);
-      alert('Erro ao salvar credencial: ' + (error.message || 'Erro desconhecido'));
+      notify('error', 'Erro ao salvar credencial: ' + (error.message || 'Erro desconhecido'));
     } finally {
       setIsSaving(false);
     }
@@ -116,7 +118,7 @@ export default function Credentials() {
   };
 
   const handleDelete = async (id: string) => {
-    if (confirm('Tem certeza que deseja excluir este acesso?')) {
+    if (await confirm({ message: 'Tem certeza que deseja excluir este acesso?', type: 'danger' })) {
       await db.credentials.delete(id);
       await refreshData();
     }

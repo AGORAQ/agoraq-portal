@@ -7,6 +7,7 @@ import { Search, Plus, Trash2, Edit, X, Save, TrendingUp, DollarSign, Wallet, Be
 import { formatCurrency, maskCPF, maskPhone, validateCPF } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
 import { useCommission } from '@/context/CommissionContext';
+import { useNotification } from '@/context/NotificationContext';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { db } from '@/services/db';
 import { Sale, PaymentRequest } from '@/types';
@@ -16,6 +17,7 @@ import * as XLSX from 'xlsx';
 export default function SalesData() {
   const { user } = useAuth();
   const { commissions } = useCommission();
+  const { notify, confirm } = useNotification();
   const isAdmin = user?.role === 'admin';
   const isSupervisor = user?.role === 'supervisor';
   const isManagement = isAdmin || isSupervisor;
@@ -183,7 +185,7 @@ export default function SalesData() {
     if (!user) return;
 
     if (!validateCPF(formData.cpf)) {
-      alert('CPF inválido. Por favor, verifique os dados.');
+      notify('error', 'CPF inválido. Por favor, verifique os dados.');
       return;
     }
     
@@ -222,7 +224,7 @@ export default function SalesData() {
       }
     }
 
-    alert(`${alertMessage}\n\nVenda de ${formatCurrency(newSale.value)} registrada com sucesso.`);
+    notify('success', `${alertMessage}\n\nVenda de ${formatCurrency(newSale.value)} registrada com sucesso.`);
 
     setFormData({
       date: new Date().toISOString().split('T')[0],
@@ -266,7 +268,7 @@ export default function SalesData() {
 
   const handleExport = () => {
     if (filteredSales.length === 0) {
-      alert('Não há vendas para exportar.');
+      notify('warning', 'Não há vendas para exportar.');
       return;
     }
 
@@ -316,7 +318,7 @@ export default function SalesData() {
     await db.payment_requests.create(newRequest);
     await refreshData();
     setIsPixModalOpen(false);
-    alert('Solicitação de PIX enviada com sucesso!');
+    notify('success', 'Solicitação de PIX enviada com sucesso!');
   };
 
   const pendingPixCount = pixRequests.filter(r => r.status === 'Pendente').length;
@@ -490,9 +492,11 @@ export default function SalesData() {
                           variant="outline" 
                           className="text-green-600 hover:text-green-700 hover:bg-green-50"
                           onClick={async () => {
-                            await db.payment_requests.update(req.id, { status: 'Pago' });
-                            await refreshData();
-                            alert('Pagamento marcado como realizado!');
+                            if (await confirm({ message: 'Confirmar pagamento desta solicitação?', type: 'warning' })) {
+                              await db.payment_requests.update(req.id, { status: 'Pago' });
+                              await refreshData();
+                              notify('success', 'Pagamento marcado como realizado!');
+                            }
                           }}
                         >
                           <CheckCircle2 className="w-4 h-4 mr-1" />

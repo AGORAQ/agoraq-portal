@@ -20,9 +20,11 @@ import { db } from '@/services/db';
 import { PaymentRequest, User as SystemUser } from '@/types';
 import { formatCurrency } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
+import { useNotification } from '@/context/NotificationContext';
 
 export default function PaymentAlerts() {
   const { user: currentUser } = useAuth();
+  const { notify } = useNotification();
   const [requests, setRequests] = useState<PaymentRequest[]>([]);
   const [users, setUsers] = useState<SystemUser[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
@@ -59,7 +61,7 @@ export default function PaymentAlerts() {
       updates.data_aprovacao = new Date().toISOString();
     } else if (action === 'Pago') {
       if (req.status !== 'Aprovado' && req.status !== 'Pendente') {
-        alert('Apenas solicitações Pendentes ou Aprovadas podem ser marcadas como Pagas.');
+        notify('error', 'Apenas solicitações Pendentes ou Aprovadas podem ser marcadas como Pagas.');
         return;
       }
       updates.data_pagamento = new Date().toISOString();
@@ -76,7 +78,7 @@ export default function PaymentAlerts() {
     setObs('');
     setIsProcessing(null);
     await loadData();
-    alert(`Solicitação marcada como ${action} com sucesso!`);
+    notify('success', `Solicitação marcada como ${action} com sucesso!`);
   };
 
   const filteredRequests = requests.filter(r => {

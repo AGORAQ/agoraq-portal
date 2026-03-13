@@ -5,6 +5,7 @@ import { Input } from '@/components/ui/Input';
 import { Badge } from '@/components/ui/Badge';
 import { ExternalLink, Copy, Database, Upload, UserPlus, Download, LayoutGrid, List, RefreshCw, FileSpreadsheet, Trash2, User } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
+import { useNotification } from '@/context/NotificationContext';
 import GlobalImporter from '@/components/GlobalImporter';
 import { db } from '@/services/db';
 import { parseFile } from '@/lib/importer';
@@ -16,6 +17,7 @@ const crms = [
 
 export default function CRM() {
   const { user } = useAuth();
+  const { notify, confirm } = useNotification();
   const isAdmin = user?.role === 'admin' || user?.role === 'supervisor';
   const [activeTab, setActiveTab] = useState<'capture' | 'leads' | 'upload' | 'database'>('capture');
   const [leadsCapturedToday, setLeadsCapturedToday] = useState(0);
@@ -87,19 +89,19 @@ export default function CRM() {
 
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text);
-    alert('Copiado para a área de transferência!');
+    notify('success', 'Copiado para a área de transferência!');
   };
 
   const handleCaptureLead = async () => {
     const qty = Number(captureQuantity);
     
     if (!qty || qty <= 0) {
-      alert('Por favor, insira uma quantidade válida.');
+      notify('error', 'Por favor, insira uma quantidade válida.');
       return;
     }
 
     if (leadsCapturedToday + qty > DAILY_LIMIT) {
-      alert(`Quantidade excede o limite diário restante (${DAILY_LIMIT - leadsCapturedToday}).`);
+      notify('warning', `Quantidade excede o limite diário restante (${DAILY_LIMIT - leadsCapturedToday}).`);
       return;
     }
 
@@ -109,7 +111,7 @@ export default function CRM() {
       const unassignedLeads = await db.leads.getAvailableForUser(user!.id);
       
       if (unassignedLeads.length < qty) {
-        alert(`Apenas ${unassignedLeads.length} leads disponíveis na base.`);
+        notify('warning', `Apenas ${unassignedLeads.length} leads disponíveis na base.`);
         return;
       }
 
@@ -117,11 +119,11 @@ export default function CRM() {
       const result = await db.leads.bulkCapture(leadIdsToCapture, user!.id);
 
       await refreshLeads();
-      alert(`${result.capturedCount} leads capturados com sucesso!`);
+      notify('success', `${result.capturedCount} leads capturados com sucesso!`);
       setCaptureQuantity(1);
     } catch (error: any) {
       console.error('Error capturing leads:', error);
-      alert(error.message || 'Erro ao capturar leads. Verifique sua conexão.');
+      notify('error', error.message || 'Erro ao capturar leads. Verifique sua conexão.');
     } finally {
       setIsSaving(false);
     }
@@ -129,7 +131,7 @@ export default function CRM() {
 
   const handleExportSpreadsheet = () => {
     if (leads.length === 0) {
-      alert('Não há leads para exportar.');
+      notify('warning', 'Não há leads para exportar.');
       return;
     }
 
@@ -165,7 +167,7 @@ export default function CRM() {
       const { data: jsonData, errors } = await parseFile(file);
       
       if (errors.length > 0) {
-        alert(errors[0]);
+        notify('error', errors[0]);
         return;
       }
 
@@ -179,10 +181,10 @@ export default function CRM() {
 
       await db.leads.import(leadsToImport);
       await refreshLeads();
-      alert(`${leadsToImport.length} leads importados com sucesso!`);
+      notify('success', `${leadsToImport.length} leads importados com sucesso!`);
     } catch (error) {
       console.error('Error importing leads:', error);
-      alert('Erro ao processar o arquivo. Verifique o formato.');
+      notify('error', 'Erro ao processar o arquivo. Verifique o formato.');
     } finally {
       setIsSaving(false);
       if (e.target) e.target.value = '';
@@ -190,7 +192,7 @@ export default function CRM() {
   };
 
   const handleDeleteLead = async (id: string) => {
-    if (confirm('Tem certeza que deseja remover este lead?')) {
+    if (await confirm({ message: 'Tem certeza que deseja remover este lead?', type: 'danger' })) {
       await db.leads.delete(id);
       await refreshLeads();
     }
@@ -476,7 +478,7 @@ export default function CRM() {
                   size="sm" 
                   className="border-red-200 text-red-700 hover:bg-red-50"
                   onClick={async () => {
-                    if (confirm('Tem certeza que deseja limpar TODA a base de leads não capturados?')) {
+                    if (await confirm({ message: 'Tem certeza que deseja limpar TODA a base de leads não capturados?', type: 'danger' })) {
                       await db.leads.deleteAllAvailable();
                       await refreshLeads();
                     }
@@ -557,7 +559,7 @@ export default function CRM() {
             type="leads"
             onImportComplete={async () => {
             await refreshLeads();
-            alert('Leads importados com sucesso!');
+            notify('success', 'Leads importados com sucesso!');
           }}
             onClose={() => setIsImporterOpen(false)}
           />

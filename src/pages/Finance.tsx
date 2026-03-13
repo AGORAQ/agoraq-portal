@@ -16,12 +16,14 @@ import {
   Send
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
+import { useNotification } from '@/context/NotificationContext';
 import { db } from '@/services/db';
 import { PaymentRequest } from '@/types';
 import { formatCurrency } from '@/lib/utils';
 
 export default function Finance() {
   const { user, updateUser } = useAuth();
+  const { notify } = useNotification();
   const [requests, setRequests] = useState<PaymentRequest[]>([]);
   const [pixKey, setPixKey] = useState(user?.pix_key || '');
   const [amount, setAmount] = useState('');
@@ -46,7 +48,7 @@ export default function Finance() {
     if (!pixKey) return;
     await db.users.update(user!.id, { pix_key: pixKey });
     updateUser({ ...user!, pix_key: pixKey });
-    alert('Chave PIX atualizada com sucesso!');
+    notify('success', 'Chave PIX atualizada com sucesso!');
   };
 
   const handleRequestPayment = async (e: React.FormEvent) => {
@@ -54,17 +56,17 @@ export default function Finance() {
     const val = parseFloat(amount);
 
     if (!pixKey) {
-      alert('Por favor, cadastre sua chave PIX primeiro.');
+      notify('error', 'Por favor, cadastre sua chave PIX primeiro.');
       return;
     }
 
     if (isNaN(val) || val < minWithdrawal) {
-      alert(`O valor mínimo para saque é ${formatCurrency(minWithdrawal)}`);
+      notify('error', `O valor mínimo para saque é ${formatCurrency(minWithdrawal)}`);
       return;
     }
 
     if (val > availableBalance) {
-      alert('Saldo insuficiente.');
+      notify('error', 'Saldo insuficiente.');
       return;
     }
 
@@ -83,7 +85,7 @@ export default function Finance() {
       new Date(b.data_solicitacao).getTime() - new Date(a.data_solicitacao).getTime()
     ));
 
-    alert('Solicitação enviada com sucesso! Aguarde a aprovação do administrador.');
+    notify('success', 'Solicitação enviada com sucesso! Aguarde a aprovação do administrador.');
   };
 
   const getStatusBadge = (status: string) => {
