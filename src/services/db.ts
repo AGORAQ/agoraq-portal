@@ -875,8 +875,7 @@ function mapProfileToUser(p: any): User {
     daily_goal: p.meta_diaria,
     monthly_goal: p.monthly_goal,
     daily_lead_count: p.daily_lead_count,
-    last_lead_date: p.last_lead_date,
-    contract_signed: p.contract_signed
+    last_lead_date: p.last_lead_date
   };
 }
 
@@ -891,8 +890,6 @@ function mapUserToProfile(u: any): any {
   if (u.grupo_comissao) p.grupo_comissao = u.grupo_comissao;
   if (u.meta_diaria !== undefined) p.meta_diaria = u.meta_diaria;
   // Legacy fields
-  if (u.contract_signed !== undefined) p.contract_signed = u.contract_signed;
-  if (u.monthly_goal !== undefined) p.monthly_goal = u.monthly_goal;
   if (u.daily_goal !== undefined) p.meta_diaria = u.daily_goal;
   if (u.daily_lead_count !== undefined) p.daily_lead_count = u.daily_lead_count;
   if (u.last_lead_date !== undefined) p.last_lead_date = u.last_lead_date;

@@ -100,7 +100,11 @@ export default function SalesData() {
       db.sales.getAll(),
       db.payment_requests.getAll()
     ]);
-    setSales(allSales);
+    
+    // Filter sales if user is not management
+    const filteredSales = isManagement ? allSales : allSales.filter(s => s.seller === user?.name);
+    
+    setSales(filteredSales);
     setPixRequests(allPixRequests);
   };
 
@@ -647,9 +651,20 @@ export default function SalesData() {
                     <option value="">Selecione a Operação</option>
                     {commissions
                       .filter(c => c.banco === formData.bank && c.produto === formData.product)
-                      .map(c => (
-                        <option key={c.id} value={c.operacao}>{c.operacao} ({c.parcelas})</option>
-                      ))
+                      .map(c => {
+                        let rate = 0;
+                        const userGroup = user?.grupo_comissao;
+                        if (userGroup === 'MASTER') rate = c.comissao_master;
+                        else if (userGroup === 'OURO') rate = c.comissao_ouro;
+                        else if (userGroup === 'PRATA') rate = c.comissao_prata;
+                        else if (userGroup === 'PLUS') rate = c.comissao_plus;
+                        
+                        return (
+                          <option key={c.id} value={c.operacao}>
+                            {c.operacao} ({c.parcelas}x) - {rate}%
+                          </option>
+                        );
+                      })
                     }
                   </select>
                 </div>

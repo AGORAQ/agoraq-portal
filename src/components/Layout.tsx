@@ -27,7 +27,6 @@ import { cn } from '@/lib/utils';
 import Logo from './Logo';
 import Chatbot from './Chatbot';
 import { DailyGoalModal } from './DailyGoalModal';
-import { ContractAgreementModal } from './ContractAgreementModal';
 import { db } from '@/services/db';
 import AdminAlerts from './AdminAlerts';
 
@@ -228,9 +227,6 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       
       {/* Daily Goal Modal */}
       <DailyGoalModal />
-
-      {/* Contract Agreement Modal */}
-      <ContractAgreementModal />
     </div>
   );
 }

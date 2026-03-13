@@ -1091,15 +1091,12 @@ export default function AdminPanel() {
                       <th className="px-4 py-3">Nome</th>
                       <th className="px-4 py-3">Perfil</th>
                       <th className="px-4 py-3">Status</th>
-                      <th className="px-4 py-3 text-center">Contrato</th>
                       <th className="px-4 py-3">Último Acesso</th>
                       <th className="px-4 py-3 text-right">Ações</th>
                     </tr>
                   </thead>
                   <tbody>
                     {filteredUsers.map((u) => {
-                      const isContractSigned = u.contract_signed;
-
                       return (
                         <tr key={u.id} className="border-b hover:bg-slate-50/50">
                           <td className="px-4 py-3">
@@ -1122,53 +1119,6 @@ export default function AdminPanel() {
                             <Badge variant={u.status === 'Ativo' ? 'success' : 'secondary'}>
                               {u.status}
                             </Badge>
-                          </td>
-                          <td className="px-4 py-3 text-center">
-                            <div className="flex flex-col items-center gap-2">
-                              <Badge variant={isContractSigned ? 'success' : 'warning'}>
-                                {isContractSigned ? 'Assinado' : 'Pendente'}
-                              </Badge>
-                              
-                              {!isContractSigned ? (
-                                <Button 
-                                  size="sm" 
-                                  className="h-7 text-xs px-3 bg-blue-600 hover:bg-blue-700 text-white w-full max-w-[100px]"
-                                  onClick={async () => {
-                                    if(confirm(`Deseja liberar o acesso ao sistema para ${u.name} sem a assinatura do contrato?`)) {
-                                      try {
-                                        await db.users.update(u.id, { contract_signed: true } as any);
-                                        const updatedUsers = users.map(user => user.id === u.id ? { ...user, contract_signed: true } : user);
-                                        setUsers(updatedUsers);
-                                      } catch (e: any) {
-                                        console.error('Contract update error:', e);
-                                        alert(`Erro ao atualizar status do contrato: ${e.message || 'Erro desconhecido'}`);
-                                      }
-                                    }
-                                  }}
-                                >
-                                  Liberar Acesso
-                                </Button>
-                              ) : (
-                                <Button 
-                                  size="sm" 
-                                  variant="outline" 
-                                  className="h-7 text-xs px-3 border-red-200 text-red-600 hover:bg-red-50 w-full max-w-[100px]"
-                                  onClick={async () => {
-                                    if(confirm(`Deseja revogar a assinatura de contrato de ${u.name}? O usuário será bloqueado no próximo acesso.`)) {
-                                      try {
-                                        await db.users.update(u.id, { contract_signed: false } as any);
-                                        const updatedUsers = users.map(user => user.id === u.id ? { ...user, contract_signed: false } : user);
-                                        setUsers(updatedUsers);
-                                      } catch (e) {
-                                        alert('Erro ao atualizar status do contrato');
-                                      }
-                                    }
-                                  }}
-                                >
-                                  Revogar
-                                </Button>
-                              )}
-                            </div>
                           </td>
                           <td className="px-4 py-3 text-slate-500">
                             {u.lastAccess}

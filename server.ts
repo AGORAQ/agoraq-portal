@@ -52,7 +52,6 @@ function initDb() {
         daily_lead_count INTEGER DEFAULT 0,
         last_lead_date TEXT,
         monthly_goal REAL DEFAULT 0,
-        contract_signed INTEGER DEFAULT 0,
         deleted_at TEXT
       );
 
@@ -471,12 +470,12 @@ async function startServer() {
 
   // Users
   app.get('/api/users', (req, res) => {
-    const users = db.prepare('SELECT id, name, email, role, status, lastAccess, grupo_comissao, saldo_acumulado, saldo_pago, monthly_goal, contract_signed FROM users WHERE deleted_at IS NULL').all();
+    const users = db.prepare('SELECT id, name, email, role, status, lastAccess, grupo_comissao, saldo_acumulado, saldo_pago, monthly_goal FROM users WHERE deleted_at IS NULL').all();
     res.json(users);
   });
 
   app.get('/api/users/:id', (req, res) => {
-    const user = db.prepare('SELECT id, name, email, role, status, lastAccess, grupo_comissao, saldo_acumulado, saldo_pago, monthly_goal, contract_signed FROM users WHERE id = ?').get(req.params.id);
+    const user = db.prepare('SELECT id, name, email, role, status, lastAccess, grupo_comissao, saldo_acumulado, saldo_pago, monthly_goal FROM users WHERE id = ?').get(req.params.id);
     if (!user) return res.status(404).json({ error: 'User not found' });
     res.json(user);
   });

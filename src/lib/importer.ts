@@ -160,6 +160,9 @@ const COLUMN_SYNONYMS: { [key: string]: string } = {
   'phone': 'phone',
   'whatsapp': 'phone',
   'tel': 'phone',
+  'numero': 'phone',
+  'number': 'phone',
+  'num': 'phone',
   
   'email': 'email',
   'e mail': 'email',
@@ -221,8 +224,14 @@ export const normalizeHeader = (header: string): string => {
   return asSnake;
 };
 
-export const normalizeValue = (value: any): any => {
+export const normalizeValue = (value: any, fieldName?: string): any => {
   if (value === null || value === undefined || value === '') return null;
+  
+  // Specific cleaning for known string fields that look like numbers
+  if (fieldName === 'phone' || fieldName === 'cpf') {
+    const cleaned = String(value).replace(/[^\d]/g, '');
+    return cleaned || null;
+  }
   
   // If it's already a number from XLSX
   if (typeof value === 'number') {
@@ -265,8 +274,8 @@ export const normalizeValue = (value: any): any => {
     } else if (numStr.includes('.')) {
       // Only dot: 1.234 -> 1234 (thousands) OR 1.23 (decimal)
       const parts = numStr.split('.');
-      if (parts[parts.length - 1].length === 3 && parseFloat(numStr.replace('.', '')) > 100) {
-        numStr = numStr.replace('.', '');
+      if (parts.length > 2 || (parts[parts.length - 1].length === 3 && parseFloat(numStr.replace(/\./g, '')) > 100)) {
+        numStr = numStr.replace(/\./g, '');
       }
     }
 
@@ -300,7 +309,7 @@ export const parseData = (data: any, type: 'binary' | 'string' | 'array' = 'bina
     const normalizedData: NormalizedData[] = rows.map((row) => {
       const obj: NormalizedData = {};
       normalizedHeaders.forEach((header, colIndex) => {
-        obj[header] = normalizeValue(row[colIndex]);
+        obj[header] = normalizeValue(row[colIndex], header);
       });
       return obj;
     }).filter(row => Object.values(row).some(v => v !== null && v !== ''));

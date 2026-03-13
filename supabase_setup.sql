@@ -9,7 +9,6 @@ CREATE TABLE IF NOT EXISTS profiles (
   perfil TEXT DEFAULT 'vendedor', -- 'admin', 'supervisor', 'vendedor'
   ativo BOOLEAN DEFAULT true,
   grupo_comissao TEXT DEFAULT 'MASTER',
-  contract_signed BOOLEAN DEFAULT false,
   monthly_goal NUMERIC DEFAULT 0,
   daily_goal NUMERIC DEFAULT 0,
   daily_lead_count INTEGER DEFAULT 0,

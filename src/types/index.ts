@@ -21,7 +21,6 @@ export interface User {
   last_lead_date?: string;
   monthly_goal?: number;
   daily_goal?: number;
-  contract_signed?: boolean;
 }
 
 export interface Bank {

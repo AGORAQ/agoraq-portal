@@ -30,6 +30,8 @@ export function CommissionProvider({ children }: { children: React.ReactNode }) 
       switch (userGroup) {
         case 'MASTER': percentual_vendedor = c.comissao_master; break;
         case 'OURO': percentual_vendedor = c.comissao_ouro; break;
+        case 'PRATA': percentual_vendedor = c.comissao_prata; break;
+        case 'PLUS': percentual_vendedor = c.comissao_plus; break;
         default: percentual_vendedor = c.comissao_ouro;
       }
       return { ...c, percentual_vendedor };
