@@ -169,9 +169,9 @@ export default function Academy() {
     if (!aiPrompt.trim()) return;
 
     try {
-      const hasKey = await window.aistudio.hasSelectedApiKey();
-      if (!hasKey) {
-        await window.aistudio.openSelectKey();
+      const hasKey = await (window as any).aistudio?.hasSelectedApiKey?.() || false;
+      if (!hasKey && (window as any).aistudio?.openSelectKey) {
+        await (window as any).aistudio.openSelectKey();
       }
 
       setIsGeneratingVideo(true);

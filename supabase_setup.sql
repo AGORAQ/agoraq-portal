@@ -115,6 +115,19 @@ CREATE TABLE IF NOT EXISTS access_requests (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
+-- 9. Tabela de Configurações do App
+CREATE TABLE IF NOT EXISTS app_settings (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  key TEXT UNIQUE NOT NULL,
+  value JSONB NOT NULL,
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+-- Inserir configurações padrão se não existirem
+INSERT INTO app_settings (key, value) 
+VALUES ('contract_settings', '{"title": "Contrato de Prestação de Serviços", "content": "Conteúdo do contrato..."}')
+ON CONFLICT (key) DO NOTHING;
+
 -- Habilitar RLS (Opcional, mas recomendado)
 -- ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
 -- ... adicione políticas conforme necessário

@@ -118,7 +118,7 @@ export const db = {
       const { data, error } = await supabase
         .from('commission_tables')
         .insert([mapCommissionToTable(comm)])
-        .select()
+        .select('id, banco, produto, tabela, parcelas, comissao_total_empresa, grupo_master, grupo_ouro, grupo_prata, grupo_plus, status, vigencia')
         .single();
       if (error) throw error;
       return mapTableToCommission(data);
@@ -128,7 +128,7 @@ export const db = {
         .from('commission_tables')
         .update(mapCommissionToTable(updates))
         .eq('id', id)
-        .select()
+        .select('id, banco, produto, tabela, parcelas, comissao_total_empresa, grupo_master, grupo_ouro, grupo_prata, grupo_plus, status, vigencia')
         .single();
       if (error) throw error;
       return mapTableToCommission(data);
@@ -171,17 +171,49 @@ export const db = {
           const parseNum = (val: any) => {
             if (val === null || val === undefined || val === '') return 0;
             if (typeof val === 'number') return val;
-            const num = String(val).replace(',', '.').replace(/[^\d.-]/g, '');
-            const parsed = parseFloat(num);
-            return isNaN(parsed) ? 0 : parsed;
+            
+            // Basic cleanup
+            let clean = String(val).trim().replace(/[R$\s%]/g, '');
+            
+            // Handle BR format: 1.234,56 -> 1234.56
+            if (clean.includes(',') && clean.includes('.')) {
+              clean = clean.replace(/\./g, '').replace(',', '.');
+            } else if (clean.includes(',')) {
+              clean = clean.replace(',', '.');
+            } else if (clean.includes('.')) {
+              // Check if it's thousands separator: 1.234
+              const parts = clean.split('.');
+              if (parts[parts.length - 1].length === 3 && parseFloat(clean.replace('.', '')) > 100) {
+                clean = clean.replace('.', '');
+              }
+            }
+            
+            const parsed = parseFloat(clean);
+            if (isNaN(parsed)) return 0;
+            
+            // Percentage logic: 0.39 -> 39
+            if (parsed > 0 && parsed < 1) return parsed * 100;
+            
+            return parsed;
+          };
+
+          const parseParcelas = (val: any) => {
+            if (!val) return 1;
+            const str = String(val);
+            // Handle ranges like "1 até 15" or "1-120"
+            const matches = str.match(/(\d+)\s*(?:até|to|-)\s*(\d+)/i);
+            if (matches && matches[2]) return parseInt(matches[2]) || 1;
+            // Just numbers
+            const num = parseInt(str.replace(/\D/g, ''));
+            return isNaN(num) ? 1 : num;
           };
 
           // Official schema fields
           const cleanObj: any = {
             banco: String(mapped.banco || 'BANCO').substring(0, 100),
             produto: String(mapped.produto || 'PRODUTO').substring(0, 100),
-            tabela: String(mapped.tabela || 'TABELA').substring(0, 255),
-            parcelas: String(mapped.parcelas || '1').substring(0, 50),
+            tabela: String(mapped.tabela || mapped.nome_tabela || 'TABELA').substring(0, 255),
+            parcelas: parseParcelas(mapped.parcelas),
             comissao_total_empresa: parseNum(mapped.comissao_total_empresa),
             grupo_master: parseNum(mapped.grupo_master),
             grupo_ouro: parseNum(mapped.grupo_ouro),
@@ -190,20 +222,17 @@ export const db = {
             status: mapped.status || 'Ativo'
           };
 
-          // Extra fields for flexibility
-          cleanObj.nome_tabela = cleanObj.tabela;
-          cleanObj.codigo_tabela = cleanObj.tabela;
-
           if (mapped.vigencia) cleanObj.vigencia = mapped.vigencia;
           
           return cleanObj;
         });
 
         try {
+          // Explicitly list columns to avoid schema cache issues with non-existent columns like 'codigo_tabela'
           const { data, error } = await supabase
             .from('commission_tables')
             .insert(normalizedChunk)
-            .select();
+            .select('id, banco, produto, tabela, parcelas, comissao_total_empresa, grupo_master, grupo_ouro, grupo_prata, grupo_plus, status, vigencia');
 
           if (error) {
             console.error('Error importing commissions chunk:', error);
@@ -213,7 +242,7 @@ export const db = {
               const { data: data2, error: error2 } = await supabase
                 .from('commissions')
                 .insert(normalizedChunk)
-                .select();
+                .select('id, banco, produto, tabela, parcelas, comissao_total_empresa, grupo_master, grupo_ouro, grupo_prata, grupo_plus, status, vigencia');
               if (error2) throw error2;
               if (data2) results.push(...data2);
             } else {

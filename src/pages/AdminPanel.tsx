@@ -1139,8 +1139,9 @@ export default function AdminPanel() {
                                         await db.users.update(u.id, { contract_signed: true } as any);
                                         const updatedUsers = users.map(user => user.id === u.id ? { ...user, contract_signed: true } : user);
                                         setUsers(updatedUsers);
-                                      } catch (e) {
-                                        alert('Erro ao atualizar status do contrato');
+                                      } catch (e: any) {
+                                        console.error('Contract update error:', e);
+                                        alert(`Erro ao atualizar status do contrato: ${e.message || 'Erro desconhecido'}`);
                                       }
                                     }
                                   }}

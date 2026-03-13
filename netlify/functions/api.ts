@@ -50,15 +50,28 @@ export const handler: Handler = async (event, context) => {
       if (authError) return { statusCode: 400, headers, body: JSON.stringify({ error: authError.message }) };
 
       const userId = authData.user.id;
-      await supabaseAdmin.from('profiles').upsert({
+      const { error: profileError } = await supabaseAdmin.from('profiles').upsert({
         id: userId,
         nome: name,
         email: email,
         perfil: role,
         grupo_comissao: grupo_comissao,
         ativo: status === 'Ativo',
-        meta_diaria: 0
+        meta_diaria: 0,
+        contract_signed: false
       });
+
+      if (profileError) {
+        console.error('Error creating profile:', profileError);
+        return { 
+          statusCode: 500, 
+          headers, 
+          body: JSON.stringify({ 
+            error: 'Usuário criado no Auth, mas erro ao criar perfil no banco de dados.',
+            details: profileError.message 
+          }) 
+        };
+      }
 
       return { statusCode: 200, headers, body: JSON.stringify({ success: true, user: authData.user }) };
     }
