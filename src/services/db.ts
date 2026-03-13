@@ -155,23 +155,28 @@ export const db = {
       if (error) throw error;
     },
     import: async (comms: any[], userRole?: string, userId?: string, onProgress?: (p: number) => void) => {
-      const CHUNK_SIZE = 50; // Smaller chunks for commissions to be safe
+      console.log('Starting commissions import:', comms.length, 'records');
+      const CHUNK_SIZE = 100; 
       const total = comms.length;
       let processed = 0;
       const results = [];
 
       for (let i = 0; i < total; i += CHUNK_SIZE) {
         const chunk = comms.slice(i, i + CHUNK_SIZE);
+        console.log(`Processing chunk ${i / CHUNK_SIZE + 1} of ${Math.ceil(total / CHUNK_SIZE)}`);
+        
         const normalizedChunk = chunk.map(c => {
           const mapped = mapCommissionToTable(c);
           
           const parseNum = (val: any) => {
             if (val === null || val === undefined || val === '') return 0;
-            const num = typeof val === 'string' ? parseFloat(val.replace(',', '.')) : val;
-            return isNaN(num) ? 0 : num;
+            if (typeof val === 'number') return val;
+            const num = String(val).replace(',', '.').replace(/[^\d.-]/g, '');
+            const parsed = parseFloat(num);
+            return isNaN(parsed) ? 0 : parsed;
           };
 
-          // Only include fields that are likely to exist in the schema
+          // Official schema fields
           const cleanObj: any = {
             banco: String(mapped.banco || 'BANCO').substring(0, 100),
             produto: String(mapped.produto || 'PRODUTO').substring(0, 100),
@@ -185,21 +190,42 @@ export const db = {
             status: mapped.status || 'Ativo'
           };
 
+          // Extra fields for flexibility
+          cleanObj.nome_tabela = cleanObj.tabela;
+          cleanObj.codigo_tabela = cleanObj.tabela;
+
           if (mapped.vigencia) cleanObj.vigencia = mapped.vigencia;
           
           return cleanObj;
         });
 
-        const { data, error } = await supabase
-          .from('commission_tables')
-          .insert(normalizedChunk)
-          .select();
+        try {
+          const { data, error } = await supabase
+            .from('commission_tables')
+            .insert(normalizedChunk)
+            .select();
 
-        if (error) {
-          console.error('Error importing commissions chunk:', error);
-          throw error;
+          if (error) {
+            console.error('Error importing commissions chunk:', error);
+            // Try fallback table name if first one fails
+            if (error.code === '42P01') { // undefined_table
+              console.log('Table commission_tables not found, trying commissions...');
+              const { data: data2, error: error2 } = await supabase
+                .from('commissions')
+                .insert(normalizedChunk)
+                .select();
+              if (error2) throw error2;
+              if (data2) results.push(...data2);
+            } else {
+              throw error;
+            }
+          } else if (data) {
+            results.push(...data);
+          }
+        } catch (chunkError: any) {
+          console.error('Fatal error in chunk:', chunkError);
+          throw new Error(`Erro no lote ${i / CHUNK_SIZE + 1}: ${chunkError.message || 'Erro desconhecido'}`);
         }
-        if (data) results.push(...data);
 
         processed += chunk.length;
         if (onProgress) {
@@ -207,6 +233,7 @@ export const db = {
         }
       }
 
+      console.log('Import finished successfully');
       return results.map(mapTableToCommission);
     }
   },
@@ -297,18 +324,21 @@ export const db = {
       return mapTableToLead(data);
     },
     import: async (leads: any[], onProgress?: (progress: number) => void) => {
-      const CHUNK_SIZE = 500;
+      console.log('Starting leads import:', leads.length, 'records');
+      const CHUNK_SIZE = 200;
       const total = leads.length;
       let processed = 0;
       const results = [];
 
       for (let i = 0; i < total; i += CHUNK_SIZE) {
         const chunk = leads.slice(i, i + CHUNK_SIZE);
+        console.log(`Processing leads chunk ${i / CHUNK_SIZE + 1} of ${Math.ceil(total / CHUNK_SIZE)}`);
+        
         const normalizedChunk = chunk.map(l => {
           const mapped = mapLeadToTable(l);
           return {
             nome: String(mapped.nome || 'Sem Nome').substring(0, 255),
-            telefone: String(mapped.telefone || '').substring(0, 50),
+            telefone: String(mapped.telefone || '').replace(/[^\d]/g, '').substring(0, 50),
             email: String(mapped.email || '').substring(0, 255),
             cpf: String(mapped.cpf || '').replace(/\D/g, '').substring(0, 11),
             banco_origem: String(mapped.banco_origem || '').substring(0, 100),
@@ -317,13 +347,21 @@ export const db = {
           };
         });
 
-        const { data, error } = await supabase
-          .from('leads')
-          .insert(normalizedChunk)
-          .select();
+        try {
+          const { data, error } = await supabase
+            .from('leads')
+            .insert(normalizedChunk)
+            .select();
 
-        if (error) throw error;
-        if (data) results.push(...data);
+          if (error) {
+            console.error('Error importing leads chunk:', error);
+            throw error;
+          }
+          if (data) results.push(...data);
+        } catch (chunkError: any) {
+          console.error('Fatal error in leads chunk:', chunkError);
+          throw new Error(`Erro no lote de leads ${i / CHUNK_SIZE + 1}: ${chunkError.message || 'Erro desconhecido'}`);
+        }
 
         processed += chunk.length;
         if (onProgress) {
@@ -331,6 +369,7 @@ export const db = {
         }
       }
 
+      console.log('Leads import finished successfully');
       return results.map(mapTableToLead);
     },
     delete: async (id: string) => {

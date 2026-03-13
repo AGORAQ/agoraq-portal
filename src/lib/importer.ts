@@ -40,6 +40,8 @@ const COLUMN_SYNONYMS: { [key: string]: string } = {
   'nome tabela': 'nome_tabela',
   'descricao': 'nome_tabela',
   'descricao da tabela': 'nome_tabela',
+  'nome_tabela': 'nome_tabela',
+  'tabela_nome': 'nome_tabela',
   
   'prazo': 'parcelas',
   'term': 'parcelas',
@@ -49,6 +51,7 @@ const COLUMN_SYNONYMS: { [key: string]: string } = {
   'numero de parcelas': 'parcelas',
   'prazo meses': 'parcelas',
   'qtd parcelas': 'parcelas',
+  'prazos': 'parcelas',
   
   'tipo': 'operacao',
   'tipo de operacao': 'operacao',
@@ -78,7 +81,12 @@ const COLUMN_SYNONYMS: { [key: string]: string } = {
   'percentual total empresa': 'comissao_total_empresa',
   'total empresa': 'comissao_total_empresa',
   'comissao_total_empresa': 'comissao_total_empresa',
-
+  'comissao_empresa': 'comissao_total_empresa',
+  'empresa_total': 'comissao_total_empresa',
+  'comissao_total_empresa_percentual': 'comissao_total_empresa',
+  'comis_total': 'comissao_total_empresa',
+  'total_empresa': 'comissao_total_empresa',
+  
   'grupo master': 'grupo_master',
   'master': 'grupo_master',
   'comissao master': 'grupo_master',
@@ -86,6 +94,7 @@ const COLUMN_SYNONYMS: { [key: string]: string } = {
   'master %': 'grupo_master',
   'comissao master %': 'grupo_master',
   'grupo_master': 'grupo_master',
+  'master_percentual': 'grupo_master',
 
   'grupo ouro': 'grupo_ouro',
   'ouro': 'grupo_ouro',
@@ -94,6 +103,7 @@ const COLUMN_SYNONYMS: { [key: string]: string } = {
   'ouro %': 'grupo_ouro',
   'comissao ouro %': 'grupo_ouro',
   'grupo_ouro': 'grupo_ouro',
+  'ouro_percentual': 'grupo_ouro',
 
   'grupo prata': 'grupo_prata',
   'prata': 'grupo_prata',
@@ -102,14 +112,17 @@ const COLUMN_SYNONYMS: { [key: string]: string } = {
   'prata %': 'grupo_prata',
   'comissao prata %': 'grupo_prata',
   'grupo_prata': 'grupo_prata',
+  'prata_percentual': 'grupo_prata',
 
-  'grupo plus': 'grupo',
-  'plus': 'grupo',
-  'comissao plus': 'grupo',
-  '% plus': 'grupo',
-  'plus %': 'grupo',
-  'comissao plus %': 'grupo',
-  'grupo': 'grupo',
+  'grupo plus': 'grupo_plus',
+  'plus': 'grupo_plus',
+  'comissao plus': 'grupo_plus',
+  '% plus': 'grupo_plus',
+  'plus %': 'grupo_plus',
+  'comissao plus %': 'grupo_plus',
+  'grupo_plus': 'grupo_plus',
+  'plus_percentual': 'grupo_plus',
+  'grupo': 'grupo_plus',
   
   'percentual vendedor (%)': 'percentual_vendedor',
   'comissao vendedor': 'percentual_vendedor',
