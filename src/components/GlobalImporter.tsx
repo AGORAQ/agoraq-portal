@@ -104,7 +104,7 @@ export default function GlobalImporter({ type, onImportComplete, onClose }: Glob
           await db.commissions.deleteAll('admin', user?.id || '');
         }
         
-        await db.commissions.import(preview as any, 'admin', user?.id || '');
+        await db.commissions.import(preview as any, 'admin', user?.id || '', (p) => setProgress(p));
       } else if (type === 'vendas' && user) {
         // Implement sales import if needed
         for (const sale of preview) {
@@ -132,7 +132,12 @@ export default function GlobalImporter({ type, onImportComplete, onClose }: Glob
       onClose();
     } catch (error: any) {
       console.error('Erro na importação:', error);
-      const errorMessage = error?.message || error?.details || JSON.stringify(error);
+      let errorMessage = 'Erro desconhecido';
+      
+      if (error?.message) errorMessage = error.message;
+      if (error?.details) errorMessage += ` (${error.details})`;
+      if (error?.hint) errorMessage += ` - Dica: ${error.hint}`;
+      
       alert(`Erro na importação: ${errorMessage}`);
     } finally {
       setLoading(false);

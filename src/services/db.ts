@@ -42,38 +42,28 @@ export const db = {
       if (error) throw error;
       return mapProfileToUser(data);
     },
-    create: async (userData: any) => {
-      // Direct creation via Supabase Auth Admin API
-      // This requires the service role key to be configured in the Supabase client
-      const { data: authData, error: authError } = await supabase.auth.admin.createUser({
-        email: userData.email,
-        password: userData.password,
-        email_confirm: true,
-        user_metadata: {
-          name: userData.name,
-          role: userData.role
+    create: async (user: any) => {
+      try {
+        const response = await fetch('/api/admin/create-user', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(user)
+        });
+        
+        const contentType = response.headers.get('content-type');
+        if (contentType && contentType.includes('application/json')) {
+          const data = await response.json();
+          if (!response.ok) throw new Error(data.error || 'Erro ao criar usuário');
+          return data.user;
+        } else {
+          const text = await response.text();
+          console.error('API returned non-JSON response:', text.substring(0, 100));
+          throw new Error('O servidor retornou uma resposta inválida (HTML). Verifique se o backend está rodando corretamente.');
         }
-      });
-
-      if (authError) throw authError;
-
-      // Create profile
-      const { data: profileData, error: profileError } = await supabase
-        .from('profiles')
-        .insert([{
-          id: authData.user.id,
-          nome: userData.name,
-          email: userData.email,
-          role: userData.role,
-          status: userData.status || 'Ativo',
-          grupo_comissao: userData.grupo_comissao || 'OURO'
-        }])
-        .select()
-        .single();
-
-      if (profileError) throw profileError;
-
-      return mapProfileToUser(profileData);
+      } catch (e: any) {
+        console.error('Create user error:', e);
+        throw e;
+      }
     },
     update: async (id: string, updates: Partial<User>) => {
       const { data, error } = await supabase
@@ -164,27 +154,60 @@ export const db = {
         .neq('id', '00000000-0000-0000-0000-000000000000');
       if (error) throw error;
     },
-    import: async (comms: any[], userRole?: string, userId?: string) => {
-      // Normalization layer to prevent NOT NULL constraint violations
-      const normalizedComms = comms.map(c => {
-        const mapped = mapCommissionToTable(c);
-        return {
-          ...mapped,
-          grupo_master: mapped.grupo_master ?? 0,
-          grupo_ouro: mapped.grupo_ouro ?? 0,
-          grupo_prata: mapped.grupo_prata ?? 0,
-          grupo_plus: mapped.grupo_plus ?? 0,
-          parcelas: mapped.parcelas ?? 1,
-          status: mapped.status || 'Ativo'
-        };
-      });
+    import: async (comms: any[], userRole?: string, userId?: string, onProgress?: (p: number) => void) => {
+      const CHUNK_SIZE = 50; // Smaller chunks for commissions to be safe
+      const total = comms.length;
+      let processed = 0;
+      const results = [];
 
-      const { data, error } = await supabase
-        .from('commission_tables')
-        .insert(normalizedComms)
-        .select();
-      if (error) throw error;
-      return data.map(mapTableToCommission);
+      for (let i = 0; i < total; i += CHUNK_SIZE) {
+        const chunk = comms.slice(i, i + CHUNK_SIZE);
+        const normalizedChunk = chunk.map(c => {
+          const mapped = mapCommissionToTable(c);
+          
+          const parseNum = (val: any) => {
+            if (val === null || val === undefined || val === '') return 0;
+            const num = typeof val === 'string' ? parseFloat(val.replace(',', '.')) : val;
+            return isNaN(num) ? 0 : num;
+          };
+
+          // Only include fields that are likely to exist in the schema
+          const cleanObj: any = {
+            banco: String(mapped.banco || 'BANCO').substring(0, 100),
+            produto: String(mapped.produto || 'PRODUTO').substring(0, 100),
+            tabela: String(mapped.tabela || 'TABELA').substring(0, 255),
+            parcelas: String(mapped.parcelas || '1').substring(0, 50),
+            comissao_total_empresa: parseNum(mapped.comissao_total_empresa),
+            grupo_master: parseNum(mapped.grupo_master),
+            grupo_ouro: parseNum(mapped.grupo_ouro),
+            grupo_prata: parseNum(mapped.grupo_prata),
+            grupo_plus: parseNum(mapped.grupo_plus),
+            status: mapped.status || 'Ativo'
+          };
+
+          if (mapped.vigencia) cleanObj.vigencia = mapped.vigencia;
+          
+          return cleanObj;
+        });
+
+        const { data, error } = await supabase
+          .from('commission_tables')
+          .insert(normalizedChunk)
+          .select();
+
+        if (error) {
+          console.error('Error importing commissions chunk:', error);
+          throw error;
+        }
+        if (data) results.push(...data);
+
+        processed += chunk.length;
+        if (onProgress) {
+          onProgress(Math.round((processed / total) * 100));
+        }
+      }
+
+      return results.map(mapTableToCommission);
     }
   },
 
@@ -284,7 +307,11 @@ export const db = {
         const normalizedChunk = chunk.map(l => {
           const mapped = mapLeadToTable(l);
           return {
-            ...mapped,
+            nome: String(mapped.nome || 'Sem Nome').substring(0, 255),
+            telefone: String(mapped.telefone || '').substring(0, 50),
+            email: String(mapped.email || '').substring(0, 255),
+            cpf: String(mapped.cpf || '').replace(/\D/g, '').substring(0, 11),
+            banco_origem: String(mapped.banco_origem || '').substring(0, 100),
             status: mapped.status || 'Disponível',
             created_at: mapped.created_at || new Date().toISOString()
           };

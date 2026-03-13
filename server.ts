@@ -338,9 +338,11 @@ async function startServer() {
 
   // Supabase Admin Routes
   app.post('/api/admin/create-user', async (req, res) => {
+    console.log('POST /api/admin/create-user', req.body.email);
     try {
       if (!supabaseAdmin) {
-        return res.status(500).json({ error: 'Supabase Admin not configured. Please set SUPABASE_SERVICE_ROLE_KEY.' });
+        console.error('Supabase Admin not configured');
+        return res.status(500).json({ error: 'Supabase Admin not configured. Please set SUPABASE_SERVICE_ROLE_KEY in Settings.' });
       }
 
       const { email, password, name, role, status, grupo_comissao } = req.body;
@@ -363,6 +365,7 @@ async function startServer() {
       }
 
       const userId = authData.user.id;
+      console.log('User created in Auth:', userId);
 
       // 2. The trigger handle_new_user should have created the profile.
       // We use upsert to be safe and ensure all fields are set.
@@ -370,10 +373,10 @@ async function startServer() {
         .from('profiles')
         .upsert({
           id: userId,
-          nome: name,
+          nome: name || 'Usuário',
           email: email,
-          perfil: role,
-          grupo_comissao: grupo_comissao,
+          perfil: role || 'vendedor',
+          grupo_comissao: grupo_comissao || 'OURO',
           ativo: status === 'Ativo',
           meta_diaria: 0
         });
@@ -381,12 +384,13 @@ async function startServer() {
       if (profileError) {
         console.error('Profile Upsert Error:', profileError);
         // We don't return error here because the user was created successfully in Auth
+        // But we log it for debugging
       }
 
-      res.json({ success: true, user: authData.user });
+      return res.json({ success: true, user: authData.user });
     } catch (error: any) {
       console.error('Create user error:', error);
-      res.status(500).json({ error: error.message || 'Internal server error' });
+      return res.status(500).json({ error: error.message || 'Internal server error' });
     }
   });
 
