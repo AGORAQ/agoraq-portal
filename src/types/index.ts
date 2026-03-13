@@ -148,6 +148,7 @@ export interface Lead {
   importado_por?: string;
   capturedAt?: string;
   createdAt: string;
+  metadata?: any;
 }
 
 export interface Sale {

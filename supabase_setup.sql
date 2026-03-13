@@ -53,6 +53,7 @@ CREATE TABLE IF NOT EXISTS leads (
   email TEXT,
   cpf TEXT,
   cidade TEXT,
+  metadata JSONB DEFAULT '{}',
   status TEXT DEFAULT 'Disponível',
   capturado_por UUID REFERENCES profiles(id),
   capturado_em TIMESTAMP WITH TIME ZONE,

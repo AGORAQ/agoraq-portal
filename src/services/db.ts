@@ -402,6 +402,7 @@ export const db = {
             cpf: String(mapped.cpf || '').replace(/\D/g, '').substring(0, 11),
             banco_origem: String(mapped.banco_origem || '').substring(0, 100),
             status: mapped.status || 'Disponível',
+            metadata: mapped.metadata || {},
             created_at: mapped.created_at || new Date().toISOString()
           };
         });
@@ -938,7 +939,8 @@ function mapTableToLead(t: any): Lead {
     usuario_id: t.capturado_por,
     importado_por: t.importado_por,
     capturedAt: t.capturado_em,
-    createdAt: t.created_at
+    createdAt: t.created_at,
+    metadata: t.metadata || {}
   };
 }
 
@@ -952,7 +954,8 @@ function mapLeadToTable(l: any): any {
     status: l.status || 'Disponível',
     capturado_por: l.usuario_id || l.capturado_por,
     capturado_em: l.capturedAt || l.capturado_em,
-    importado_por: l.importado_por
+    importado_por: l.importado_por,
+    metadata: l.metadata || {}
   };
 }
 

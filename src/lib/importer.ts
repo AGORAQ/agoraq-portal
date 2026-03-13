@@ -163,6 +163,27 @@ const COLUMN_SYNONYMS: { [key: string]: string } = {
   'numero': 'phone',
   'number': 'phone',
   'num': 'phone',
+  'fone': 'phone',
+  'tel1': 'phone',
+  'tel2': 'phone',
+  'cel': 'phone',
+  'telefone 1': 'phone',
+  'telefone 2': 'phone',
+  'celular 1': 'phone',
+  'celular 2': 'phone',
+  'telefone celular': 'phone',
+  'contato telefone': 'phone',
+  'fone contato': 'phone',
+  'numero telefone': 'phone',
+  'numero celular': 'phone',
+  'numero de telefone': 'phone',
+  'numero de celular': 'phone',
+  'celular1': 'phone',
+  'celular2': 'phone',
+  'tel_residencial': 'phone',
+  'tel_comercial': 'phone',
+  'telefone_residencial': 'phone',
+  'telefone_comercial': 'phone',
   
   'email': 'email',
   'e mail': 'email',
@@ -175,6 +196,11 @@ const COLUMN_SYNONYMS: { [key: string]: string } = {
   'cpf': 'cpf',
   'documento': 'cpf',
   'cpf cliente': 'cpf',
+  'cpf_cnpj': 'cpf',
+  'cnpj': 'cpf',
+  'doc': 'cpf',
+  'identidade': 'cpf',
+  'cpf do cliente': 'cpf',
   'banco de origem': 'banco_origem',
   'banco origem': 'banco_origem',
   'origem': 'banco_origem',
@@ -199,8 +225,6 @@ const COLUMN_SYNONYMS: { [key: string]: string } = {
   'n proposta': 'proposta',
   'numero proposta': 'proposta',
   'contrato': 'proposta',
-  
-  'cpf do cliente': 'cpf',
 };
 
 export const normalizeHeader = (header: string): string => {
@@ -308,9 +332,31 @@ export const parseData = (data: any, type: 'binary' | 'string' | 'array' = 'bina
     const rows = json.slice(1);
     const normalizedData: NormalizedData[] = rows.map((row) => {
       const obj: NormalizedData = {};
+      const metadata: any = {};
+      
       normalizedHeaders.forEach((header, colIndex) => {
-        obj[header] = normalizeValue(row[colIndex], header);
+        const value = normalizeValue(row[colIndex], header);
+        const rawHeader = String(rawHeaders[colIndex]);
+        
+        // If it's a known field, map it (don't overwrite if we already have a value)
+        if (Object.values(COLUMN_SYNONYMS).includes(header)) {
+          if (value !== null && value !== undefined && value !== '') {
+            if (obj[header] === undefined || obj[header] === null || obj[header] === '') {
+              obj[header] = value;
+            }
+          }
+        } else {
+          // If it's an unknown field, put it in metadata
+          if (value !== null && value !== undefined && value !== '') {
+            metadata[rawHeader] = value;
+          }
+        }
       });
+      
+      if (Object.keys(metadata).length > 0) {
+        obj.metadata = metadata;
+      }
+      
       return obj;
     }).filter(row => Object.values(row).some(v => v !== null && v !== ''));
     

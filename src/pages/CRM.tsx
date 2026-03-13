@@ -129,14 +129,24 @@ export default function CRM() {
       return;
     }
 
-    const worksheet = XLSX.utils.json_to_sheet(leads.map(l => ({
-      Nome: l.name,
-      Telefone: l.phone,
-      Email: l.email,
-      Cidade: l.city,
-      Status: l.status,
-      Data: l.capturedAt ? new Date(l.capturedAt).toLocaleDateString() : new Date(l.createdAt).toLocaleDateString()
-    })));
+    const worksheet = XLSX.utils.json_to_sheet(leads.map(l => {
+      const base = {
+        Nome: l.name,
+        CPF: l.cpf || '',
+        Telefone: l.phone,
+        Email: l.email,
+        Cidade: l.city,
+        Status: l.status,
+        Data: l.capturedAt ? new Date(l.capturedAt).toLocaleDateString() : new Date(l.createdAt).toLocaleDateString()
+      };
+      
+      // Add metadata fields to the export
+      if (l.metadata) {
+        return { ...base, ...l.metadata };
+      }
+      
+      return base;
+    }));
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, "Leads");
     XLSX.writeFile(workbook, `leads_export_${new Date().toISOString().split('T')[0]}.xlsx`);
@@ -344,6 +354,7 @@ export default function CRM() {
                   <thead className="bg-slate-50 border-b text-slate-500 uppercase text-[10px] font-bold">
                     <tr>
                       <th className="px-4 py-3"><span>Nome</span></th>
+                      <th className="px-4 py-3"><span>CPF</span></th>
                       <th className="px-4 py-3"><span>Telefone</span></th>
                       <th className="px-4 py-3"><span>Email</span></th>
                       <th className="px-4 py-3"><span>Cidade</span></th>
@@ -358,6 +369,7 @@ export default function CRM() {
                     {leads.filter(l => l.usuario_id).length > 0 ? leads.filter(l => l.usuario_id).map((lead) => (
                       <tr key={lead.id} className="hover:bg-slate-50 transition-colors">
                         <td className="px-4 py-3 font-medium text-slate-900"><span>{lead.name}</span></td>
+                        <td className="px-4 py-3 text-slate-500"><span>{lead.cpf || '-'}</span></td>
                         <td className="px-4 py-3"><span>{lead.phone}</span></td>
                         <td className="px-4 py-3 text-slate-500"><span>{lead.email}</span></td>
                         <td className="px-4 py-3 text-slate-500"><span>{lead.city}</span></td>
@@ -463,6 +475,7 @@ export default function CRM() {
                   <thead className="bg-slate-50 border-b text-slate-500 uppercase text-[10px] font-bold">
                     <tr>
                       <th className="px-4 py-3"><span>Nome</span></th>
+                      <th className="px-4 py-3"><span>CPF</span></th>
                       <th className="px-4 py-3"><span>Telefone</span></th>
                       <th className="px-4 py-3"><span>Email</span></th>
                       <th className="px-4 py-3"><span>Cidade</span></th>
@@ -474,6 +487,7 @@ export default function CRM() {
                     {leads.filter(l => !l.usuario_id).length > 0 ? leads.filter(l => !l.usuario_id).map((lead) => (
                       <tr key={lead.id} className="hover:bg-slate-50 transition-colors">
                         <td className="px-4 py-3 font-medium text-slate-900"><span>{lead.name}</span></td>
+                        <td className="px-4 py-3 text-slate-500"><span>{lead.cpf || '-'}</span></td>
                         <td className="px-4 py-3"><span>{lead.phone}</span></td>
                         <td className="px-4 py-3 text-slate-500"><span>{lead.email}</span></td>
                         <td className="px-4 py-3 text-slate-500"><span>{lead.city}</span></td>
