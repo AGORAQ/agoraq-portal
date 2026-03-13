@@ -850,19 +850,40 @@ export const db = {
     get: async () => {
       const { data, error } = await supabase
         .from('app_settings')
-        .select('*')
-        .single();
-      if (error && error.code !== 'PGRST116') throw error;
-      return data || { canvaLink: 'https://www.canva.com/' };
+        .select('value')
+        .eq('key', 'global_settings')
+        .maybeSingle();
+      
+      if (error) {
+        console.error('Error fetching settings:', error);
+        return { canvaLink: 'https://www.canva.com/' };
+      }
+      
+      return {
+        canvaLink: 'https://www.canva.com/',
+        aiSystemPrompt: "Você é um assistente útil e experiente da empresa AgoraQ, especializado em ajudar vendedores de crédito consignado. Você responde dúvidas sobre comissões, uso do CRM, captura de leads e roteiros operacionais. Seja conciso, profissional e motivador.",
+        ...(data?.value || {})
+      };
     },
     update: async (newSettings: any) => {
+      const current = await db.settings.get();
+      const updated = { ...current, ...newSettings };
+      
       const { data, error } = await supabase
         .from('app_settings')
-        .upsert({ id: 1, ...newSettings })
+        .upsert({ 
+          key: 'global_settings', 
+          value: updated,
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'key' })
         .select()
         .single();
-      if (error) throw error;
-      return data;
+        
+      if (error) {
+        console.error('Error updating settings:', error);
+        throw error;
+      }
+      return data.value;
     }
   },
 

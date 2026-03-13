@@ -205,7 +205,7 @@ CREATE TABLE IF NOT EXISTS app_settings (
 
 -- Inserir configurações padrão se não existirem
 INSERT INTO app_settings (key, value) 
-VALUES ('contract_settings', '{"title": "Contrato de Prestação de Serviços", "content": "Conteúdo do contrato..."}')
+VALUES ('global_settings', '{"canvaLink": "https://www.canva.com/", "aiSystemPrompt": "Você é um assistente útil e experiente da empresa AgoraQ, especializado em ajudar vendedores de crédito consignado. Você responde dúvidas sobre comissões, uso do CRM, captura de leads e roteiros operacionais. Seja conciso, profissional e motivador.", "contractTerms": "Conteúdo do contrato...", "signatureLink": ""}')
 ON CONFLICT (key) DO NOTHING;
 
 -- Habilitar RLS (Opcional, mas recomendado)

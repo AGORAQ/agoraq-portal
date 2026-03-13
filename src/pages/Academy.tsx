@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
@@ -42,6 +42,7 @@ export default function Academy() {
   const [videoModalUrl, setVideoModalUrl] = useState<string | null>(null);
   const [isVideoLoading, setIsVideoLoading] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploadMode, setUploadMode] = useState<'url' | 'upload'>('url');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [formData, setFormData] = useState<Partial<AcademyContent>>({
@@ -278,24 +279,41 @@ export default function Academy() {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    // Limit file size to 10MB for base64 storage
+    if (file.size > 10 * 1024 * 1024) {
+      alert('O arquivo é muito grande. O limite é 10MB para upload direto. Para arquivos maiores, use um link externo.');
+      return;
+    }
+
     setIsUploading(true);
     
-    // Simulate upload delay
-    await new Promise(resolve => setTimeout(resolve, 1500));
+    try {
+      // Simulate upload delay
+      await new Promise(resolve => setTimeout(resolve, 1000));
 
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      const base64String = reader.result as string;
-      handleInputChange('arquivo_url', base64String);
-      
-      // Auto-detect file type
-      if (file.type.includes('pdf')) handleInputChange('tipo_arquivo', 'pdf');
-      else if (file.type.includes('video')) handleInputChange('tipo_arquivo', 'video');
-      else if (file.type.includes('word') || file.type.includes('officedocument')) handleInputChange('tipo_arquivo', 'doc');
-      
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const base64String = reader.result as string;
+        handleInputChange('arquivo_url', base64String);
+        
+        // Auto-detect file type
+        if (file.type.includes('pdf')) handleInputChange('tipo_arquivo', 'pdf');
+        else if (file.type.includes('video')) handleInputChange('tipo_arquivo', 'video');
+        else if (file.type.includes('word') || file.type.includes('officedocument')) handleInputChange('tipo_arquivo', 'doc');
+        
+        setIsUploading(false);
+      };
+      reader.onerror = () => {
+        console.error('Erro ao ler arquivo');
+        alert('Erro ao carregar o arquivo. Tente novamente.');
+        setIsUploading(false);
+      };
+      reader.readAsDataURL(file);
+    } catch (error) {
+      console.error('Erro no upload:', error);
+      alert('Erro ao processar o upload.');
       setIsUploading(false);
-    };
-    reader.readAsDataURL(file);
+    }
   };
 
   const filteredContents = contents.filter(c => {
@@ -598,8 +616,8 @@ export default function Academy() {
                           {formData.arquivo_url && formData.arquivo_url.startsWith('data:') ? 'Arquivo carregado' : 'Nenhum arquivo selecionado'}
                         </span>
                         <input 
+                          ref={fileInputRef}
                           type="file" 
-                          id="file-upload" 
                           className="hidden" 
                           onChange={handleFileUpload}
                           accept=".pdf,.doc,.docx,.mp4,.mov"
@@ -609,7 +627,7 @@ export default function Academy() {
                           variant="ghost" 
                           size="sm"
                           className="text-indigo-400 hover:text-indigo-300 h-7"
-                          onClick={() => document.getElementById('file-upload')?.click()}
+                          onClick={() => fileInputRef.current?.click()}
                           disabled={isUploading}
                         >
                           {isUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Alterar'}
