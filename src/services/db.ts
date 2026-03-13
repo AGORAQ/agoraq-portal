@@ -289,13 +289,13 @@ export const db = {
       // 1. Get user's already captured leads to avoid duplicates
       const { data: userLeads, error: userError } = await supabase
         .from('leads')
-        .select('cpf, phone')
+        .select('cpf, telefone')
         .eq('capturado_por', userId);
       
       if (userError) throw userError;
 
       const userCpfs = new Set(userLeads.map(l => l.cpf).filter(Boolean));
-      const userPhones = new Set(userLeads.map(l => l.phone).filter(Boolean));
+      const userPhones = new Set(userLeads.map(l => l.telefone).filter(Boolean));
 
       // 2. Get available leads
       const { data, error } = await supabase
@@ -309,7 +309,7 @@ export const db = {
       // 3. Filter out leads that have same CPF or Phone as user's existing leads
       const filtered = data.filter(l => {
         const hasDuplicateCpf = l.cpf && userCpfs.has(l.cpf);
-        const hasDuplicatePhone = l.phone && userPhones.has(l.phone);
+        const hasDuplicatePhone = l.telefone && userPhones.has(l.telefone);
         return !hasDuplicateCpf && !hasDuplicatePhone;
       });
 
