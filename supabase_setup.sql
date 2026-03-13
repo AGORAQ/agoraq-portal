@@ -170,6 +170,8 @@ CREATE TABLE IF NOT EXISTS academy_content (
   versao TEXT DEFAULT '1.0',
   criado_por UUID REFERENCES profiles(id),
   status TEXT DEFAULT 'Ativo',
+  links_relacionados TEXT,
+  ordem INTEGER DEFAULT 0,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );

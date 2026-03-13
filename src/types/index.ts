@@ -246,6 +246,8 @@ export interface AcademyContent {
   criado_em: string;
   atualizado_em: string;
   status: 'Ativo' | 'Inativo';
+  links_relacionados?: string;
+  ordem: number;
 }
 
 export interface AcademyView {

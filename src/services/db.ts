@@ -756,6 +756,7 @@ export const db = {
       const { data, error } = await supabase
         .from('academy_content')
         .select('*')
+        .order('ordem', { ascending: true })
         .order('titulo');
       if (error) throw error;
       return data;

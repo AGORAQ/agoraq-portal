@@ -8,7 +8,7 @@ import {
   ExternalLink, Download, Eye, X, Save, 
   Filter, Clock, CheckCircle, AlertCircle,
   Video, FileDown, Link as LinkIcon,
-  Sparkles, Loader2, Play
+  Sparkles, Loader2, Play, ArrowUp, ArrowDown
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { db } from '@/services/db';
@@ -42,13 +42,15 @@ export default function Academy() {
   const [videoModalUrl, setVideoModalUrl] = useState<string | null>(null);
   const [isVideoLoading, setIsVideoLoading] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const [uploadMode, setUploadMode] = useState<'url' | 'upload'>('url');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [formData, setFormData] = useState<Partial<AcademyContent>>({
     categoria: 'Informativo',
     tipo_arquivo: 'pdf',
     visibilidade: 'todos',
     status: 'Ativo',
-    versao: '1.0'
+    versao: '1.0',
+    links_relacionados: ''
   });
 
   const loadData = async () => {
@@ -93,6 +95,8 @@ export default function Academy() {
       visibilidade: formData.visibilidade as any,
       grupo_id: formData.grupo_id,
       versao: formData.versao || '1.0',
+      links_relacionados: formData.links_relacionados || '',
+      ordem: formData.ordem || (contents.length > 0 ? Math.max(...contents.map(c => c.ordem || 0)) + 1 : 0),
       criado_por: user?.id || 'sistema',
       status: formData.status as any || 'Ativo'
     };
@@ -118,6 +122,7 @@ export default function Academy() {
   const handleEdit = (content: AcademyContent) => {
     setFormData(content);
     setEditingId(content.id);
+    setUploadMode(content.arquivo_url?.startsWith('data:') ? 'upload' : 'url');
     setIsFormOpen(true);
   };
 
@@ -126,6 +131,26 @@ export default function Academy() {
       await db.academy.delete(id);
       await loadData();
     }
+  };
+
+  const handleMove = async (content: AcademyContent, direction: 'up' | 'down') => {
+    const currentIndex = contents.findIndex(c => c.id === content.id);
+    if (direction === 'up' && currentIndex === 0) return;
+    if (direction === 'down' && currentIndex === contents.length - 1) return;
+
+    const targetIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
+    const targetContent = contents[targetIndex];
+
+    // Swap orders
+    const currentOrder = content.ordem || 0;
+    const targetOrder = targetContent.ordem || 0;
+
+    await Promise.all([
+      db.academy.update(content.id, { ordem: targetOrder }),
+      db.academy.update(targetContent.id, { ordem: currentOrder })
+    ]);
+
+    await loadData();
   };
 
   const handleView = async (content: AcademyContent) => {
@@ -410,12 +435,14 @@ export default function Academy() {
           {isAdmin && (
             <Button className="bg-emerald-600 hover:bg-emerald-700 text-white border-none" onClick={() => {
             setEditingId(null);
+            setUploadMode('url');
             setFormData({
               categoria: 'Informativo',
               tipo_arquivo: 'pdf',
               visibilidade: 'todos',
               status: 'Ativo',
-              versao: '1.0'
+              versao: '1.0',
+              links_relacionados: ''
             });
             setIsFormOpen(true);
           }}>
@@ -539,29 +566,70 @@ export default function Academy() {
                   </select>
                 </div>
                 <div className="space-y-2">
-                  <label className="text-sm font-medium text-slate-300">URL do Arquivo ou Link <span className="text-red-500">*</span></label>
-                  <div className="flex gap-2">
-                    <Input required className="bg-slate-800 border-slate-700 text-white flex-1" value={formData.arquivo_url || ''} onChange={e => handleInputChange('arquivo_url', e.target.value)} placeholder="https://..." />
-                    <div className="relative">
-                      <input 
-                        type="file" 
-                        id="file-upload" 
-                        className="hidden" 
-                        onChange={handleFileUpload}
-                        accept=".pdf,.doc,.docx,.mp4,.mov"
-                      />
-                      <Button 
-                        type="button" 
-                        variant="outline" 
-                        className="border-slate-700 text-slate-300 hover:bg-slate-800"
-                        onClick={() => document.getElementById('file-upload')?.click()}
-                        disabled={isUploading}
-                      >
-                        {isUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileDown className="w-4 h-4" />}
-                      </Button>
-                    </div>
+                  <label className="text-sm font-medium text-slate-300">Origem do Conteúdo</label>
+                  <div className="flex bg-slate-800 p-1 rounded-lg border border-slate-700">
+                    <button
+                      type="button"
+                      className={`flex-1 py-1.5 text-xs font-medium rounded-md transition-all ${uploadMode === 'url' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:text-slate-200'}`}
+                      onClick={() => setUploadMode('url')}
+                    >
+                      URL / Link
+                    </button>
+                    <button
+                      type="button"
+                      className={`flex-1 py-1.5 text-xs font-medium rounded-md transition-all ${uploadMode === 'upload' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:text-slate-200'}`}
+                      onClick={() => setUploadMode('upload')}
+                    >
+                      Upload de Arquivo
+                    </button>
                   </div>
-                  <p className="text-[10px] text-slate-500">Você pode colar um link ou fazer upload de um arquivo local.</p>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-slate-300">
+                    {uploadMode === 'url' ? 'URL do Arquivo ou Link' : 'Arquivo Selecionado'} <span className="text-red-500">*</span>
+                  </label>
+                  <div className="flex gap-2">
+                    {uploadMode === 'url' ? (
+                      <Input required className="bg-slate-800 border-slate-700 text-white flex-1" value={formData.arquivo_url || ''} onChange={e => handleInputChange('arquivo_url', e.target.value)} placeholder="https://..." />
+                    ) : (
+                      <div className="flex-1 flex items-center gap-2 bg-slate-800 border border-slate-700 rounded-md px-3 py-2">
+                        <FileDown className="w-4 h-4 text-slate-500" />
+                        <span className="text-sm text-slate-300 truncate flex-1">
+                          {formData.arquivo_url && formData.arquivo_url.startsWith('data:') ? 'Arquivo carregado' : 'Nenhum arquivo selecionado'}
+                        </span>
+                        <input 
+                          type="file" 
+                          id="file-upload" 
+                          className="hidden" 
+                          onChange={handleFileUpload}
+                          accept=".pdf,.doc,.docx,.mp4,.mov"
+                        />
+                        <Button 
+                          type="button" 
+                          variant="ghost" 
+                          size="sm"
+                          className="text-indigo-400 hover:text-indigo-300 h-7"
+                          onClick={() => document.getElementById('file-upload')?.click()}
+                          disabled={isUploading}
+                        >
+                          {isUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Alterar'}
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                  <p className="text-[10px] text-slate-500">
+                    {uploadMode === 'url' ? 'Cole o link direto para o arquivo ou site.' : 'O arquivo será salvo no sistema.'}
+                  </p>
+                </div>
+                <div className="md:col-span-2 space-y-2">
+                  <label className="text-sm font-medium text-slate-300">Links Relacionados</label>
+                  <textarea 
+                    className="flex min-h-[60px] w-full rounded-md border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white"
+                    value={formData.links_relacionados || ''}
+                    onChange={e => handleInputChange('links_relacionados', e.target.value)}
+                    placeholder="Cole aqui links úteis separados por linha ou vírgula..."
+                  />
+                  <p className="text-[10px] text-slate-500">Links que complementam este treinamento.</p>
                 </div>
                 <div className="space-y-2">
                   <label className="text-sm font-medium text-slate-300">Versão</label>
@@ -654,6 +722,30 @@ export default function Academy() {
                   </p>
                 </div>
 
+                {content.links_relacionados && (
+                  <div className="space-y-2">
+                    <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Links Relacionados</p>
+                    <div className="flex flex-wrap gap-2">
+                      {content.links_relacionados.split(/[\n,]+/).map((link, idx) => {
+                        const trimmedLink = link.trim();
+                        if (!trimmedLink) return null;
+                        return (
+                          <a 
+                            key={idx} 
+                            href={trimmedLink.startsWith('http') ? trimmedLink : `https://${trimmedLink}`} 
+                            target="_blank" 
+                            rel="noopener noreferrer"
+                            className="text-[10px] text-indigo-400 hover:text-indigo-300 flex items-center gap-1 bg-indigo-900/20 px-2 py-1 rounded border border-indigo-500/20 transition-colors"
+                          >
+                            <ExternalLink className="w-3 h-3" />
+                            Link {idx + 1}
+                          </a>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
                 <div className="flex items-center justify-between text-xs text-slate-500 border-t border-slate-800 pt-4">
                   <div className="flex items-center gap-1">
                     <Clock className="w-3 h-3" />
@@ -674,6 +766,26 @@ export default function Academy() {
                   </Button>
                   {isAdmin && (
                     <div className="flex gap-1">
+                      <div className="flex flex-col gap-1 mr-2">
+                        <Button 
+                          variant="ghost" 
+                          size="icon" 
+                          className="h-5 w-5 text-slate-500 hover:text-white" 
+                          onClick={() => handleMove(content, 'up')}
+                          title="Mover para cima"
+                        >
+                          <ArrowUp className="w-3 h-3" />
+                        </Button>
+                        <Button 
+                          variant="ghost" 
+                          size="icon" 
+                          className="h-5 w-5 text-slate-500 hover:text-white" 
+                          onClick={() => handleMove(content, 'down')}
+                          title="Mover para baixo"
+                        >
+                          <ArrowDown className="w-3 h-3" />
+                        </Button>
+                      </div>
                       <Button variant="ghost" size="icon" className="h-10 w-10 text-blue-400 hover:bg-blue-900/30" onClick={() => handleEdit(content)}>
                         <Edit className="w-4 h-4" />
                       </Button>
