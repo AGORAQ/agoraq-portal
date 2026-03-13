@@ -213,6 +213,23 @@ function initDb() {
       FOREIGN KEY(usuario_id) REFERENCES users(id)
     );
 
+    CREATE TABLE IF NOT EXISTS financial_entries (
+      id TEXT PRIMARY KEY,
+      vendedor_id TEXT NOT NULL,
+      vendedor_nome TEXT,
+      sale_id TEXT,
+      tipo TEXT NOT NULL,
+      valor REAL NOT NULL,
+      descricao TEXT,
+      pix_key TEXT,
+      status TEXT NOT NULL,
+      data_vencimento TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      FOREIGN KEY(vendedor_id) REFERENCES users(id),
+      FOREIGN KEY(sale_id) REFERENCES sales(id)
+    );
+
     CREATE TABLE IF NOT EXISTS settings (
       key TEXT PRIMARY KEY,
       value TEXT NOT NULL

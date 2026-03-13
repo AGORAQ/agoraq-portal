@@ -285,6 +285,36 @@ export const db = {
       if (error) throw error;
       return data.map(mapTableToLead);
     },
+    getAvailableForUser: async (userId: string) => {
+      // 1. Get user's already captured leads to avoid duplicates
+      const { data: userLeads, error: userError } = await supabase
+        .from('leads')
+        .select('cpf, phone')
+        .eq('capturado_por', userId);
+      
+      if (userError) throw userError;
+
+      const userCpfs = new Set(userLeads.map(l => l.cpf).filter(Boolean));
+      const userPhones = new Set(userLeads.map(l => l.phone).filter(Boolean));
+
+      // 2. Get available leads
+      const { data, error } = await supabase
+        .from('leads')
+        .select('*')
+        .eq('status', 'Disponível')
+        .order('created_at', { ascending: false });
+      
+      if (error) throw error;
+
+      // 3. Filter out leads that have same CPF or Phone as user's existing leads
+      const filtered = data.filter(l => {
+        const hasDuplicateCpf = l.cpf && userCpfs.has(l.cpf);
+        const hasDuplicatePhone = l.phone && userPhones.has(l.phone);
+        return !hasDuplicateCpf && !hasDuplicatePhone;
+      });
+
+      return filtered.map(mapTableToLead);
+    },
     capture: async (leadId: string, userId: string) => {
       const { data, error } = await supabase
         .from('leads')

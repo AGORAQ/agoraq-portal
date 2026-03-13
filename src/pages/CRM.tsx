@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Badge } from '@/components/ui/Badge';
-import { ExternalLink, Copy, Database, Upload, UserPlus, Download, LayoutGrid, List, RefreshCw, FileSpreadsheet, Trash2 } from 'lucide-react';
+import { ExternalLink, Copy, Database, Upload, UserPlus, Download, LayoutGrid, List, RefreshCw, FileSpreadsheet, Trash2, User } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import GlobalImporter from '@/components/GlobalImporter';
 import { db } from '@/services/db';
@@ -103,8 +103,8 @@ export default function CRM() {
     }
 
     try {
-      // Get all unassigned leads
-      const unassignedLeads = await db.leads.getAvailable();
+      // Get all unassigned leads, filtering out duplicates for this user
+      const unassignedLeads = await db.leads.getAvailableForUser(user!.id);
       
       if (unassignedLeads.length < qty) {
         alert(`Apenas ${unassignedLeads.length} leads disponíveis na base.`);
@@ -348,6 +348,7 @@ export default function CRM() {
                       <th className="px-4 py-3"><span>Email</span></th>
                       <th className="px-4 py-3"><span>Cidade</span></th>
                       <th className="px-4 py-3"><span>Status</span></th>
+                      <th className="px-4 py-3 text-center"><span>Copiar</span></th>
                       {isAdmin && <th className="px-4 py-3"><span>Capturado Por</span></th>}
                       <th className="px-4 py-3"><span>Data</span></th>
                       {isAdmin && <th className="px-4 py-3 text-right"><span>Ações</span></th>}
@@ -364,6 +365,39 @@ export default function CRM() {
                           <Badge className={lead.status === 'Novo' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-700'}>
                             <span>{lead.status}</span>
                           </Badge>
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="flex items-center justify-center gap-1">
+                            <Button 
+                              variant="ghost" 
+                              size="icon" 
+                              className="h-8 w-8 text-blue-600 hover:bg-blue-50" 
+                              onClick={() => copyToClipboard(lead.name)}
+                              title="Copiar Nome"
+                            >
+                              <User className="w-4 h-4" />
+                            </Button>
+                            <Button 
+                              variant="ghost" 
+                              size="icon" 
+                              className="h-8 w-8 text-emerald-600 hover:bg-emerald-50" 
+                              onClick={() => copyToClipboard(lead.phone)}
+                              title="Copiar Telefone"
+                            >
+                              <Copy className="w-4 h-4" />
+                            </Button>
+                            {lead.cpf && (
+                              <Button 
+                                variant="ghost" 
+                                size="icon" 
+                                className="h-8 w-8 text-amber-600 hover:bg-amber-50" 
+                                onClick={() => copyToClipboard(lead.cpf)}
+                                title="Copiar CPF"
+                              >
+                                <Database className="w-4 h-4" />
+                              </Button>
+                            )}
+                          </div>
                         </td>
                         {isAdmin && (
                           <td className="px-4 py-3">
