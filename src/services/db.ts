@@ -43,14 +43,27 @@ export const db = {
       return mapProfileToUser(data);
     },
     create: async (user: any) => {
-      const response = await fetch('/api/admin/create-user', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(user)
-      });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || 'Erro ao criar usuário');
-      return data.user;
+      try {
+        const response = await fetch('/api/admin/create-user', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(user)
+        });
+        
+        const contentType = response.headers.get('content-type');
+        if (contentType && contentType.includes('application/json')) {
+          const data = await response.json();
+          if (!response.ok) throw new Error(data.error || 'Erro ao criar usuário');
+          return data.user;
+        } else {
+          const text = await response.text();
+          console.error('API returned non-JSON response:', text.substring(0, 100));
+          throw new Error('O servidor retornou uma resposta inválida (HTML). Verifique se o backend está rodando corretamente.');
+        }
+      } catch (e: any) {
+        console.error('Create user error:', e);
+        throw e;
+      }
     },
     update: async (id: string, updates: Partial<User>) => {
       const { data, error } = await supabase
@@ -63,14 +76,25 @@ export const db = {
       return mapProfileToUser(data);
     },
     resetPassword: async (userId: string, newPassword: string) => {
-      const response = await fetch('/api/admin/reset-password', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId, newPassword })
-      });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || 'Erro ao resetar senha');
-      return data;
+      try {
+        const response = await fetch('/api/admin/reset-password', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId, newPassword })
+        });
+        
+        const contentType = response.headers.get('content-type');
+        if (contentType && contentType.includes('application/json')) {
+          const data = await response.json();
+          if (!response.ok) throw new Error(data.error || 'Erro ao resetar senha');
+          return data;
+        } else {
+          throw new Error('O servidor retornou uma resposta inválida (HTML).');
+        }
+      } catch (e: any) {
+        console.error('Reset password error:', e);
+        throw e;
+      }
     },
     delete: async (id: string) => {
       const { error } = await supabase

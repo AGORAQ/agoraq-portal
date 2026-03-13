@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { db } from '@/services/db';
+import { supabase } from '@/lib/supabase';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/Card';
@@ -29,16 +30,30 @@ export default function Login() {
 
   React.useEffect(() => {
     const checkFirstRun = async () => {
-      console.log('Checking for first run...');
+      console.log('[DEBUG] Iniciando checagem de first-run via RPC...');
       try {
-        const response = await fetch('/api/admin/check-first-run');
-        const data = await response.json();
-        if (data.isFirstRun) {
+        // Chamada direta via RPC do Supabase conforme solicitado
+        const { data, error } = await supabase.rpc('check_first_run');
+        
+        if (error) {
+          console.error('[DEBUG] Erro na RPC check_first_run:', error);
+          setIsFirstRun(false);
+          return;
+        }
+
+        console.log('[DEBUG] Resultado da RPC check_first_run:', data);
+
+        if (data?.firstRun === true) {
+          console.log('[DEBUG] Sistema em estado de configuração inicial.');
           setIsFirstRun(true);
+        } else {
+          console.log('[DEBUG] Administrador já existe. Exibindo tela de login.');
+          setIsFirstRun(false);
         }
       } catch (e: any) {
-        console.error('Check first run error:', e);
-        setIsFirstRun(true);
+        console.error('[DEBUG] Exceção na checagem de first-run:', e);
+        // Regra 4: Fallback para login normal
+        setIsFirstRun(false);
       }
     };
     checkFirstRun();
@@ -239,15 +254,6 @@ export default function Login() {
               </button>
               <div className="text-sm text-slate-500">
                 Não tem acesso? <Link to="/solicitar-acesso" className="text-blue-600 font-medium hover:underline">Solicitar Cadastro</Link>
-              </div>
-              <div className="mt-6 pt-4 border-t border-slate-100 w-full text-center">
-                <button 
-                  type="button"
-                  onClick={() => setIsFirstRun(true)}
-                  className="text-xs text-blue-600 hover:text-blue-800 font-medium bg-blue-50 px-4 py-2 rounded-full transition-colors border-none cursor-pointer"
-                >
-                  Primeiro acesso? Configurar Administrador
-                </button>
               </div>
             </CardFooter>
           )}

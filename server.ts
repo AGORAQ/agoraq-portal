@@ -15,34 +15,46 @@ dotenv.config();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const db = new Database('database.sqlite');
-db.pragma('journal_mode = WAL');
+let db: any;
+try {
+  console.log('Initializing database...');
+  db = new Database('database.sqlite');
+  db.pragma('journal_mode = WAL');
+  console.log('Database initialized successfully.');
+} catch (error) {
+  console.error('CRITICAL: Failed to open database:', error);
+}
 
 // Initialize Database Schema
 function initDb() {
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS users (
-      id TEXT PRIMARY KEY,
-      name TEXT NOT NULL,
-      email TEXT UNIQUE NOT NULL,
-      role TEXT NOT NULL,
-      status TEXT NOT NULL,
-      lastAccess TEXT,
-      avatar TEXT,
-      password TEXT NOT NULL,
-      grupo_comissao TEXT NOT NULL,
-      fgtsGroup TEXT,
-      cltGroup TEXT,
-      othersGroup TEXT,
-      pix_key TEXT,
-      saldo_acumulado REAL DEFAULT 0,
-      saldo_pago REAL DEFAULT 0,
-      daily_lead_count INTEGER DEFAULT 0,
-      last_lead_date TEXT,
-      monthly_goal REAL DEFAULT 0,
-      contract_signed INTEGER DEFAULT 0,
-      deleted_at TEXT
-    );
+  if (!db) {
+    console.error('Cannot initialize schema: Database not available');
+    return;
+  }
+  try {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS users (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        email TEXT UNIQUE NOT NULL,
+        role TEXT NOT NULL,
+        status TEXT NOT NULL,
+        lastAccess TEXT,
+        avatar TEXT,
+        password TEXT NOT NULL,
+        grupo_comissao TEXT NOT NULL,
+        fgtsGroup TEXT,
+        cltGroup TEXT,
+        othersGroup TEXT,
+        pix_key TEXT,
+        saldo_acumulado REAL DEFAULT 0,
+        saldo_pago REAL DEFAULT 0,
+        daily_lead_count INTEGER DEFAULT 0,
+        last_lead_date TEXT,
+        monthly_goal REAL DEFAULT 0,
+        contract_signed INTEGER DEFAULT 0,
+        deleted_at TEXT
+      );
 
     CREATE TABLE IF NOT EXISTS banks (
       id TEXT PRIMARY KEY,
@@ -272,6 +284,9 @@ function initDb() {
   const bankCount = db.prepare('SELECT COUNT(*) as count FROM banks').get() as { count: number };
   if (bankCount.count === 0) {
     // No initial banks for production-ready state
+    }
+  } catch (e) {
+    console.error('Error during initDb execution:', e);
   }
 }
 
@@ -288,9 +303,21 @@ async function startServer() {
   app.use(cors());
   app.use(express.json());
 
+  // Test route
+  app.get('/api/test-alive', (req, res) => {
+    res.send('Server is alive and responding');
+  });
+
   // Health check
   app.get('/api/health', (req, res) => {
+    console.log('Health check requested');
+    res.setHeader('Content-Type', 'application/json');
     res.json({ status: 'ok' });
+  });
+
+  // API routes
+  app.get('/api/db-status', (req, res) => {
+    res.json({ initialized: !!db });
   });
 
   // Supabase Admin Client
@@ -302,6 +329,10 @@ async function startServer() {
         }
       })
     : null;
+
+  if (!supabaseAdmin) {
+    console.warn('Supabase Admin NOT configured. Check VITE_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY.');
+  }
 
   // --- API ROUTES ---
 
@@ -334,20 +365,21 @@ async function startServer() {
       const userId = authData.user.id;
 
       // 2. The trigger handle_new_user should have created the profile.
-      // We complement it now.
+      // We use upsert to be safe and ensure all fields are set.
       const { error: profileError } = await supabaseAdmin
         .from('profiles')
-        .update({
+        .upsert({
+          id: userId,
           nome: name,
+          email: email,
           perfil: role,
           grupo_comissao: grupo_comissao,
           ativo: status === 'Ativo',
           meta_diaria: 0
-        })
-        .eq('id', userId);
+        });
 
       if (profileError) {
-        console.error('Profile Update Error:', profileError);
+        console.error('Profile Upsert Error:', profileError);
         // We don't return error here because the user was created successfully in Auth
       }
 
@@ -381,17 +413,25 @@ async function startServer() {
 
   // Check if first run
   app.get('/api/admin/check-first-run', async (req, res) => {
+    console.log('GET /api/admin/check-first-run');
+    res.setHeader('Content-Type', 'application/json');
     try {
       if (!supabaseAdmin) {
+        console.log('No supabaseAdmin, returning isFirstRun: true');
         return res.json({ isFirstRun: true });
       }
       const { count, error } = await supabaseAdmin
         .from('profiles')
         .select('*', { count: 'exact', head: true });
       
-      if (error) throw error;
+      if (error) {
+        console.error('Check first run DB error:', error);
+        throw error;
+      }
+      console.log('First run check count:', count);
       res.json({ isFirstRun: count === 0 });
     } catch (error: any) {
+      console.error('Check first run error:', error);
       res.json({ isFirstRun: true }); 
     }
   });
@@ -1055,20 +1095,32 @@ async function startServer() {
     });
     app.use(vite.middlewares);
   } else {
-    const distPath = path.join(__dirname, 'dist');
+    // API 404 handler - MUST be before static files to avoid returning index.html for missing API routes
+    app.all('/api/*', (req, res) => {
+      res.status(404).json({ error: `API route not found: ${req.method} ${req.path}` });
+    });
+
+    const distPath = path.resolve('dist');
     console.log('Serving static files from:', distPath);
     app.use(express.static(distPath));
     app.get('*', (req, res) => {
       const indexPath = path.join(distPath, 'index.html');
-      console.log('Serving index.html from:', indexPath);
       res.sendFile(indexPath);
     });
   }
 
   console.log('Starting server on port', PORT);
-  app.listen(PORT, '0.0.0.0', () => {
+  const server = app.listen(PORT, '0.0.0.0', () => {
     console.log(`Server running on http://0.0.0.0:${PORT}`);
+    console.log('Environment:', process.env.NODE_ENV || 'development');
+  });
+
+  server.on('error', (err) => {
+    console.error('Server error:', err);
   });
 }
 
-startServer();
+console.log('Calling startServer()...');
+startServer().catch(err => {
+  console.error('Failed to start server:', err);
+});
