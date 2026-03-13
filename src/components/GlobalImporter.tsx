@@ -30,6 +30,7 @@ export default function GlobalImporter({ type, onImportComplete, onClose }: Glob
   const [file, setFile] = useState<File | null>(null);
   const [url, setUrl] = useState('');
   const [loading, setLoading] = useState(false);
+  const [progress, setProgress] = useState(0);
   const [preview, setPreview] = useState<NormalizedData[]>([]);
   const [errors, setErrors] = useState<string[]>([]);
   const [importMode, setImportMode] = useState<'incremental' | 'replace'>('incremental');
@@ -114,7 +115,7 @@ export default function GlobalImporter({ type, onImportComplete, onClose }: Glob
           ...l,
           usuario_id: null // Admins import to the general pool
         }));
-        await db.leads.import(leadsWithAssignment);
+        await db.leads.import(leadsWithAssignment, (p) => setProgress(p));
       }
 
       // Log the import
@@ -339,7 +340,7 @@ export default function GlobalImporter({ type, onImportComplete, onClose }: Glob
               {loading ? (
                 <>
                   <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  Processando...
+                  {progress > 0 ? `Processando (${progress}%)...` : 'Processando...'}
                 </>
               ) : (
                 <>

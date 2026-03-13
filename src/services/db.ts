@@ -42,28 +42,38 @@ export const db = {
       if (error) throw error;
       return mapProfileToUser(data);
     },
-    create: async (user: any) => {
-      try {
-        const response = await fetch('/api/admin/create-user', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(user)
-        });
-        
-        const contentType = response.headers.get('content-type');
-        if (contentType && contentType.includes('application/json')) {
-          const data = await response.json();
-          if (!response.ok) throw new Error(data.error || 'Erro ao criar usuário');
-          return data.user;
-        } else {
-          const text = await response.text();
-          console.error('API returned non-JSON response:', text.substring(0, 100));
-          throw new Error('O servidor retornou uma resposta inválida (HTML). Verifique se o backend está rodando corretamente.');
+    create: async (userData: any) => {
+      // Direct creation via Supabase Auth Admin API
+      // This requires the service role key to be configured in the Supabase client
+      const { data: authData, error: authError } = await supabase.auth.admin.createUser({
+        email: userData.email,
+        password: userData.password,
+        email_confirm: true,
+        user_metadata: {
+          name: userData.name,
+          role: userData.role
         }
-      } catch (e: any) {
-        console.error('Create user error:', e);
-        throw e;
-      }
+      });
+
+      if (authError) throw authError;
+
+      // Create profile
+      const { data: profileData, error: profileError } = await supabase
+        .from('profiles')
+        .insert([{
+          id: authData.user.id,
+          nome: userData.name,
+          email: userData.email,
+          role: userData.role,
+          status: userData.status || 'Ativo',
+          grupo_comissao: userData.grupo_comissao || 'OURO'
+        }])
+        .select()
+        .single();
+
+      if (profileError) throw profileError;
+
+      return mapProfileToUser(profileData);
     },
     update: async (id: string, updates: Partial<User>) => {
       const { data, error } = await supabase
@@ -155,9 +165,23 @@ export const db = {
       if (error) throw error;
     },
     import: async (comms: any[], userRole?: string, userId?: string) => {
+      // Normalization layer to prevent NOT NULL constraint violations
+      const normalizedComms = comms.map(c => {
+        const mapped = mapCommissionToTable(c);
+        return {
+          ...mapped,
+          grupo_master: mapped.grupo_master ?? 0,
+          grupo_ouro: mapped.grupo_ouro ?? 0,
+          grupo_prata: mapped.grupo_prata ?? 0,
+          grupo_plus: mapped.grupo_plus ?? 0,
+          parcelas: mapped.parcelas ?? 1,
+          status: mapped.status || 'Ativo'
+        };
+      });
+
       const { data, error } = await supabase
         .from('commission_tables')
-        .insert(comms.map(mapCommissionToTable))
+        .insert(normalizedComms)
         .select();
       if (error) throw error;
       return data.map(mapTableToCommission);
@@ -249,13 +273,38 @@ export const db = {
       if (error) throw error;
       return mapTableToLead(data);
     },
-    import: async (leads: any[]) => {
-      const { data, error } = await supabase
-        .from('leads')
-        .insert(leads.map(mapLeadToTable))
-        .select();
-      if (error) throw error;
-      return data.map(mapTableToLead);
+    import: async (leads: any[], onProgress?: (progress: number) => void) => {
+      const CHUNK_SIZE = 500;
+      const total = leads.length;
+      let processed = 0;
+      const results = [];
+
+      for (let i = 0; i < total; i += CHUNK_SIZE) {
+        const chunk = leads.slice(i, i + CHUNK_SIZE);
+        const normalizedChunk = chunk.map(l => {
+          const mapped = mapLeadToTable(l);
+          return {
+            ...mapped,
+            status: mapped.status || 'Disponível',
+            created_at: mapped.created_at || new Date().toISOString()
+          };
+        });
+
+        const { data, error } = await supabase
+          .from('leads')
+          .insert(normalizedChunk)
+          .select();
+
+        if (error) throw error;
+        if (data) results.push(...data);
+
+        processed += chunk.length;
+        if (onProgress) {
+          onProgress(Math.round((processed / total) * 100));
+        }
+      }
+
+      return results.map(mapTableToLead);
     },
     delete: async (id: string) => {
       const { error } = await supabase

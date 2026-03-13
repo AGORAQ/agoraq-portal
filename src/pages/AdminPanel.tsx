@@ -42,6 +42,8 @@ import { db } from '@/services/db';
 import { parseFile } from '@/lib/importer';
 import { User, CommissionGroup, AccessRequest, Bank, CommissionTable } from '@/types';
 import * as XLSX from 'xlsx';
+import { runImportTests } from '@/tests/importTests';
+import { Loader2, Database, UserPlus } from 'lucide-react';
 
 export default function AdminPanel() {
   const { user } = useAuth();
@@ -137,6 +139,21 @@ export default function AdminPanel() {
     type: 'create'
   });
   const [copied, setCopied] = useState(false);
+
+  const [isTesting, setIsTesting] = useState(false);
+
+  const handleRunTests = async () => {
+    if (!confirm('Deseja rodar os testes de integridade do sistema? Isso criará dados de teste.')) return;
+    setIsTesting(true);
+    const success = await runImportTests();
+    setIsTesting(false);
+    if (success) {
+      alert('Testes concluídos com sucesso! Verifique o console para detalhes.');
+      loadData();
+    } else {
+      alert('Falha nos testes. Verifique o console para erros.');
+    }
+  };
 
   const loadData = async () => {
     const [allUsers, allRequests, allGroups, allBanks] = await Promise.all([
@@ -242,24 +259,14 @@ export default function AdminPanel() {
       const finalPassword = formData.password || db.utils.generatePassword(12);
       
       try {
-        const response = await fetch('/api/admin/create-user', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            name: formData.name,
-            email: formData.email,
-            password: finalPassword,
-            role: formData.role,
-            status: formData.status,
-            grupo_comissao: formData.grupo_comissao
-          })
+        await db.users.create({
+          name: formData.name,
+          email: formData.email,
+          password: finalPassword,
+          role: formData.role,
+          status: formData.status,
+          grupo_comissao: formData.grupo_comissao
         });
-
-        const result = await response.json();
-
-        if (!response.ok) {
-          throw new Error(result.error || 'Erro ao criar usuário');
-        }
 
         setPasswordModal({
           isOpen: true,
@@ -963,14 +970,25 @@ export default function AdminPanel() {
         <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4">
           <div className="flex justify-between items-center">
             <h2 className="text-xl font-bold text-slate-900">Usuários do Sistema</h2>
-            <Button className="bg-blue-900 hover:bg-blue-800" onClick={() => {
-              setEditingUser(null);
-              setFormData({ name: '', email: '', role: 'vendedor', status: 'Ativo' });
-              setIsFormOpen(true);
-            }}>
-              <Plus className="w-4 h-4 mr-2" />
-              Novo Usuário
-            </Button>
+            <div className="flex gap-2">
+              <Button 
+                variant="outline" 
+                onClick={handleRunTests} 
+                disabled={isTesting}
+                className="border-amber-200 text-amber-700 hover:bg-amber-50"
+              >
+                {isTesting ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Database className="w-4 h-4 mr-2" />}
+                Rodar Testes
+              </Button>
+              <Button className="bg-blue-900 hover:bg-blue-800" onClick={() => {
+                setEditingUser(null);
+                setFormData({ name: '', email: '', role: 'vendedor', status: 'Ativo' });
+                setIsFormOpen(true);
+              }}>
+                <Plus className="w-4 h-4 mr-2" />
+                Novo Usuário
+              </Button>
+            </div>
           </div>
 
           {isFormOpen && (
