@@ -58,6 +58,7 @@ export default function Commissions() {
   const [campaigns, setCampaigns] = useState<any[]>([]);
   const [isCampaignFormOpen, setIsCampaignFormOpen] = useState(false);
   const [newCampaign, setNewCampaign] = useState({ title: '', message: '', link: '' });
+  const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
     const loadCampaigns = async () => {
@@ -179,15 +180,25 @@ export default function Commissions() {
       criado_por: user?.name || 'Sistema'
     };
 
-    if (editingId) {
-      await updateCommission(editingId, commissionData);
-    } else {
-      await addCommission(commissionData);
+    setIsSaving(true);
+    try {
+      if (editingId) {
+        await updateCommission(editingId, commissionData);
+        alert('Tabela atualizada com sucesso!');
+      } else {
+        await addCommission(commissionData);
+        alert('Tabela cadastrada com sucesso!');
+      }
+      
+      setIsFormOpen(false);
+      setFormData({ status: 'Ativo' });
+      setEditingId(null);
+    } catch (error: any) {
+      console.error('Erro ao salvar comissão:', error);
+      alert('Erro ao salvar comissão: ' + (error.message || 'Erro desconhecido'));
+    } finally {
+      setIsSaving(false);
     }
-    
-    setIsFormOpen(false);
-    setFormData({ status: 'Ativo' });
-    setEditingId(null);
   };
 
   const handleDownloadExcel = () => {
@@ -237,11 +248,21 @@ export default function Commissions() {
   const handleAddCampaign = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newCampaign.title || !newCampaign.message) return;
-    await db.campaigns.create(newCampaign);
-    const all = await db.campaigns.getAll();
-    setCampaigns(all);
-    setNewCampaign({ title: '', message: '', link: '' });
-    setIsCampaignFormOpen(false);
+    
+    setIsSaving(true);
+    try {
+      await db.campaigns.create(newCampaign);
+      const all = await db.campaigns.getAll();
+      setCampaigns(all);
+      setNewCampaign({ title: '', message: '', link: '' });
+      setIsCampaignFormOpen(false);
+      alert('Campanha criada com sucesso!');
+    } catch (error: any) {
+      console.error('Erro ao salvar campanha:', error);
+      alert('Erro ao salvar campanha: ' + (error.message || 'Erro desconhecido'));
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const handleDeleteCampaign = async (id: string) => {
@@ -634,7 +655,16 @@ export default function Commissions() {
                         </div>
                         <div className="flex justify-end gap-2 pt-2">
                           <Button type="button" variant="outline" onClick={() => setIsCampaignFormOpen(false)}>Cancelar</Button>
-                          <Button type="submit" className="bg-blue-900 hover:bg-blue-800">Publicar</Button>
+                          <Button type="submit" className="bg-blue-900 hover:bg-blue-800" disabled={isSaving}>
+                            {isSaving ? (
+                              <>
+                                <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                                Publicando...
+                              </>
+                            ) : (
+                              <>Publicar</>
+                            )}
+                          </Button>
                         </div>
                       </form>
                     </CardContent>
@@ -736,9 +766,18 @@ export default function Commissions() {
 
                 <div className="flex justify-end gap-2 pt-4">
                   <Button type="button" variant="outline" onClick={() => setIsFormOpen(false)}>Cancelar</Button>
-                  <Button type="submit" className="bg-blue-900 hover:bg-blue-800">
-                    <Save className="w-4 h-4 mr-2" />
-                    Salvar Tabela
+                  <Button type="submit" className="bg-blue-900 hover:bg-blue-800" disabled={isSaving}>
+                    {isSaving ? (
+                      <>
+                        <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                        Salvando...
+                      </>
+                    ) : (
+                      <>
+                        <Save className="w-4 h-4 mr-2" />
+                        Salvar Tabela
+                      </>
+                    )}
                   </Button>
                 </div>
               </form>

@@ -42,6 +42,7 @@ export default function Academy() {
   const [videoModalUrl, setVideoModalUrl] = useState<string | null>(null);
   const [isVideoLoading, setIsVideoLoading] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploadMode, setUploadMode] = useState<'url' | 'upload'>('url');
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -77,6 +78,7 @@ export default function Academy() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    console.log('handleSubmit iniciado', formData);
     if (!formData.titulo || !formData.categoria) {
       alert('Título e Categoria são obrigatórios.');
       return;
@@ -87,37 +89,47 @@ export default function Academy() {
       return;
     }
 
-    const contentData = {
-      titulo: formData.titulo!,
-      categoria: formData.categoria as any,
-      descricao: formData.descricao || '',
-      arquivo_url: formData.arquivo_url || '',
-      tipo_arquivo: formData.tipo_arquivo as any,
-      visibilidade: formData.visibilidade as any,
-      grupo_id: formData.grupo_id,
-      versao: formData.versao || '1.0',
-      links_relacionados: formData.links_relacionados || '',
-      ordem: formData.ordem || (contents.length > 0 ? Math.max(...contents.map(c => c.ordem || 0)) + 1 : 0),
-      criado_por: user?.id || 'sistema',
-      status: formData.status as any || 'Ativo'
-    };
+    setIsSaving(true);
+    try {
+      const contentData = {
+        titulo: formData.titulo!,
+        categoria: formData.categoria as any,
+        descricao: formData.descricao || '',
+        arquivo_url: formData.arquivo_url || '',
+        tipo_arquivo: formData.tipo_arquivo as any,
+        visibilidade: formData.visibilidade as any,
+        grupo_id: formData.grupo_id || null,
+        versao: formData.versao || '1.0',
+        links_relacionados: formData.links_relacionados || '',
+        ordem: formData.ordem || (contents.length > 0 ? Math.max(...contents.map(c => c.ordem || 0)) + 1 : 0),
+        criado_por: user?.id || null,
+        status: formData.status as any || 'Ativo'
+      };
+      console.log('Salvando conteúdo:', contentData);
 
-    if (editingId) {
-      await db.academy.update(editingId, contentData);
-    } else {
-      await db.academy.create(contentData);
+      if (editingId) {
+        await db.academy.update(editingId, contentData);
+      } else {
+        await db.academy.create(contentData);
+      }
+
+      await loadData();
+      setIsFormOpen(false);
+      setEditingId(null);
+      setFormData({
+        categoria: 'Informativo',
+        tipo_arquivo: 'pdf',
+        visibilidade: 'todos',
+        status: 'Ativo',
+        versao: '1.0'
+      });
+      alert('Conteúdo salvo com sucesso!');
+    } catch (error: any) {
+      console.error('Erro ao salvar conteúdo:', error);
+      alert(`Erro ao salvar: ${error.message || 'Erro desconhecido'}`);
+    } finally {
+      setIsSaving(false);
     }
-
-    await loadData();
-    setIsFormOpen(false);
-    setEditingId(null);
-    setFormData({
-      categoria: 'Informativo',
-      tipo_arquivo: 'pdf',
-      visibilidade: 'todos',
-      status: 'Ativo',
-      versao: '1.0'
-    });
   };
 
   const handleEdit = (content: AcademyContent) => {
@@ -286,6 +298,7 @@ export default function Academy() {
     }
 
     setIsUploading(true);
+    console.log('Iniciando upload de arquivo:', file.name);
     
     try {
       // Simulate upload delay
@@ -302,6 +315,8 @@ export default function Academy() {
         else if (file.type.includes('word') || file.type.includes('officedocument')) handleInputChange('tipo_arquivo', 'doc');
         
         setIsUploading(false);
+        // Reset input value to allow selecting same file again
+        if (fileInputRef.current) fileInputRef.current.value = '';
       };
       reader.onerror = () => {
         console.error('Erro ao ler arquivo');
@@ -535,6 +550,13 @@ export default function Academy() {
 
       {isFormOpen && (
         <Card className="bg-slate-900 border-emerald-900/50 shadow-2xl animate-in fade-in zoom-in-95 duration-200">
+          <input 
+            ref={fileInputRef}
+            type="file" 
+            className="hidden" 
+            onChange={handleFileUpload}
+            accept=".pdf,.doc,.docx,.mp4,.mov"
+          />
           <CardHeader className="flex flex-row items-center justify-between bg-slate-800/50 rounded-t-xl border-b border-slate-800">
             <CardTitle className="text-white">{editingId ? 'Editar Conteúdo' : 'Novo Conteúdo Academy'}</CardTitle>
             <Button variant="ghost" size="icon" className="text-slate-400 hover:text-white" onClick={() => setIsFormOpen(false)}>
@@ -589,14 +611,20 @@ export default function Academy() {
                     <button
                       type="button"
                       className={`flex-1 py-1.5 text-xs font-medium rounded-md transition-all ${uploadMode === 'url' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:text-slate-200'}`}
-                      onClick={() => setUploadMode('url')}
+                      onClick={() => {
+                        console.log('Switching to URL mode');
+                        setUploadMode('url');
+                      }}
                     >
                       URL / Link
                     </button>
                     <button
                       type="button"
                       className={`flex-1 py-1.5 text-xs font-medium rounded-md transition-all ${uploadMode === 'upload' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:text-slate-200'}`}
-                      onClick={() => setUploadMode('upload')}
+                      onClick={() => {
+                        console.log('Switching to Upload mode');
+                        setUploadMode('upload');
+                      }}
                     >
                       Upload de Arquivo
                     </button>
@@ -615,19 +643,15 @@ export default function Academy() {
                         <span className="text-sm text-slate-300 truncate flex-1">
                           {formData.arquivo_url && formData.arquivo_url.startsWith('data:') ? 'Arquivo carregado' : 'Nenhum arquivo selecionado'}
                         </span>
-                        <input 
-                          ref={fileInputRef}
-                          type="file" 
-                          className="hidden" 
-                          onChange={handleFileUpload}
-                          accept=".pdf,.doc,.docx,.mp4,.mov"
-                        />
                         <Button 
                           type="button" 
                           variant="ghost" 
                           size="sm"
                           className="text-indigo-400 hover:text-indigo-300 h-7"
-                          onClick={() => fileInputRef.current?.click()}
+                          onClick={() => {
+                            console.log('Botão Alterar clicado');
+                            fileInputRef.current?.click();
+                          }}
                           disabled={isUploading}
                         >
                           {isUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Alterar'}
@@ -695,9 +719,9 @@ export default function Academy() {
               </div>
               <div className="flex justify-end gap-2 pt-4">
                 <Button type="button" variant="outline" className="border-slate-700 text-slate-300 hover:bg-slate-800" onClick={() => setIsFormOpen(false)}>Cancelar</Button>
-                <Button type="submit" className="bg-emerald-600 hover:bg-emerald-700 text-white border-none">
-                  <Save className="w-4 h-4 mr-2" />
-                  Salvar Conteúdo
+                <Button type="submit" className="bg-emerald-600 hover:bg-emerald-700 text-white border-none" disabled={isSaving || isUploading}>
+                  {isSaving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />}
+                  {isSaving ? 'Salvando...' : 'Salvar Conteúdo'}
                 </Button>
               </div>
             </form>

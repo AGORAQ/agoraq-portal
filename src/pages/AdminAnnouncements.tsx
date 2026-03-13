@@ -22,6 +22,8 @@ export default function AdminAnnouncements() {
     date: new Date().toISOString().split('T')[0]
   });
 
+  const [isSaving, setIsSaving] = useState(false);
+
   const refreshAnnouncements = async () => {
     const all = await db.announcements.getAll();
     setAnnouncements(all.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
@@ -43,16 +45,26 @@ export default function AdminAnnouncements() {
       return;
     }
 
-    if (editingId) {
-      await db.announcements.update(editingId, formData);
-    } else {
-      await db.announcements.create(formData as any);
-    }
+    setIsSaving(true);
+    try {
+      if (editingId) {
+        await db.announcements.update(editingId, formData);
+        alert('Aviso atualizado com sucesso!');
+      } else {
+        await db.announcements.create(formData as any);
+        alert('Aviso criado com sucesso!');
+      }
 
-    await refreshAnnouncements();
-    setIsFormOpen(false);
-    setEditingId(null);
-    setFormData({ type: 'Aviso', active: true, date: new Date().toISOString().split('T')[0] });
+      await refreshAnnouncements();
+      setIsFormOpen(false);
+      setEditingId(null);
+      setFormData({ type: 'Aviso', active: true, date: new Date().toISOString().split('T')[0] });
+    } catch (error: any) {
+      console.error('Erro ao salvar aviso:', error);
+      alert('Erro ao salvar aviso: ' + (error.message || 'Erro desconhecido'));
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const handleEdit = (announcement: Announcement) => {
@@ -167,9 +179,18 @@ export default function AdminAnnouncements() {
               </div>
               <div className="flex justify-end gap-2 pt-4 border-t">
                 <Button type="button" variant="outline" onClick={() => setIsFormOpen(false)}>Cancelar</Button>
-                <Button type="submit" className="bg-blue-900 hover:bg-blue-800">
-                  <Save className="w-4 h-4 mr-2" />
-                  Salvar Aviso
+                <Button type="submit" className="bg-blue-900 hover:bg-blue-800" disabled={isSaving}>
+                  {isSaving ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                      Salvando...
+                    </>
+                  ) : (
+                    <>
+                      <Save className="w-4 h-4 mr-2" />
+                      Salvar Aviso
+                    </>
+                  )}
                 </Button>
               </div>
             </form>

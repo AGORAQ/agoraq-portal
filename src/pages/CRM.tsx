@@ -23,6 +23,7 @@ export default function CRM() {
   const [isImporterOpen, setIsImporterOpen] = useState(false);
   const [leads, setLeads] = useState<any[]>([]);
   const [users, setUsers] = useState<any[]>([]);
+  const [isSaving, setIsSaving] = useState(false);
   const DAILY_LIMIT = 100;
 
   useEffect(() => {
@@ -102,6 +103,7 @@ export default function CRM() {
       return;
     }
 
+    setIsSaving(true);
     try {
       // Get all unassigned leads, filtering out duplicates for this user
       const unassignedLeads = await db.leads.getAvailableForUser(user!.id);
@@ -120,6 +122,8 @@ export default function CRM() {
     } catch (error: any) {
       console.error('Error capturing leads:', error);
       alert(error.message || 'Erro ao capturar leads. Verifique sua conexão.');
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -156,6 +160,7 @@ export default function CRM() {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    setIsSaving(true);
     try {
       const { data: jsonData, errors } = await parseFile(file);
       
@@ -178,6 +183,9 @@ export default function CRM() {
     } catch (error) {
       console.error('Error importing leads:', error);
       alert('Erro ao processar o arquivo. Verifique o formato.');
+    } finally {
+      setIsSaving(false);
+      if (e.target) e.target.value = '';
     }
   };
 
@@ -310,10 +318,19 @@ export default function CRM() {
                     size="lg" 
                     className="w-full bg-emerald-600 hover:bg-emerald-700"
                     onClick={handleCaptureLead}
-                    disabled={leadsCapturedToday >= DAILY_LIMIT}
+                    disabled={isSaving || leadsCapturedToday >= DAILY_LIMIT}
                   >
-                    <UserPlus className="w-5 h-5 mr-2" />
-                    Capturar Leads
+                    {isSaving ? (
+                      <>
+                        <RefreshCw className="w-5 h-5 mr-2 animate-spin" />
+                        Capturando...
+                      </>
+                    ) : (
+                      <>
+                        <UserPlus className="w-5 h-5 mr-2" />
+                        Capturar Leads
+                      </>
+                    )}
                   </Button>
 
                   <Button 

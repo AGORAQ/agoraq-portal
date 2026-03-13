@@ -23,6 +23,8 @@ export default function Credentials() {
     status: 'Ativo'
   });
 
+  const [isSaving, setIsSaving] = useState(false);
+
   const refreshData = async () => {
     if (isAdmin) {
       const [allCreds, allUsers] = await Promise.all([
@@ -79,16 +81,26 @@ export default function Credentials() {
       observation: formData.observation || ''
     };
 
-    if (editingId) {
-      await db.credentials.update(editingId, credData as any);
-    } else {
-      await db.credentials.create(credData);
-    }
+    setIsSaving(true);
+    try {
+      if (editingId) {
+        await db.credentials.update(editingId, credData as any);
+        alert('Credencial atualizada com sucesso!');
+      } else {
+        await db.credentials.create(credData);
+        alert('Credencial cadastrada com sucesso!');
+      }
 
-    await refreshData();
-    setIsFormOpen(false);
-    setFormData({ status: 'Ativo' });
-    setEditingId(null);
+      await refreshData();
+      setIsFormOpen(false);
+      setFormData({ status: 'Ativo' });
+      setEditingId(null);
+    } catch (error: any) {
+      console.error('Erro ao salvar credencial:', error);
+      alert('Erro ao salvar credencial: ' + (error.message || 'Erro desconhecido'));
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const handleEdit = (cred: PlatformCredential) => {

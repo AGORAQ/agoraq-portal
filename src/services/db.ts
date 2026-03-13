@@ -66,13 +66,17 @@ export const db = {
       }
     },
     update: async (id: string, updates: Partial<User>) => {
+      console.log('DB: Atualizando usuário:', id, updates);
       const { data, error } = await supabase
         .from('profiles')
         .update(mapUserToProfile(updates))
         .eq('id', id)
         .select()
         .single();
-      if (error) throw error;
+      if (error) {
+        console.error('DB Error (users.update):', error);
+        throw error;
+      }
       return mapProfileToUser(data);
     },
     resetPassword: async (userId: string, newPassword: string) => {
@@ -762,22 +766,30 @@ export const db = {
       return data;
     },
     create: async (content: any) => {
+      console.log('DB: Criando conteúdo academy:', content);
       const { data, error } = await supabase
         .from('academy_content')
         .insert([content])
         .select()
         .single();
-      if (error) throw error;
+      if (error) {
+        console.error('DB Error (academy.create):', error);
+        throw error;
+      }
       return data;
     },
     update: async (id: string, updates: any) => {
+      console.log('DB: Atualizando conteúdo academy:', id, updates);
       const { data, error } = await supabase
         .from('academy_content')
         .update(updates)
         .eq('id', id)
         .select()
         .single();
-      if (error) throw error;
+      if (error) {
+        console.error('DB Error (academy.update):', error);
+        throw error;
+      }
       return data;
     },
     delete: async (id: string) => {
@@ -866,6 +878,7 @@ export const db = {
       };
     },
     update: async (newSettings: any) => {
+      console.log('DB: Atualizando configurações:', newSettings);
       const current = await db.settings.get();
       const updated = { ...current, ...newSettings };
       
@@ -880,7 +893,7 @@ export const db = {
         .single();
         
       if (error) {
-        console.error('Error updating settings:', error);
+        console.error('DB Error (settings.update):', error);
         throw error;
       }
       return data.value;

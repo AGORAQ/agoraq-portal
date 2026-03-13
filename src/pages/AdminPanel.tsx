@@ -141,6 +141,7 @@ export default function AdminPanel() {
   const [copied, setCopied] = useState(false);
 
   const [isTesting, setIsTesting] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
 
   const handleRunTests = async () => {
     if (!confirm('Deseja rodar os testes de integridade do sistema? Isso criará dados de teste.')) return;
@@ -200,18 +201,42 @@ export default function AdminPanel() {
   }, [location.search]);
 
   const handleSaveContract = async () => {
-    await db.settings.update({ contractTerms, signatureLink });
-    alert('Configurações do contrato salvas com sucesso!');
+    setIsSaving(true);
+    try {
+      await db.settings.update({ contractTerms, signatureLink });
+      alert('Configurações do contrato salvas com sucesso!');
+    } catch (error: any) {
+      console.error('Erro ao salvar contrato:', error);
+      alert('Erro ao salvar contrato: ' + (error.message || 'Erro desconhecido'));
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const handleSaveSettings = async () => {
-    await db.settings.update({ canvaLink });
-    alert('Configurações do sistema salvas com sucesso!');
+    setIsSaving(true);
+    try {
+      await db.settings.update({ canvaLink });
+      alert('Configurações do sistema salvas com sucesso!');
+    } catch (error: any) {
+      console.error('Erro ao salvar configurações:', error);
+      alert('Erro ao salvar configurações: ' + (error.message || 'Erro desconhecido'));
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const handleSaveAiConfig = async () => {
-    await db.settings.update({ aiSystemPrompt });
-    alert('Configurações da IA salvas com sucesso!');
+    setIsSaving(true);
+    try {
+      await db.settings.update({ aiSystemPrompt });
+      alert('Configurações da IA salvas com sucesso!');
+    } catch (error: any) {
+      console.error('Erro ao salvar IA:', error);
+      alert('Erro ao salvar IA: ' + (error.message || 'Erro desconhecido'));
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const isAdmin = user?.role === 'admin' || user?.role === 'supervisor';
@@ -247,18 +272,19 @@ export default function AdminPanel() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (editingUser) {
-      const updates = { ...formData };
-      if (!updates.password) {
-        delete updates.password;
-      }
-      await db.users.update(editingUser.id, updates);
-      alert('Usuário atualizado com sucesso!');
-    } else {
-      // Use provided password or generate one
-      const finalPassword = formData.password || db.utils.generatePassword(12);
-      
-      try {
+    setIsSaving(true);
+    try {
+      if (editingUser) {
+        const updates = { ...formData };
+        if (!updates.password) {
+          delete updates.password;
+        }
+        await db.users.update(editingUser.id, updates);
+        alert('Usuário atualizado com sucesso!');
+      } else {
+        // Use provided password or generate one
+        const finalPassword = formData.password || db.utils.generatePassword(12);
+        
         await db.users.create({
           name: formData.name,
           email: formData.email,
@@ -274,16 +300,17 @@ export default function AdminPanel() {
           userName: formData.name,
           type: 'create'
         });
-      } catch (error: any) {
-        console.error('Error creating user:', error);
-        alert('Erro ao criar usuário: ' + error.message);
-        return;
       }
+      await loadData();
+      setIsFormOpen(false);
+      setEditingUser(null);
+      setFormData({ name: '', email: '', role: 'vendedor', status: 'Ativo', grupo_comissao: 'OURO', password: '' });
+    } catch (error: any) {
+      console.error('Erro ao salvar usuário:', error);
+      alert('Erro ao salvar usuário: ' + (error.message || 'Erro desconhecido'));
+    } finally {
+      setIsSaving(false);
     }
-    await loadData();
-    setIsFormOpen(false);
-    setEditingUser(null);
-    setFormData({ name: '', email: '', role: 'vendedor', status: 'Ativo', grupo_comissao: 'OURO', password: '' });
   };
 
   const handleTestEmail = async () => {
@@ -294,26 +321,34 @@ export default function AdminPanel() {
     e.preventDefault();
     if (!bankFormData.nome) return;
     
-    if (editingBank) {
-      await db.bancos.update(editingBank.id, {
-        nome: bankFormData.nome,
-        cor: bankFormData.cor,
-        status: bankFormData.status as any
-      });
-      alert('Banco atualizado com sucesso!');
-    } else {
-      await db.bancos.create({
-        nome: bankFormData.nome,
-        cor: bankFormData.cor,
-        status: bankFormData.status as any
-      });
-      alert('Banco cadastrado com sucesso!');
+    setIsSaving(true);
+    try {
+      if (editingBank) {
+        await db.bancos.update(editingBank.id, {
+          nome: bankFormData.nome,
+          cor: bankFormData.cor,
+          status: bankFormData.status as any
+        });
+        alert('Banco atualizado com sucesso!');
+      } else {
+        await db.bancos.create({
+          nome: bankFormData.nome,
+          cor: bankFormData.cor,
+          status: bankFormData.status as any
+        });
+        alert('Banco cadastrado com sucesso!');
+      }
+      
+      await loadData();
+      setIsBankFormOpen(false);
+      setEditingBank(null);
+      setBankFormData({ nome: '', status: 'Ativo' });
+    } catch (error: any) {
+      console.error('Erro ao salvar banco:', error);
+      alert('Erro ao salvar banco: ' + (error.message || 'Erro desconhecido'));
+    } finally {
+      setIsSaving(false);
     }
-    
-    await loadData();
-    setIsBankFormOpen(false);
-    setEditingBank(null);
-    setBankFormData({ nome: '', status: 'Ativo' });
   };
 
   const handleDeleteBank = async (id: string) => {
@@ -330,16 +365,25 @@ export default function AdminPanel() {
       return;
     }
     
-    await db.commissionGroups.create({
-      name: groupFormData.name,
-      type: groupFormData.type as 'FGTS' | 'CLT' | 'Outros',
-      banco_id: groupFormData.banco_id,
-      status: groupFormData.status as 'Ativo' | 'Inativo'
-    });
-    
-    await loadData();
-    setIsGroupFormOpen(false);
-    setGroupFormData({ name: '', type: 'FGTS', status: 'Ativo', banco_id: '' });
+    setIsSaving(true);
+    try {
+      await db.commissionGroups.create({
+        name: groupFormData.name,
+        type: groupFormData.type as 'FGTS' | 'CLT' | 'Outros',
+        banco_id: groupFormData.banco_id,
+        status: groupFormData.status as 'Ativo' | 'Inativo'
+      });
+      
+      await loadData();
+      setIsGroupFormOpen(false);
+      setGroupFormData({ name: '', type: 'FGTS', status: 'Ativo', banco_id: '' });
+      alert('Grupo cadastrado com sucesso!');
+    } catch (error: any) {
+      console.error('Erro ao salvar grupo:', error);
+      alert('Erro ao salvar grupo: ' + (error.message || 'Erro desconhecido'));
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const handleDeleteGroup = async (id: string) => {
