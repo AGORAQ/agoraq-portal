@@ -8,13 +8,174 @@ import {
   ExternalLink, Download, Eye, X, Save, 
   Filter, Clock, CheckCircle, AlertCircle,
   Video, FileDown, Link as LinkIcon,
-  Sparkles, Loader2, Play, ArrowUp, ArrowDown
+  Sparkles, Loader2, Play, ArrowUp, ArrowDown,
+  GripVertical
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useNotification } from '@/context/NotificationContext';
 import { db } from '@/services/db';
 import { AcademyContent, CommissionGroup } from '@/types';
 import { GoogleGenAI } from "@google/genai";
+import {
+  DndContext, 
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+  DragStartEvent,
+  DragOverlay,
+  defaultDropAnimationSideEffects,
+} from '@dnd-kit/core';
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+  rectSortingStrategy,
+  useSortable,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+import { restrictToWindowEdges } from '@dnd-kit/modifiers';
+
+// Sortable Item Component
+const SortableAcademyItem: React.FC<{
+  content: AcademyContent;
+  isAdmin: boolean;
+  isViewed: boolean;
+  getFileIcon: (type: string) => React.ReactNode;
+  handleView: (content: AcademyContent) => void;
+  handleEdit: (content: AcademyContent) => void;
+  handleDelete: (id: string) => void;
+  handleMove: (content: AcademyContent, direction: 'up' | 'down') => void;
+}> = ({ 
+  content, 
+  isAdmin, 
+  isViewed, 
+  getFileIcon, 
+  handleView, 
+  handleEdit, 
+  handleDelete,
+  handleMove
+}) => {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging
+  } = useSortable({ id: content.id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    zIndex: isDragging ? 50 : 1,
+    opacity: isDragging ? 0.5 : 1,
+  };
+
+  return (
+    <div ref={setNodeRef} style={style} className="h-full">
+      <Card className={`h-full overflow-hidden bg-slate-900 border-slate-800 hover:border-emerald-900/50 hover:shadow-emerald-900/10 hover:shadow-2xl transition-all duration-300 group ${content.status === 'Inativo' ? 'opacity-50 grayscale' : ''}`}>
+        <div className="p-5 space-y-4 relative">
+          {isAdmin && (
+            <div 
+              {...attributes} 
+              {...listeners}
+              className="absolute top-2 left-2 p-1 text-slate-600 hover:text-slate-400 cursor-grab active:cursor-grabbing opacity-0 group-hover:opacity-100 transition-opacity"
+              title="Arraste para reordenar"
+            >
+              <GripVertical className="w-4 h-4" />
+            </div>
+          )}
+          
+          <div className="flex justify-between items-start pt-2">
+            <div className="p-2 bg-slate-800 rounded-lg text-slate-400 group-hover:bg-emerald-900/30 group-hover:text-emerald-400 transition-colors">
+              {getFileIcon(content.tipo_arquivo)}
+            </div>
+            <div className="flex flex-col items-end gap-2">
+              <Badge variant="outline" className="bg-slate-800 border-slate-700 text-slate-300 text-[10px] uppercase tracking-wider">
+                {content.categoria}
+              </Badge>
+              {isViewed ? (
+                <Badge variant="success" className="bg-emerald-900/30 text-emerald-400 border-emerald-900/50 text-[10px] flex items-center gap-1">
+                  <CheckCircle className="w-3 h-3" />
+                  Visualizado
+                </Badge>
+              ) : (
+                <Badge variant="destructive" className="bg-red-900/30 text-red-400 border-red-900/50 text-[10px] animate-pulse">
+                  Novo
+                </Badge>
+              )}
+            </div>
+          </div>
+
+          <div>
+            <h3 className="font-bold text-lg text-white line-clamp-1">{content.titulo}</h3>
+            <p className="text-sm text-slate-400 line-clamp-2 mt-1 h-10">
+              {content.descricao || 'Sem descrição disponível.'}
+            </p>
+          </div>
+
+          {content.links_relacionados && (
+            <div className="space-y-2">
+              <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Links Relacionados</p>
+              <div className="flex flex-wrap gap-2">
+                {content.links_relacionados.split(/[\n,]+/).map((link, idx) => {
+                  const trimmedLink = link.trim();
+                  if (!trimmedLink) return null;
+                  return (
+                    <a 
+                      key={idx} 
+                      href={trimmedLink.startsWith('http') ? trimmedLink : `https://${trimmedLink}`} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="text-[10px] text-indigo-400 hover:text-indigo-300 flex items-center gap-1 bg-indigo-900/20 px-2 py-1 rounded border border-indigo-500/20 transition-colors"
+                    >
+                      <ExternalLink className="w-3 h-3" />
+                      Link {idx + 1}
+                    </a>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          <div className="flex items-center justify-between text-xs text-slate-500 border-t border-slate-800 pt-4">
+            <div className="flex items-center gap-1">
+              <Clock className="w-3 h-3" />
+              {new Date(content.criado_em).toLocaleDateString()}
+            </div>
+            <div className="font-medium text-slate-400">
+              v{content.versao}
+            </div>
+          </div>
+
+          <div className="flex gap-2 pt-2">
+            <Button 
+              className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white border-none"
+              onClick={() => handleView(content)}
+            >
+              <Eye className="w-4 h-4 mr-2" />
+              Visualizar
+            </Button>
+            {isAdmin && (
+              <div className="flex gap-1">
+                <Button variant="ghost" size="icon" className="h-10 w-10 text-blue-400 hover:bg-blue-900/30" onClick={() => handleEdit(content)}>
+                  <Edit className="w-4 h-4" />
+                </Button>
+                <Button variant="ghost" size="icon" className="h-10 w-10 text-red-400 hover:bg-red-900/30" onClick={() => handleDelete(content.id)}>
+                  <Trash2 className="w-4 h-4" />
+                </Button>
+              </div>
+            )}
+          </div>
+        </div>
+      </Card>
+    </div>
+  );
+}
 
 declare global {
   interface Window {
@@ -48,6 +209,18 @@ export default function Academy() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploadMode, setUploadMode] = useState<'url' | 'upload'>('url');
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [activeId, setActiveId] = useState<string | null>(null);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8,
+      },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
   const [formData, setFormData] = useState<Partial<AcademyContent>>({
     categoria: 'Informativo',
     tipo_arquivo: 'pdf',
@@ -165,12 +338,59 @@ export default function Academy() {
     const currentOrder = content.ordem || 0;
     const targetOrder = targetContent.ordem || 0;
 
-    await Promise.all([
-      db.academy.update(content.id, { ordem: targetOrder }),
-      db.academy.update(targetContent.id, { ordem: currentOrder })
-    ]);
+    const newContents = [...contents];
+    newContents[currentIndex] = { ...targetContent, ordem: currentOrder };
+    newContents[targetIndex] = { ...content, ordem: targetOrder };
+    setContents(newContents);
 
-    await loadData();
+    try {
+      await Promise.all([
+        db.academy.update(content.id, { ordem: targetOrder }),
+        db.academy.update(targetContent.id, { ordem: currentOrder })
+      ]);
+    } catch (error) {
+      console.error('Erro ao reordenar:', error);
+      notify('error', 'Erro ao salvar nova ordem.');
+      await loadData();
+    }
+  };
+
+  const handleDragStart = (event: DragStartEvent) => {
+    setActiveId(event.active.id as string);
+  };
+
+  const handleDragEnd = async (event: DragEndEvent) => {
+    const { active, over } = event;
+    setActiveId(null);
+
+    if (over && active.id !== over.id) {
+      const oldIndex = contents.findIndex((item) => item.id === active.id);
+      const newIndex = contents.findIndex((item) => item.id === over.id);
+
+      const newContents = arrayMove(contents, oldIndex, newIndex);
+      
+      // Update orders based on new positions
+      const updatedContents = newContents.map((item, index) => ({
+        ...(item as any),
+        ordem: index
+      })) as AcademyContent[];
+      
+      setContents(updatedContents);
+
+      try {
+        // Bulk update orders
+        await Promise.all(
+          updatedContents.map(item => 
+            db.academy.update(item.id, { ordem: item.ordem })
+          )
+        );
+        notify('success', 'Ordem atualizada com sucesso!');
+      } catch (error) {
+        console.error('Erro ao salvar nova ordem:', error);
+        notify('error', 'Erro ao salvar nova ordem no banco de dados.');
+        await loadData();
+      }
+    }
   };
 
   const handleView = async (content: AcademyContent) => {
@@ -600,12 +820,12 @@ export default function Academy() {
                   </select>
                 </div>
                 <div className="md:col-span-2 space-y-2">
-                  <label className="text-sm font-medium text-slate-300">Descrição</label>
+                  <label className="text-sm font-medium text-slate-300">Descrição / Legenda</label>
                   <textarea 
                     className="flex min-h-[80px] w-full rounded-md border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white"
                     value={formData.descricao || ''}
                     onChange={e => handleInputChange('descricao', e.target.value)}
-                    placeholder="Breve descrição do conteúdo..."
+                    placeholder="Breve descrição ou legenda do conteúdo..."
                   />
                 </div>
                 <div className="space-y-2">
@@ -765,10 +985,60 @@ export default function Academy() {
       )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {filteredContents.map((content) => {
-          const isViewed = userViews.includes(content.id);
-          
-          return (
+        {isAdmin ? (
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragStart={handleDragStart}
+            onDragEnd={handleDragEnd}
+            modifiers={[restrictToWindowEdges]}
+          >
+            <SortableContext
+              items={filteredContents.map(c => c.id)}
+              strategy={rectSortingStrategy}
+            >
+              {filteredContents.map((content) => (
+                <SortableAcademyItem
+                  key={content.id}
+                  content={content}
+                  isAdmin={isAdmin}
+                  isViewed={userViews.includes(content.id)}
+                  getFileIcon={getFileIcon}
+                  handleView={handleView}
+                  handleEdit={handleEdit}
+                  handleDelete={handleDelete}
+                  handleMove={handleMove}
+                />
+              ))}
+            </SortableContext>
+            
+            <DragOverlay dropAnimation={{
+              sideEffects: defaultDropAnimationSideEffects({
+                styles: {
+                  active: {
+                    opacity: '0.5',
+                  },
+                },
+              }),
+            }}>
+              {activeId ? (
+                <div className="w-full h-full scale-105 rotate-2 transition-transform">
+                  <SortableAcademyItem
+                    content={contents.find(c => c.id === activeId)!}
+                    isAdmin={isAdmin}
+                    isViewed={userViews.includes(activeId)}
+                    getFileIcon={getFileIcon}
+                    handleView={handleView}
+                    handleEdit={handleEdit}
+                    handleDelete={handleDelete}
+                    handleMove={handleMove}
+                  />
+                </div>
+              ) : null}
+            </DragOverlay>
+          </DndContext>
+        ) : (
+          filteredContents.map((content) => (
             <Card key={content.id} className={`overflow-hidden bg-slate-900 border-slate-800 hover:border-emerald-900/50 hover:shadow-emerald-900/10 hover:shadow-2xl transition-all duration-300 group ${content.status === 'Inativo' ? 'opacity-50 grayscale' : ''}`}>
               <div className="p-5 space-y-4">
                 <div className="flex justify-between items-start">
@@ -779,7 +1049,7 @@ export default function Academy() {
                     <Badge variant="outline" className="bg-slate-800 border-slate-700 text-slate-300 text-[10px] uppercase tracking-wider">
                       {content.categoria}
                     </Badge>
-                    {isViewed ? (
+                    {userViews.includes(content.id) ? (
                       <Badge variant="success" className="bg-emerald-900/30 text-emerald-400 border-emerald-900/50 text-[10px] flex items-center gap-1">
                         <CheckCircle className="w-3 h-3" />
                         Visualizado
@@ -841,41 +1111,11 @@ export default function Academy() {
                     <Eye className="w-4 h-4 mr-2" />
                     Visualizar
                   </Button>
-                  {isAdmin && (
-                    <div className="flex gap-1">
-                      <div className="flex flex-col gap-1 mr-2">
-                        <Button 
-                          variant="ghost" 
-                          size="icon" 
-                          className="h-5 w-5 text-slate-500 hover:text-white" 
-                          onClick={() => handleMove(content, 'up')}
-                          title="Mover para cima"
-                        >
-                          <ArrowUp className="w-3 h-3" />
-                        </Button>
-                        <Button 
-                          variant="ghost" 
-                          size="icon" 
-                          className="h-5 w-5 text-slate-500 hover:text-white" 
-                          onClick={() => handleMove(content, 'down')}
-                          title="Mover para baixo"
-                        >
-                          <ArrowDown className="w-3 h-3" />
-                        </Button>
-                      </div>
-                      <Button variant="ghost" size="icon" className="h-10 w-10 text-blue-400 hover:bg-blue-900/30" onClick={() => handleEdit(content)}>
-                        <Edit className="w-4 h-4" />
-                      </Button>
-                      <Button variant="ghost" size="icon" className="h-10 w-10 text-red-400 hover:bg-red-900/30" onClick={() => handleDelete(content.id)}>
-                        <Trash2 className="w-4 h-4" />
-                      </Button>
-                    </div>
-                  )}
                 </div>
               </div>
             </Card>
-          );
-        })}
+          ))
+        )}
 
         {filteredContents.length === 0 && (
           <div className="col-span-full flex flex-col items-center justify-center py-12 text-slate-500 bg-slate-50 rounded-xl border-2 border-dashed border-slate-200">

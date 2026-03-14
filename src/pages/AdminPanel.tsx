@@ -161,7 +161,7 @@ export default function AdminPanel() {
   const loadData = async () => {
     const [allUsers, allRequests, allGroups, allBanks] = await Promise.all([
       db.users.getAll(),
-      db.requests.getAll(),
+      db.access_requests.getAll(),
       db.commissionGroups.getAll(),
       db.bancos.getAll()
     ]);
@@ -419,7 +419,7 @@ export default function AdminPanel() {
       });
       
       if (newUser) {
-        await db.requests.updateStatus(req.id, 'Aprovado');
+        await db.access_requests.updateStatus(req.id, 'Aprovado');
         await loadData();
         
         setPasswordModal({
@@ -437,7 +437,7 @@ export default function AdminPanel() {
 
   const handleRejectRequest = async (id: string) => {
     if (await confirm({ message: 'Rejeitar esta solicitação?', type: 'danger' })) {
-      await db.requests.updateStatus(id, 'Rejeitado');
+      await db.access_requests.updateStatus(id, 'Rejeitado');
       await loadData();
     }
   };

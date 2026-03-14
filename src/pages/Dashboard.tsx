@@ -67,16 +67,22 @@ export default function Dashboard() {
       }
 
       const [allSales, allRequests, allCommissions] = await Promise.all([
-        db.sales.getAll(),
-        db.requests.getAll(),
+        db.sales.getAll(user),
+        db.requests.getAll(user),
         db.commissions.getAll(user?.role, user?.grupo_comissao)
       ]);
       
-      // Filter sales if user is not management
-      const filteredSales = isManagement ? allSales : allSales.filter(s => s.seller === user?.name);
-      
-      setSales(filteredSales);
+      setSales(allSales);
       setRequests(allRequests);
+
+      // Real-time subscriptions
+      const salesSub = db.sales.subscribe(user, (updatedSales) => {
+        setSales(updatedSales);
+      });
+
+      const financialSub = db.requests.subscribe(user, (updatedRequests) => {
+        setRequests(updatedRequests);
+      });
 
       // Top Performing Tables (by seller commission rate)
       const sortedTables = [...allCommissions]
@@ -92,6 +98,7 @@ export default function Dashboard() {
         return d;
       });
 
+      const filteredSales = allSales; // Already filtered by db.sales.getAll(user)
       const newChartData = last7Days.map(date => {
         const dateStr = date.toISOString().split('T')[0];
         const daySales = filteredSales.filter(s => s.date === dateStr);
@@ -134,6 +141,11 @@ export default function Dashboard() {
         company: 0,
         seller: 0
       });
+
+      return () => {
+        salesSub.unsubscribe();
+        financialSub.unsubscribe();
+      };
     };
     init();
   }, [user, monthlyGoal, isManagement]);

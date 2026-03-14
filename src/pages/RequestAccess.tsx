@@ -71,7 +71,7 @@ export default function RequestAccess() {
     // Construct full address string for backward compatibility if needed
     const fullAddress = `${formData.street}, ${formData.number} - ${formData.neighborhood}, ${formData.city} - ${formData.state}, ${formData.cep}`;
 
-    db.requests.create({
+    db.access_requests.create({
       ...formData,
       address: fullAddress,
       status: 'Aguardando Documentos' // Default status

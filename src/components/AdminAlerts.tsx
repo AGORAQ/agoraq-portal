@@ -36,7 +36,7 @@ export default function AdminAlerts() {
       const newAlerts: AlertItem[] = [];
 
       // User Requests
-      const allRequests = await db.requests.getAll();
+      const allRequests = await db.access_requests.getAll();
       const requests = allRequests.filter(r => r.status === 'Aguardando Documentos' || r.status === 'Pendente');
       requests.forEach(req => {
         newAlerts.push({

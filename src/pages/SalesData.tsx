@@ -99,21 +99,34 @@ export default function SalesData() {
   }, [formData.bank, formData.product, formData.operacao, formData.value, commissions, user]);
 
   const refreshData = async () => {
+    if (!user) return;
     const [allSales, allPixRequests] = await Promise.all([
-      db.sales.getAll(),
-      db.payment_requests.getAll()
+      db.sales.getAll(user),
+      db.payment_requests.getAll(user)
     ]);
     
-    // Filter sales if user is not management
-    const filteredSales = isManagement ? allSales : allSales.filter(s => s.seller === user?.name);
-    
-    setSales(filteredSales);
+    setSales(allSales);
     setPixRequests(allPixRequests);
   };
 
   useEffect(() => {
     refreshData();
-  }, []);
+
+    if (user) {
+      const salesSub = db.sales.subscribe(user, (updatedSales) => {
+        setSales(updatedSales);
+      });
+
+      const financialSub = db.payment_requests.subscribe(user, (updatedRequests) => {
+        setPixRequests(updatedRequests);
+      });
+
+      return () => {
+        salesSub.unsubscribe();
+        financialSub.unsubscribe();
+      };
+    }
+  }, [user]);
 
 
   // Motivational Tips

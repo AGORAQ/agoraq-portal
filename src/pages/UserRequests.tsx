@@ -65,10 +65,10 @@ export default function UserRequests() {
 
   const refreshRequests = async () => {
     if (isAdmin) {
-      const all = await db.requests.getAll();
+      const all = await db.access_requests.getAll();
       setRequests(all);
     } else if (user?.id) {
-      const userRequests = await db.requests.getByUser(user.id);
+      const userRequests = await db.access_requests.getByUser(user.id);
       setRequests(userRequests);
     }
     const allGroups = await db.commissionGroups.getAll();
@@ -144,7 +144,7 @@ export default function UserRequests() {
     // Construct full address string
     const fullAddress = `${formData.street}, ${formData.number} - ${formData.neighborhood}, ${formData.city} - ${formData.state}, ${formData.cep}`;
 
-    await db.requests.create({
+    await db.access_requests.create({
       usuario_id: user?.id || '',
       name: formData.name!,
       email: formData.email!,
@@ -213,7 +213,7 @@ export default function UserRequests() {
       return;
     }
 
-    await db.requests.create({
+    await db.access_requests.create({
       usuario_id: user?.id || '',
       name: user?.name || 'Vendedor',
       email: user?.email || '',
@@ -238,7 +238,7 @@ export default function UserRequests() {
       return;
     }
     
-    await db.requests.updateStatus(id, newStatus, adminObservation, user?.id);
+    await db.access_requests.updateStatus(id, newStatus, adminObservation, user?.id);
 
     // Send email if finalized/approved
     if (newStatus === 'Finalizado' || newStatus === 'Aprovado') {
@@ -270,7 +270,7 @@ export default function UserRequests() {
     });
 
     // 2. Update request status to 'Finalizado' (or 'Aprovado')
-    await db.requests.updateStatus(selectedRequest.id, 'Finalizado', approvalFormData.observation, user?.id);
+    await db.access_requests.updateStatus(selectedRequest.id, 'Finalizado', approvalFormData.observation, user?.id);
 
     // 3. Cleanup
     setIsApprovalModalOpen(false);
@@ -294,7 +294,7 @@ export default function UserRequests() {
     
     // Admin sees all, Seller sees only theirs (simulated by email check or just all for now if no auth filter implemented in db)
     // Assuming db returns all, we filter for seller if needed. 
-    // But for this demo, let's assume db.requests.getAll() returns what the user is allowed to see or we filter here.
+    // But for this demo, let's assume db.access_requests.getAll() returns what the user is allowed to see or we filter here.
     const isOwner = isAdmin || req.userEmail === user?.email || req.email === user?.email;
     
     return matchesSearch && isOwner;

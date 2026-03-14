@@ -35,13 +35,23 @@ export default function Finance() {
   useEffect(() => {
     const loadRequests = async () => {
       if (user) {
-        const all = await db.payment_requests.getAll();
-        setRequests(all.filter(r => r.usuario_id === user.id).sort((a, b) => 
+        const all = await db.payment_requests.getAll(user);
+        setRequests(all.sort((a, b) => 
           new Date(b.data_solicitacao).getTime() - new Date(a.data_solicitacao).getTime()
         ));
       }
     };
     loadRequests();
+
+    if (user) {
+      const sub = db.payment_requests.subscribe(user, (updatedRequests) => {
+        setRequests(updatedRequests.sort((a, b) => 
+          new Date(b.data_solicitacao).getTime() - new Date(a.data_solicitacao).getTime()
+        ));
+      });
+
+      return () => sub.unsubscribe();
+    }
   }, [user]);
 
   const handleUpdatePix = async () => {

@@ -97,13 +97,23 @@ export const db = {
       return mapProfileToUser(result.data);
     },
     getByAuthId: async (authId: string) => {
-      const result = await withTimeout(supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', authId)
-        .single()) as any;
-      if (result.error) throw result.error;
-      return mapProfileToUser(result.data);
+      try {
+        // Try by auth_user_id first (Supabase standard), then by id (fallback/SQLite)
+        // Using or() to support both schemas during transition
+        const result = await withTimeout(supabase
+          .from('profiles')
+          .select('*')
+          .or(`auth_user_id.eq.${authId},id.eq.${authId}`)
+          .maybeSingle(), 30000) as any;
+        
+        if (result.error) throw result.error;
+        if (!result.data) throw new Error('Perfil não encontrado para o ID fornecido');
+        
+        return mapProfileToUser(result.data);
+      } catch (e: any) {
+        console.error('Error in getByAuthId:', e);
+        throw e;
+      }
     },
     create: async (user: any) => {
       try {
@@ -547,19 +557,59 @@ export const db = {
   },
 
   sales: {
-    getAll: async () => {
-      const { data, error } = await supabase
+    getAll: async (user?: User) => {
+      let query = supabase
         .from('sales')
-        .select('*, profiles(nome)')
+        .select('*, profiles(nome, grupo_comissao)')
         .order('created_at', { ascending: false });
+      
+      if (user && user.role !== 'admin') {
+        if (user.role === 'supervisor') {
+          // Supervisor sees everyone in their group
+          query = query.eq('grupo_vendedor', user.grupo_comissao);
+        } else {
+          // Seller sees only their own
+          query = query.eq('vendedor', user.id);
+        }
+      }
+
+      const { data, error } = await query;
       if (error) throw error;
       return data.map(mapTableToSale);
+    },
+    subscribe: (user: User, callback: (sales: Sale[]) => void) => {
+      let filter = '';
+      if (user.role === 'vendedor') {
+        filter = `vendedor=eq.${user.id}`;
+      } else if (user.role === 'supervisor') {
+        filter = `grupo_vendedor=eq.${user.grupo_comissao}`;
+      }
+
+      return supabase
+        .channel('sales_changes')
+        .on('postgres_changes', 
+          { 
+            event: '*', 
+            schema: 'public', 
+            table: 'sales',
+            filter: filter || undefined
+          }, 
+          async () => {
+            const data = await db.sales.getAll(user);
+            callback(data);
+          }
+        )
+        .subscribe();
     },
     create: async (sale: any, user: User) => {
       console.log('DB: Criando venda:', sale);
       // 1. Create the sale
-      const mappedSale = mapSaleToTable({ ...sale, vendedor_id: user.id });
-      console.log('DB: Venda mapeada para Supabase:', mappedSale);
+      const mappedSale = mapSaleToTable({ 
+        ...sale, 
+        vendedor_id: user.id,
+        vendedor_nome: user.name,
+        grupo_vendedor: user.grupo_comissao 
+      });
       
       const { data: saleData, error: saleError } = await supabase
         .from('sales')
@@ -567,26 +617,21 @@ export const db = {
         .select()
         .single();
       
-      if (saleError) {
-        console.error('DB Error (sales.create):', saleError);
-        throw saleError;
-      }
+      if (saleError) throw saleError;
 
       // 2. Create corresponding financial entry (Credit for the seller)
-      const financialEntry: Partial<FinancialEntry> = {
+      const financialEntry = {
         vendedor_id: user.id,
         vendedor_nome: user.name,
+        sale_id: saleData.id,
         tipo: 'Crédito',
-        valor: sale.commission || sale.valor_comissao || 0,
+        valor: sale.commission || 0,
         status: 'Pendente',
-        descricao: `Comissão Venda: ${sale.client || sale.cliente || 'Cliente'} - Proposta: ${sale.proposal || 'S/N'}`,
+        descricao: `Comissão Venda: ${sale.client || 'Cliente'} - Proposta: ${sale.proposal || 'S/N'}`,
         data_vencimento: new Date().toISOString().split('T')[0]
       };
 
-      const { error: finError } = await supabase.from('financial_entries').insert([financialEntry]);
-      if (finError) {
-        console.error('DB Error (financial_entries.insert from sales.create):', finError);
-      }
+      await supabase.from('financial_entries').insert([financialEntry]);
 
       return mapTableToSale(saleData);
     },
@@ -705,7 +750,7 @@ export const db = {
     }
   },
 
-  requests: {
+  access_requests: {
     getAll: async () => {
       const { data, error } = await supabase
         .from('access_requests')
@@ -953,18 +998,47 @@ export const db = {
   },
 
   payment_requests: {
-    getAll: async () => {
-      const { data, error } = await supabase
+    getAll: async (user?: User) => {
+      let query = supabase
         .from('financial_entries')
         .select('*')
         .order('created_at', { ascending: false });
+
+      if (user && user.role !== 'admin') {
+        if (user.role === 'supervisor') {
+          // Supervisor sees entries for their group members
+          const { data: groupUsers } = await supabase
+            .from('profiles')
+            .select('id')
+            .eq('grupo_comissao', user.grupo_comissao);
+          
+          const userIds = groupUsers?.map(u => u.id) || [];
+          query = query.in('vendedor_id', userIds);
+        } else {
+          query = query.eq('vendedor_id', user.id);
+        }
+      }
+
+      const { data, error } = await query;
       if (error) throw error;
-      return data.map((d: any) => ({
+      return (data || []).map((d: any) => ({
         ...d,
         usuario_id: d.usuario_id || d.vendedor_id,
         data_solicitacao: d.data_solicitacao || d.created_at,
         chave_pix: d.chave_pix || d.pix_key
       }));
+    },
+    subscribe: (user: User, callback: (entries: any[]) => void) => {
+      return supabase
+        .channel('financial_changes')
+        .on('postgres_changes', 
+          { event: '*', schema: 'public', table: 'financial_entries' }, 
+          async () => {
+            const data = await db.payment_requests.getAll(user);
+            callback(data);
+          }
+        )
+        .subscribe();
     },
     create: async (req: any) => {
       const { data, error } = await supabase
@@ -996,6 +1070,10 @@ export const db = {
       return data;
     }
   },
+  // Aliases for compatibility
+  get requests() { return this.payment_requests; },
+  get financial_entries() { return this.payment_requests; },
+
 
   announcements: {
     getAll: async () => {
