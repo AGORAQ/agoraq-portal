@@ -1042,26 +1042,26 @@ export const db = {
         .order('ordem', { ascending: true })
         .order('titulo');
       if (error) throw error;
-      return data;
+      return (data || []).map(mapTableToAcademy);
     },
     create: async (content: any) => {
       console.log('DB: Criando conteúdo academy:', content);
       const { data, error } = await supabase
         .from('academy_content')
-        .insert([content])
+        .insert([mapAcademyToTable(content)])
         .select()
         .single();
       if (error) {
         console.error('DB Error (academy.create):', error);
         throw error;
       }
-      return data;
+      return mapTableToAcademy(data);
     },
     update: async (id: string, updates: any) => {
       console.log('DB: Atualizando conteúdo academy:', id, updates);
       const { data, error } = await supabase
         .from('academy_content')
-        .update(updates)
+        .update(mapAcademyToTable(updates))
         .eq('id', id)
         .select()
         .single();
@@ -1069,7 +1069,7 @@ export const db = {
         console.error('DB Error (academy.update):', error);
         throw error;
       }
-      return data;
+      return mapTableToAcademy(data);
     },
     delete: async (id: string) => {
       const { error } = await supabase
@@ -1362,5 +1362,42 @@ function mapSaleToTable(s: any): any {
   if (s.phone) t.phone = s.phone;
   if (s.proposal) t.proposal = s.proposal;
   if (s.date) t.data = s.date;
+  return t;
+}
+
+function mapTableToAcademy(t: any): AcademyContent {
+  return {
+    id: t.id,
+    titulo: t.titulo,
+    categoria: t.categoria,
+    descricao: t.descricao,
+    arquivo_url: t.arquivo_url,
+    tipo_arquivo: t.tipo_arquivo,
+    visibilidade: t.visibilidade,
+    grupo_id: t.grupo_id,
+    versao: t.versao,
+    criado_por: t.criado_por,
+    criado_em: t.created_at,
+    atualizado_em: t.updated_at,
+    status: t.status,
+    links_relacionados: t.links_relacionados,
+    ordem: t.ordem || 0
+  };
+}
+
+function mapAcademyToTable(a: any): any {
+  const t: any = {};
+  if (a.titulo) t.titulo = a.titulo;
+  if (a.categoria) t.categoria = a.categoria;
+  if (a.descricao !== undefined) t.descricao = a.descricao;
+  if (a.arquivo_url) t.arquivo_url = a.arquivo_url;
+  if (a.tipo_arquivo) t.tipo_arquivo = a.tipo_arquivo;
+  if (a.visibilidade) t.visibilidade = a.visibilidade;
+  if (a.grupo_id !== undefined) t.grupo_id = a.grupo_id;
+  if (a.versao) t.versao = a.versao;
+  if (a.criado_por) t.criado_por = a.criado_por;
+  if (a.status) t.status = a.status;
+  if (a.links_relacionados !== undefined) t.links_relacionados = a.links_relacionados;
+  if (a.ordem !== undefined) t.ordem = a.ordem;
   return t;
 }

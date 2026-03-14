@@ -58,15 +58,20 @@ export default function Academy() {
   });
 
   const loadData = async () => {
-    const [allContents, allGroups] = await Promise.all([
-      db.academy.getAll(),
-      db.commissionGroups.getAll()
-    ]);
-    setContents(allContents);
-    setGroups(allGroups);
-    if (user) {
-      const views = await db.academyViews.getUserViews(user.id);
-      setUserViews(views);
+    try {
+      const [allContents, allGroups] = await Promise.all([
+        db.academy.getAll(),
+        db.commissionGroups.getAll()
+      ]);
+      setContents(allContents);
+      setGroups(allGroups);
+      if (user) {
+        const views = await db.academyViews.getUserViews(user.id);
+        setUserViews((views || []).map((v: any) => v.conteudo_id));
+      }
+    } catch (error) {
+      console.error('Erro ao carregar dados da Academy:', error);
+      notify('error', 'Não foi possível carregar os conteúdos. Verifique se as tabelas foram criadas no Supabase.');
     }
   };
 
