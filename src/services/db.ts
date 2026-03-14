@@ -1422,23 +1422,40 @@ function mapTableToSale(t: any): Sale {
 
 function mapSaleToTable(s: any): any {
   const t: any = {};
-  if (s.vendedor_id) t.vendedor = s.vendedor_id;
-  if (s.lead_id) t.lead_id = s.lead_id;
-  if (s.bank || s.banco) t.banco = s.bank || s.banco;
-  if (s.produto) t.produto = s.produto;
-  if (s.tabela || s.operacao) t.tabela = s.tabela || s.operacao;
-  if (s.parcelas) t.parcelas = s.parcelas;
-  if (s.valor_venda !== undefined || s.value !== undefined) t.valor_venda = s.valor_venda !== undefined ? s.valor_venda : s.value;
-  if (s.valor_comissao !== undefined || s.commission !== undefined) t.valor_comissao = s.valor_comissao !== undefined ? s.valor_comissao : s.commission;
-  if (s.percentual_empresa !== undefined || s.companyCommission !== undefined) t.percentual_empresa = s.percentual_empresa !== undefined ? s.percentual_empresa : s.companyCommission;
-  if (s.percentual_vendedor !== undefined) t.percentual_vendedor = s.percentual_vendedor;
+  
+  // Vendedor mapping (Critical for not-null constraints)
+  const sellerId = s.vendedor_id || s.vendedor || s.usuario_id;
+  if (sellerId) {
+    t.vendedor = sellerId;
+    t.vendedor_id = sellerId;
+  }
+  
+  if (s.vendedor_nome || s.seller) {
+    t.vendedor_nome = s.vendedor_nome || s.seller;
+  }
+
+  // Core fields with fallbacks to avoid NULL
+  t.banco = s.banco || s.bank || '';
+  t.produto = s.produto || s.product || '';
+  t.tabela = s.tabela || s.operacao || '';
+  t.cliente = s.cliente || s.client || '';
+  t.cpf = s.cpf || '';
+  t.phone = s.phone || '';
+  t.proposal = s.proposal || '';
+  t.data = s.data || s.date || new Date().toISOString().split('T')[0];
+  
+  // Numeric fields
+  t.valor_venda = s.valor_venda !== undefined ? s.valor_venda : (s.value !== undefined ? s.value : 0);
+  t.valor_comissao = s.valor_comissao !== undefined ? s.valor_comissao : (s.commission !== undefined ? s.commission : 0);
+  t.percentual_empresa = s.percentual_empresa !== undefined ? s.percentual_empresa : (s.companyCommission !== undefined ? s.companyCommission : 0);
+  t.percentual_vendedor = s.percentual_vendedor !== undefined ? s.percentual_vendedor : 0;
+  
+  // Optional fields
+  if (s.parcelas !== undefined) t.parcelas = parseInt(s.parcelas) || 0;
   if (s.grupo_vendedor) t.grupo_vendedor = s.grupo_vendedor;
   if (s.status) t.status = s.status;
-  if (s.client || s.cliente) t.cliente = s.client || s.cliente;
-  if (s.cpf) t.cpf = s.cpf;
-  if (s.phone) t.phone = s.phone;
-  if (s.proposal) t.proposal = s.proposal;
-  if (s.date) t.data = s.date;
+  if (s.lead_id) t.lead_id = s.lead_id;
+
   return t;
 }
 
