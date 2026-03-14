@@ -184,6 +184,34 @@ const COLUMN_SYNONYMS: { [key: string]: string } = {
   'tel_comercial': 'phone',
   'telefone_residencial': 'phone',
   'telefone_comercial': 'phone',
+  'numero tel': 'phone',
+  'num tel': 'phone',
+  'contato tel': 'phone',
+  'telefone fixo': 'phone',
+  'telefone movel': 'phone',
+  'celular contato': 'phone',
+  'whatsapp contato': 'phone',
+  'wa': 'phone',
+  'wpp': 'phone',
+  'zap': 'phone',
+  'numero zap': 'phone',
+  'numero whatsapp': 'phone',
+  'tel_contato': 'phone',
+  'cel_contato': 'phone',
+  'contato_tel': 'phone',
+  'contato_cel': 'phone',
+  'contato_fone': 'phone',
+  'fone_contato': 'phone',
+  'telefone_contato': 'phone',
+  'celular_contato': 'phone',
+  'whatsapp_contato': 'phone',
+  'numero_tel': 'phone',
+  'numero_telefone': 'phone',
+  'num_tel': 'phone',
+  'numero_celular': 'phone',
+  'num_celular': 'phone',
+  'numero_zap': 'phone',
+  'numero_whatsapp': 'phone',
   
   'email': 'email',
   'e mail': 'email',
@@ -252,7 +280,16 @@ export const normalizeValue = (value: any, fieldName?: string): any => {
   if (value === null || value === undefined || value === '') return null;
   
   // Specific cleaning for known string fields that look like numbers
-  if (fieldName === 'phone' || fieldName === 'cpf') {
+  if (fieldName === 'phone') {
+    let cleaned = String(value).replace(/[^\d]/g, '');
+    // If it's a standard Brazilian number (10 or 11 digits), prepend 55
+    if (cleaned.length === 10 || cleaned.length === 11) {
+      cleaned = '55' + cleaned;
+    }
+    return cleaned || null;
+  }
+  
+  if (fieldName === 'cpf') {
     const cleaned = String(value).replace(/[^\d]/g, '');
     return cleaned || null;
   }
@@ -435,6 +472,7 @@ export const validateCommissions = (data: NormalizedData[]): string[] => {
 export const validateLeads = (data: NormalizedData[]): string[] => {
   const errors: string[] = [];
   const requiredFields = ['name', 'phone'];
+  const seenPhones = new Set<string>();
   
   data.forEach((row, index) => {
     requiredFields.forEach(field => {
@@ -442,6 +480,14 @@ export const validateLeads = (data: NormalizedData[]): string[] => {
         errors.push(`Linha ${index + 2}: Campo obrigatório '${field}' ausente.`);
       }
     });
+
+    if (row.phone) {
+      const cleanPhone = String(row.phone).replace(/[^\d]/g, '');
+      if (seenPhones.has(cleanPhone)) {
+        errors.push(`Linha ${index + 2}: Telefone duplicado na planilha (${row.phone}).`);
+      }
+      seenPhones.add(cleanPhone);
+    }
   });
   
   return errors;

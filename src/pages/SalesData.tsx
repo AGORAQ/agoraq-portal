@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Badge } from '@/components/ui/Badge';
-import { Search, Plus, Trash2, Edit, X, Save, TrendingUp, DollarSign, Wallet, BellRing, CheckCircle2, Download, Lightbulb, Sparkles, Target, Trophy } from 'lucide-react';
+import { Search, Plus, Trash2, Edit, X, Save, TrendingUp, DollarSign, Wallet, BellRing, CheckCircle2, Download, Lightbulb, Sparkles, Target, Trophy, Loader2 } from 'lucide-react';
 import { formatCurrency, maskCPF, maskPhone, validateCPF } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
 import { useCommission } from '@/context/CommissionContext';
@@ -25,6 +25,7 @@ export default function SalesData() {
   const [sales, setSales] = useState<Sale[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [isFormOpen, setIsFormOpen] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const [isGlobalImporterOpen, setIsGlobalImporterOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<'list' | 'financial'>('list');
   
@@ -189,56 +190,64 @@ export default function SalesData() {
       return;
     }
     
-    const saleData = {
-      ...formData,
-      value: parseFloat(formData.value) || 0,
-    };
+    setIsSaving(true);
+    try {
+      const saleData = {
+        ...formData,
+        value: parseFloat(formData.value) || 0,
+      };
 
-    const newSale = await db.sales.create(saleData, user);
-    await refreshData();
-    setIsFormOpen(false);
+      const newSale = await db.sales.create(saleData, user);
+      await refreshData();
+      setIsFormOpen(false);
 
-    // Motivational Success Message
-    const userName = user?.name?.split(' ')[0] || 'Campeão';
-    const motivationalMessages = [
-      "Parabéns, {name}! Mais uma venda para a conta! 🚀",
-      "Excelente trabalho, {name}! Você está cada vez mais perto da sua meta! 🌟",
-      "Show de bola, {name}! Continue assim e o céu é o limite! 🏆",
-      "Venda registrada! Sua dedicação faz a diferença, {name}! 💎"
-    ];
-    
-    let alertMessage = motivationalMessages[Math.floor(Math.random() * motivationalMessages.length)].replace('{name}', userName);
-    
-    // Check Goal Progress
-    const today = new Date().toISOString().split('T')[0];
-    if (newSale.date === today && dailyGoal > 0) {
-      const newCount = todaySalesCount + 1;
-      const remaining = dailyGoal - newCount;
+      // Motivational Success Message
+      const userName = user?.name?.split(' ')[0] || 'Campeão';
+      const motivationalMessages = [
+        "Parabéns, {name}! Mais uma venda para a conta! 🚀",
+        "Excelente trabalho, {name}! Você está cada vez mais perto da sua meta! 🌟",
+        "Show de bola, {name}! Continue assim e o céu é o limite! 🏆",
+        "Venda registrada! Sua dedicação faz a diferença, {name}! 💎"
+      ];
       
-      if (remaining > 0) {
-        alertMessage += `\n\n🎯 Meta do Dia: Faltam apenas ${remaining} venda(s) para atingir seu objetivo! Vamos lá!`;
-      } else if (remaining === 0) {
-        alertMessage += `\n\n🏆 META ATINGIDA! Parabéns, você alcançou seu objetivo de ${dailyGoal} vendas hoje!`;
-      } else {
-        alertMessage += `\n\n🚀 INCRÍVEL! Você já superou sua meta em ${Math.abs(remaining)} venda(s)!`;
+      let alertMessage = motivationalMessages[Math.floor(Math.random() * motivationalMessages.length)].replace('{name}', userName);
+      
+      // Check Goal Progress
+      const today = new Date().toISOString().split('T')[0];
+      if (newSale.date === today && dailyGoal > 0) {
+        const newCount = todaySalesCount + 1;
+        const remaining = dailyGoal - newCount;
+        
+        if (remaining > 0) {
+          alertMessage += `\n\n🎯 Meta do Dia: Faltam apenas ${remaining} venda(s) para atingir seu objetivo! Vamos lá!`;
+        } else if (remaining === 0) {
+          alertMessage += `\n\n🏆 META ATINGIDA! Parabéns, você alcançou seu objetivo de ${dailyGoal} vendas hoje!`;
+        } else {
+          alertMessage += `\n\n🚀 INCRÍVEL! Você já superou sua meta em ${Math.abs(remaining)} venda(s)!`;
+        }
       }
+
+      notify('success', `${alertMessage}\n\nVenda de ${formatCurrency(newSale.value)} registrada com sucesso.`);
+
+      setFormData({
+        date: new Date().toISOString().split('T')[0],
+        proposal: '',
+        client: '',
+        cpf: '',
+        phone: '',
+        bank: '',
+        product: '',
+        operacao: '',
+        value: '',
+        status: 'Pendente',
+        seller: user?.name || ''
+      });
+    } catch (error: any) {
+      console.error('Erro ao salvar venda:', error);
+      notify('error', `Erro ao salvar venda: ${error.message || 'Erro desconhecido'}`);
+    } finally {
+      setIsSaving(false);
     }
-
-    notify('success', `${alertMessage}\n\nVenda de ${formatCurrency(newSale.value)} registrada com sucesso.`);
-
-    setFormData({
-      date: new Date().toISOString().split('T')[0],
-      proposal: '',
-      client: '',
-      cpf: '',
-      phone: '',
-      bank: '',
-      product: '',
-      operacao: '',
-      value: '',
-      status: 'Pendente',
-      seller: user?.name || ''
-    });
   };
 
   const filteredSales = sales.filter(sale => {
@@ -675,8 +684,12 @@ export default function SalesData() {
               </div>
               <div className="flex justify-end gap-2 pt-4">
                 <Button type="button" variant="outline" onClick={() => setIsFormOpen(false)}>Cancelar</Button>
-                <Button type="submit" className="bg-blue-900 hover:bg-blue-800">
-                  <Save className="w-4 h-4 mr-2" />
+                <Button type="submit" className="bg-blue-900 hover:bg-blue-800" disabled={isSaving}>
+                  {isSaving ? (
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  ) : (
+                    <Save className="w-4 h-4 mr-2" />
+                  )}
                   Salvar Venda
                 </Button>
               </div>

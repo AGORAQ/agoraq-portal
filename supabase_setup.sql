@@ -40,9 +40,20 @@ CREATE TABLE IF NOT EXISTS commission_tables (
   grupo_prata NUMERIC,
   grupo_plus NUMERIC,
   status TEXT DEFAULT 'Ativo',
+  vigencia TEXT,
   origem_importacao TEXT,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+-- 3.1 Tabela de Grupos de Comissão (Novo)
+CREATE TABLE IF NOT EXISTS commission_groups (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  banco_id UUID REFERENCES banks(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  type TEXT NOT NULL, -- 'FGTS', 'CLT', 'Outros'
+  status TEXT DEFAULT 'Ativo',
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
 -- 4. Tabela de Leads
@@ -53,6 +64,8 @@ CREATE TABLE IF NOT EXISTS leads (
   email TEXT,
   cpf TEXT,
   cidade TEXT,
+  banco_origem TEXT,
+  importado_por TEXT,
   metadata JSONB DEFAULT '{}',
   status TEXT DEFAULT 'Disponível',
   capturado_por UUID REFERENCES profiles(id),
@@ -65,7 +78,13 @@ CREATE TABLE IF NOT EXISTS sales (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   cliente TEXT NOT NULL,
   cpf TEXT,
+  phone TEXT,
+  proposal TEXT,
   valor_venda NUMERIC NOT NULL,
+  valor_comissao NUMERIC,
+  percentual_empresa NUMERIC,
+  percentual_vendedor NUMERIC,
+  grupo_vendedor TEXT,
   banco TEXT,
   produto TEXT,
   tabela TEXT,

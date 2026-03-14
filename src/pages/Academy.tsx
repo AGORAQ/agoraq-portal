@@ -293,21 +293,28 @@ export default function Academy() {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // Limit file size to 10MB for base64 storage
-    if (file.size > 10 * 1024 * 1024) {
-      notify('warning', 'O arquivo é muito grande. O limite é 10MB para upload direto. Para arquivos maiores, use um link externo.');
+    // Limit file size to 20MB for base64 storage
+    if (file.size > 20 * 1024 * 1024) {
+      notify('warning', 'O arquivo é muito grande. O limite é 20MB para upload direto. Para arquivos maiores, use um link externo.');
       return;
     }
 
     setIsUploading(true);
-    console.log('Iniciando upload de arquivo:', file.name);
+    console.log('Iniciando processamento de arquivo:', file.name, 'Tamanho:', file.size);
     
     try {
-      // Simulate upload delay
-      await new Promise(resolve => setTimeout(resolve, 1000));
-
       const reader = new FileReader();
+      reader.onloadstart = () => {
+        console.log('FileReader: Início da leitura');
+      };
+      reader.onprogress = (event) => {
+        if (event.lengthComputable) {
+          const percent = Math.round((event.loaded / event.total) * 100);
+          console.log(`FileReader: Progresso ${percent}%`);
+        }
+      };
       reader.onloadend = () => {
+        console.log('FileReader: Leitura concluída');
         const base64String = reader.result as string;
         handleInputChange('arquivo_url', base64String);
         
@@ -315,20 +322,22 @@ export default function Academy() {
         if (file.type.includes('pdf')) handleInputChange('tipo_arquivo', 'pdf');
         else if (file.type.includes('video')) handleInputChange('tipo_arquivo', 'video');
         else if (file.type.includes('word') || file.type.includes('officedocument')) handleInputChange('tipo_arquivo', 'doc');
+        else if (file.type.includes('image')) handleInputChange('tipo_arquivo', 'doc'); // Treat images as docs/others for now
         
         setIsUploading(false);
+        notify('success', `Arquivo "${file.name}" carregado com sucesso!`);
         // Reset input value to allow selecting same file again
         if (fileInputRef.current) fileInputRef.current.value = '';
       };
-      reader.onerror = () => {
-        console.error('Erro ao ler arquivo');
+      reader.onerror = (err) => {
+        console.error('FileReader Error:', err);
         notify('error', 'Erro ao carregar o arquivo. Tente novamente.');
         setIsUploading(false);
       };
       reader.readAsDataURL(file);
     } catch (error) {
-      console.error('Erro no upload:', error);
-      notify('error', 'Erro ao processar o upload.');
+      console.error('Erro no processamento do arquivo:', error);
+      notify('error', 'Erro ao processar o arquivo.');
       setIsUploading(false);
     }
   };
@@ -557,7 +566,7 @@ export default function Academy() {
             type="file" 
             className="hidden" 
             onChange={handleFileUpload}
-            accept=".pdf,.doc,.docx,.mp4,.mov"
+            accept=".pdf,.doc,.docx,.xls,.xlsx,.mp4,.mov,.jpg,.jpeg,.png,.gif"
           />
           <CardHeader className="flex flex-row items-center justify-between bg-slate-800/50 rounded-t-xl border-b border-slate-800">
             <CardTitle className="text-white">{editingId ? 'Editar Conteúdo' : 'Novo Conteúdo Academy'}</CardTitle>
@@ -626,6 +635,10 @@ export default function Academy() {
                       onClick={() => {
                         console.log('Switching to Upload mode');
                         setUploadMode('upload');
+                        // If no file selected, trigger picker
+                        if (!formData.arquivo_url || !formData.arquivo_url.startsWith('data:')) {
+                          setTimeout(() => fileInputRef.current?.click(), 100);
+                        }
                       }}
                     >
                       Upload de Arquivo
@@ -651,13 +664,28 @@ export default function Academy() {
                           size="sm"
                           className="text-indigo-400 hover:text-indigo-300 h-7"
                           onClick={() => {
-                            console.log('Botão Alterar clicado');
+                            console.log('Botão Selecionar/Alterar clicado');
                             fileInputRef.current?.click();
                           }}
                           disabled={isUploading}
                         >
-                          {isUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Alterar'}
+                          {isUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : (formData.arquivo_url && formData.arquivo_url.startsWith('data:') ? 'Alterar' : 'Selecionar')}
                         </Button>
+                        {formData.arquivo_url && formData.arquivo_url.startsWith('data:') && (
+                          <Button 
+                            type="button" 
+                            variant="ghost" 
+                            size="sm"
+                            className="text-red-400 hover:text-red-300 h-7"
+                            onClick={() => {
+                              handleInputChange('arquivo_url', '');
+                              notify('info', 'Arquivo removido.');
+                            }}
+                            disabled={isUploading}
+                          >
+                            Limpar
+                          </Button>
+                        )}
                       </div>
                     )}
                   </div>

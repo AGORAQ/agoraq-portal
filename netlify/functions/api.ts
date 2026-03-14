@@ -57,7 +57,7 @@ export const handler: Handler = async (event, context) => {
         perfil: role,
         grupo_comissao: grupo_comissao,
         ativo: status === 'Ativo',
-        meta_diaria: 0
+        daily_goal: 0
       });
 
       if (profileError) {

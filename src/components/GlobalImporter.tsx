@@ -101,6 +101,12 @@ export default function GlobalImporter({ type, onImportComplete, onClose }: Glob
     
     setLoading(true);
     try {
+      // Check health before starting
+      const health = await db.health.check();
+      if (!health.ok) {
+        throw new Error(`Sem conexão com o banco de dados: ${health.error}. Verifique as chaves do Supabase.`);
+      }
+
       console.log('Iniciando importação global:', type, preview.length, 'registros');
       if (type === 'comissoes') {
         if (importMode === 'replace') {
@@ -108,12 +114,19 @@ export default function GlobalImporter({ type, onImportComplete, onClose }: Glob
           await db.commissions.deleteAll('admin', user?.id || '');
         }
         
-        await db.commissions.import(preview as any, 'admin', user?.id || '', (p) => setProgress(p));
+        const result = await db.commissions.import(preview as any, 'admin', user?.id || '', (p) => setProgress(p));
+        if (result.errors && result.errors.length > 0) {
+          notify('warning', `Importação concluída com ${result.errors.length} erros.`);
+        } else {
+          notify('success', `${result.count} tabelas importadas com sucesso!`);
+        }
       } else if (type === 'vendas' && user) {
         console.log('Importando vendas...');
-        for (let i = 0; i < preview.length; i++) {
-          await db.sales.create(preview[i], user);
-          setProgress(Math.round(((i + 1) / preview.length) * 100));
+        const result = await db.sales.import(preview, user, (p) => setProgress(p));
+        if (result.errors && result.errors.length > 0) {
+          notify('warning', `Importação concluída com ${result.errors.length} erros.`);
+        } else {
+          notify('success', `${result.count} vendas importadas com sucesso!`);
         }
       } else if (type === 'leads') {
         console.log('Importando leads...');
@@ -121,19 +134,36 @@ export default function GlobalImporter({ type, onImportComplete, onClose }: Glob
           ...l,
           usuario_id: null // Admins import to the general pool
         }));
-        await db.leads.import(leadsWithAssignment, (p) => setProgress(p));
+        const result = await db.leads.import(leadsWithAssignment, (p) => setProgress(p));
+        
+        if (result.count > 0) {
+          notify('success', `${result.count} leads novos importados com sucesso!`);
+          if (preview.length > result.count) {
+            notify('info', `${preview.length - result.count} duplicados foram ignorados.`);
+          }
+        } else if (preview.length > 0) {
+          notify('warning', 'Nenhum lead novo foi importado (todos eram duplicados).');
+        }
+
+        if (result.errors && result.errors.length > 0) {
+          console.error('Import errors:', result.errors);
+        }
       }
 
       console.log('Registrando log...');
       // Log the import
-      await db.logs.add({
-        fileName: file?.name || 'import_global',
-        user: user?.name || 'Admin',
-        linesProcessed: preview.length,
-        errorsFound: errors.length,
-        errors: errors.length > 0 ? errors : undefined,
-        status: 'success'
-      });
+      try {
+        await db.logs.add({
+          fileName: file?.name || 'import_global',
+          user: user?.name || 'Admin',
+          linesProcessed: preview.length,
+          errorsFound: errors.length,
+          errors: errors.length > 0 ? errors : undefined,
+          status: 'success'
+        });
+      } catch (logError) {
+        console.warn('Erro ao registrar log (não crítico):', logError);
+      }
 
       notify('success', `Importação concluída! ${preview.length} registros processados.`);
       onImportComplete();

@@ -3,6 +3,27 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
 import { CommissionProvider } from '@/context/CommissionContext';
 import Layout from '@/components/Layout';
+import { isSupabaseConfigured } from '@/lib/supabase';
+import { AlertCircle } from 'lucide-react';
+
+const ConnectionBanner = () => {
+  if (isSupabaseConfigured) return null;
+  
+  return (
+    <div className="bg-red-600 text-white p-2 text-center text-sm font-medium flex items-center justify-center gap-2 z-[9999] sticky top-0">
+      <AlertCircle className="w-4 h-4" />
+      <span>Atenção: Supabase não configurado. As funções de salvar e importar não funcionarão.</span>
+      <a 
+        href="https://supabase.com" 
+        target="_blank" 
+        rel="noopener noreferrer"
+        className="underline ml-2 hover:text-red-100"
+      >
+        Configurar Agora
+      </a>
+    </div>
+  );
+};
 
 // Lazy load pages
 const Login = lazy(() => import('@/pages/Login'));
@@ -63,6 +84,7 @@ export default function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
+        <ConnectionBanner />
         <CommissionProvider>
           <Suspense fallback={<LoadingFallback />}>
             <Routes>

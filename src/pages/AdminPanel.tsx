@@ -618,8 +618,8 @@ export default function AdminPanel() {
                 </div>
 
                 <div className="pt-4 flex justify-end">
-                  <Button onClick={handleSaveAiConfig} className="bg-blue-900 hover:bg-blue-800">
-                    <Save className="w-4 h-4 mr-2" />
+                  <Button onClick={handleSaveAiConfig} className="bg-blue-900 hover:bg-blue-800" disabled={isSaving}>
+                    {isSaving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />}
                     Salvar Treinamento
                   </Button>
                 </div>
@@ -679,8 +679,8 @@ export default function AdminPanel() {
                   </div>
                   <div className="flex justify-end gap-2 pt-4">
                     <Button type="button" variant="outline" onClick={() => setIsBankFormOpen(false)}>Cancelar</Button>
-                    <Button type="submit" className="bg-blue-900 hover:bg-blue-800">
-                      <Save className="w-4 h-4 mr-2" />
+                    <Button type="submit" className="bg-blue-900 hover:bg-blue-800" disabled={isSaving}>
+                      {isSaving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />}
                       Salvar Banco
                     </Button>
                   </div>
@@ -887,8 +887,8 @@ export default function AdminPanel() {
                 </div>
 
                 <div className="pt-4 flex justify-end">
-                  <Button onClick={handleSaveSettings} className="bg-blue-900 hover:bg-blue-800">
-                    <Save className="w-4 h-4 mr-2" />
+                  <Button onClick={handleSaveSettings} className="bg-blue-900 hover:bg-blue-800" disabled={isSaving}>
+                    {isSaving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />}
                     Salvar Configurações
                   </Button>
                 </div>
@@ -1009,8 +1009,8 @@ export default function AdminPanel() {
                 </div>
 
                 <div className="pt-4 flex justify-end">
-                  <Button onClick={handleSaveContract} className="bg-blue-900 hover:bg-blue-800">
-                    <Save className="w-4 h-4 mr-2" />
+                  <Button onClick={handleSaveContract} className="bg-blue-900 hover:bg-blue-800" disabled={isSaving}>
+                    {isSaving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />}
                     Salvar Configurações
                   </Button>
                 </div>
@@ -1112,8 +1112,8 @@ export default function AdminPanel() {
                   </div>
                   <div className="flex justify-end gap-2 pt-4">
                     <Button type="button" variant="outline" onClick={() => setIsFormOpen(false)}>Cancelar</Button>
-                    <Button type="submit" className="bg-blue-900 hover:bg-blue-800">
-                      <Save className="w-4 h-4 mr-2" />
+                    <Button type="submit" className="bg-blue-900 hover:bg-blue-800" disabled={isSaving}>
+                      {isSaving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />}
                       {editingUser ? 'Salvar Alterações' : 'Criar Usuário e Gerar Senha'}
                     </Button>
                   </div>
@@ -1266,8 +1266,8 @@ export default function AdminPanel() {
                   </div>
                   <div className="flex justify-end gap-2 pt-4">
                     <Button type="button" variant="outline" onClick={() => setIsGroupFormOpen(false)}>Cancelar</Button>
-                    <Button type="submit" className="bg-blue-900 hover:bg-blue-800">
-                      <Save className="w-4 h-4 mr-2" />
+                    <Button type="submit" className="bg-blue-900 hover:bg-blue-800" disabled={isSaving}>
+                      {isSaving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />}
                       Salvar Grupo
                     </Button>
                   </div>

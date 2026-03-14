@@ -179,9 +179,21 @@ export default function CRM() {
         status: 'Novo'
       }));
 
-      await db.leads.import(leadsToImport);
+      const result = await db.leads.import(leadsToImport);
       await refreshLeads();
-      notify('success', `${leadsToImport.length} leads importados com sucesso!`);
+      
+      if (result.count > 0) {
+        notify('success', `${result.count} leads importados com sucesso!`);
+        if (leadsToImport.length > result.count) {
+          notify('info', `${leadsToImport.length - result.count} duplicados foram ignorados.`);
+        }
+      } else if (leadsToImport.length > 0) {
+        notify('warning', 'Nenhum lead novo foi importado (todos eram duplicados ou inválidos).');
+      }
+      
+      if (result.errors && result.errors.length > 0) {
+        console.error('Import errors:', result.errors);
+      }
     } catch (error) {
       console.error('Error importing leads:', error);
       notify('error', 'Erro ao processar o arquivo. Verifique o formato.');

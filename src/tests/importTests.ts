@@ -32,8 +32,9 @@ export async function runImportTests() {
         grupo_plus: 2
       }
     ];
-    const importedComms = await db.commissions.import(commData);
-    console.log('✅ Comissões importadas com sucesso. Qtd:', importedComms.length);
+    const resultComms = await db.commissions.import(commData);
+    console.log('✅ Comissões importadas com sucesso. Qtd:', resultComms.count);
+    const importedComms = resultComms.data;
     if (importedComms[0].comissao_ouro === 0 && importedComms[0].comissao_prata === 0) {
       console.log('✅ Normalização de nulos funcionou!');
     } else {
@@ -50,10 +51,10 @@ export async function runImportTests() {
       status: 'Disponível'
     }));
     
-    const importedLeads = await db.leads.import(leadData, (progress) => {
+    const resultLeads = await db.leads.import(leadData, (progress) => {
       console.log(`Progresso da importação: ${progress}%`);
     });
-    console.log('✅ Leads importados com sucesso. Qtd:', importedLeads.length);
+    console.log('✅ Leads importados com sucesso. Qtd:', resultLeads.count);
 
     console.log('--- TODOS OS TESTES CONCLUÍDOS COM SUCESSO ---');
     return true;

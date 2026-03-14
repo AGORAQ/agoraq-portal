@@ -107,18 +107,18 @@ export function CommissionProvider({ children }: { children: React.ReactNode }) 
   const importCommissions = async (newCommissions: Omit<CommissionTable, 'id' | 'data_criacao' | 'data_atualizacao'>[]) => {
     if (!user) return;
     try {
-      const imported = await db.commissions.import(newCommissions, user.role, user.id);
+      const result = await db.commissions.import(newCommissions, user.role, user.id);
       
       // Log the import
       await db.logs.add({
         user: user.name,
         linesProcessed: newCommissions.length,
-        errorsFound: 0,
+        errorsFound: result.errors?.length || 0,
         fileName: 'Importação Excel'
       });
 
       await refreshCommissions();
-      notify('success', `${imported.length} tabelas importadas com sucesso!`);
+      notify('success', `${result.count} tabelas importadas com sucesso!`);
     } catch (error: any) {
       notify('error', error.message);
       // Log the error

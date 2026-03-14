@@ -16,4 +16,5 @@ if (!supabaseUrl || !supabaseAnonKey) {
 const finalUrl = supabaseUrl || 'https://placeholder-url.supabase.co';
 const finalKey = supabaseAnonKey || 'placeholder-key';
 
+export const isSupabaseConfigured = !!supabaseUrl && !!supabaseAnonKey && !supabaseUrl.includes('placeholder');
 export const supabase = createClient(finalUrl, finalKey);

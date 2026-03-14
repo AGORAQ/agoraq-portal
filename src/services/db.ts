@@ -1,6 +1,57 @@
 import { supabase } from '@/lib/supabase';
 import { User, CommissionTable, AccessRequest, PlatformCredential, Sale, Bank, PaymentRequest, Announcement, ExcelImportLog, CommissionGroup, AcademyContent, AcademyView, Lead, FinancialEntry } from '@/types';
 
+// Helper for timeouts
+const withTimeout = <T>(promise: Promise<T> | PromiseLike<T>, timeoutMs: number = 15000): Promise<T> => {
+  return Promise.race([
+    Promise.resolve(promise),
+    new Promise<T>((_, reject) => 
+      setTimeout(() => reject(new Error('Tempo limite da operação excedido (Timeout)')), timeoutMs)
+    )
+  ]);
+};
+
+// Helper functions for data normalization
+const parseNum = (val: any): number => {
+  if (val === null || val === undefined || val === '') return 0;
+  if (typeof val === 'number') return val;
+  
+  // Basic cleanup
+  let clean = String(val).trim().replace(/[R$\s%]/g, '');
+  
+  // Handle BR format: 1.234,56 -> 1234.56
+  if (clean.includes(',') && clean.includes('.')) {
+    clean = clean.replace(/\./g, '').replace(',', '.');
+  } else if (clean.includes(',')) {
+    clean = clean.replace(',', '.');
+  } else if (clean.includes('.')) {
+    // Check if it's thousands separator: 1.234
+    const parts = clean.split('.');
+    if (parts[parts.length - 1].length === 3 && parseFloat(clean.replace('.', '')) > 100) {
+      clean = clean.replace('.', '');
+    }
+  }
+  
+  const parsed = parseFloat(clean);
+  if (isNaN(parsed)) return 0;
+  
+  // Percentage logic: 0.39 -> 39
+  if (parsed > 0 && parsed < 1) return parsed * 100;
+  
+  return parsed;
+};
+
+const parseParcelas = (val: any): number => {
+  if (!val) return 1;
+  const str = String(val);
+  // Handle ranges like "1 até 15" or "1-120"
+  const matches = str.match(/(\d+)\s*(?:até|to|-)\s*(\d+)/i);
+  if (matches && matches[2]) return parseInt(matches[2]) || 1;
+  // Just numbers
+  const num = parseInt(str.replace(/\D/g, ''));
+  return isNaN(num) ? 1 : num;
+};
+
 // Database Service - Supabase Driven
 export const db = {
   API_URL: import.meta.env.VITE_SUPABASE_URL || 'Supabase',
@@ -15,32 +66,44 @@ export const db = {
     }
   },
 
+  health: {
+    check: async () => {
+      try {
+        const result = await withTimeout(supabase.from('profiles').select('id').limit(1), 5000) as any;
+        if (result.error) return { ok: false, error: result.error.message };
+        return { ok: true };
+      } catch (e: any) {
+        return { ok: false, error: e.message };
+      }
+    }
+  },
+
   users: {
     getAll: async () => {
-      const { data, error } = await supabase
+      const result = await withTimeout(supabase
         .from('profiles')
         .select('*')
-        .order('nome');
-      if (error) throw error;
-      return data.map(mapProfileToUser);
+        .order('nome')) as any;
+      if (result.error) throw result.error;
+      return result.data.map(mapProfileToUser);
     },
     getById: async (id: string) => {
-      const { data, error } = await supabase
+      const result = await withTimeout(supabase
         .from('profiles')
         .select('*')
         .eq('id', id)
-        .single();
-      if (error) throw error;
-      return mapProfileToUser(data);
+        .single()) as any;
+      if (result.error) throw result.error;
+      return mapProfileToUser(result.data);
     },
     getByAuthId: async (authId: string) => {
-      const { data, error } = await supabase
+      const result = await withTimeout(supabase
         .from('profiles')
         .select('*')
         .eq('id', authId)
-        .single();
-      if (error) throw error;
-      return mapProfileToUser(data);
+        .single()) as any;
+      if (result.error) throw result.error;
+      return mapProfileToUser(result.data);
     },
     create: async (user: any) => {
       try {
@@ -159,59 +222,20 @@ export const db = {
       if (error) throw error;
     },
     import: async (comms: any[], userRole?: string, userId?: string, onProgress?: (p: number) => void) => {
-      console.log('Starting commissions import:', comms.length, 'records');
-      const CHUNK_SIZE = 100; 
+      console.log('DB: Iniciando importação de comissões:', comms.length, 'registros');
+      const CHUNK_SIZE = 50; // Smaller chunks for better reliability
       const total = comms.length;
       let processed = 0;
       const results = [];
+      const errors: string[] = [];
 
       for (let i = 0; i < total; i += CHUNK_SIZE) {
         const chunk = comms.slice(i, i + CHUNK_SIZE);
-        console.log(`Processing chunk ${i / CHUNK_SIZE + 1} of ${Math.ceil(total / CHUNK_SIZE)}`);
+        console.log(`DB: Processando lote ${i / CHUNK_SIZE + 1} de ${Math.ceil(total / CHUNK_SIZE)}`);
         
         const normalizedChunk = chunk.map(c => {
           const mapped = mapCommissionToTable(c);
           
-          const parseNum = (val: any) => {
-            if (val === null || val === undefined || val === '') return 0;
-            if (typeof val === 'number') return val;
-            
-            // Basic cleanup
-            let clean = String(val).trim().replace(/[R$\s%]/g, '');
-            
-            // Handle BR format: 1.234,56 -> 1234.56
-            if (clean.includes(',') && clean.includes('.')) {
-              clean = clean.replace(/\./g, '').replace(',', '.');
-            } else if (clean.includes(',')) {
-              clean = clean.replace(',', '.');
-            } else if (clean.includes('.')) {
-              // Check if it's thousands separator: 1.234
-              const parts = clean.split('.');
-              if (parts[parts.length - 1].length === 3 && parseFloat(clean.replace('.', '')) > 100) {
-                clean = clean.replace('.', '');
-              }
-            }
-            
-            const parsed = parseFloat(clean);
-            if (isNaN(parsed)) return 0;
-            
-            // Percentage logic: 0.39 -> 39
-            if (parsed > 0 && parsed < 1) return parsed * 100;
-            
-            return parsed;
-          };
-
-          const parseParcelas = (val: any) => {
-            if (!val) return 1;
-            const str = String(val);
-            // Handle ranges like "1 até 15" or "1-120"
-            const matches = str.match(/(\d+)\s*(?:até|to|-)\s*(\d+)/i);
-            if (matches && matches[2]) return parseInt(matches[2]) || 1;
-            // Just numbers
-            const num = parseInt(str.replace(/\D/g, ''));
-            return isNaN(num) ? 1 : num;
-          };
-
           // Official schema fields
           const cleanObj: any = {
             banco: String(mapped.banco || 'BANCO').substring(0, 100),
@@ -223,7 +247,8 @@ export const db = {
             grupo_ouro: parseNum(mapped.grupo_ouro),
             grupo_prata: parseNum(mapped.grupo_prata),
             grupo_plus: parseNum(mapped.grupo_plus),
-            status: mapped.status || 'Ativo'
+            status: mapped.status || 'Ativo',
+            origem_importacao: mapped.origem_importacao || 'Importação Manual'
           };
 
           if (mapped.vigencia) cleanObj.vigencia = mapped.vigencia;
@@ -232,40 +257,23 @@ export const db = {
         });
 
         try {
-          console.log(`Enviando lote de comissões ${i / CHUNK_SIZE + 1} para o Supabase...`);
-          // Explicitly list columns to avoid schema cache issues with non-existent columns like 'codigo_tabela'
-          const { data, error } = await supabase
+          console.log(`DB: Enviando lote de comissões ${i / CHUNK_SIZE + 1} para o Supabase...`);
+          const result = await withTimeout(supabase
             .from('commission_tables')
             .insert(normalizedChunk)
-            .select('id, banco, produto, tabela, parcelas, comissao_total_empresa, grupo_master, grupo_ouro, grupo_prata, grupo_plus, status, vigencia');
+            .select('id, banco, produto, tabela, parcelas, comissao_total_empresa, grupo_master, grupo_ouro, grupo_prata, grupo_plus, status, vigencia')) as any;
 
-          if (error) {
-            console.error('Error importing commissions chunk:', error);
-            // Try fallback table name if first one fails
-            if (error.code === '42P01') { // undefined_table
-              console.log('Table commission_tables not found, trying commissions...');
-              const { data: data2, error: error2 } = await supabase
-                .from('commissions')
-                .insert(normalizedChunk)
-                .select('id, banco, produto, tabela, parcelas, comissao_total_empresa, grupo_master, grupo_ouro, grupo_prata, grupo_plus, status, vigencia');
-              if (error2) {
-                console.error('Fallback table also failed:', error2);
-                throw error2;
-              }
-              if (data2) {
-                console.log('Lote processado com sucesso na tabela de fallback.');
-                results.push(...data2);
-              }
-            } else {
-              throw error;
-            }
-          } else if (data) {
-            console.log('Lote processado com sucesso na tabela principal.');
-            results.push(...data);
+          if (result.error) {
+            console.error('DB: Erro no lote de comissões:', result.error);
+            errors.push(`Lote ${i / CHUNK_SIZE + 1}: ${result.error.message}`);
+            continue;
+          } else if (result.data) {
+            console.log(`DB: Lote ${i / CHUNK_SIZE + 1} processado com sucesso. ${result.data.length} registros salvos.`);
+            results.push(...result.data);
           }
         } catch (chunkError: any) {
-          console.error('Fatal error in chunk:', chunkError);
-          throw new Error(`Erro no lote ${i / CHUNK_SIZE + 1}: ${chunkError.message || 'Erro desconhecido'}`);
+          console.error('DB: Erro fatal no lote:', chunkError);
+          errors.push(`Erro fatal no lote ${i / CHUNK_SIZE + 1}: ${chunkError.message || 'Erro desconhecido'}`);
         }
 
         processed += chunk.length;
@@ -274,8 +282,12 @@ export const db = {
         }
       }
 
-      console.log('Import finished successfully');
-      return results.map(mapTableToCommission);
+      console.log('DB: Importação de comissões finalizada com sucesso. Total:', results.length);
+      return {
+        count: results.length,
+        data: results.map(mapTableToCommission),
+        errors
+      };
     }
   },
 
@@ -386,9 +398,33 @@ export const db = {
       return { capturedCount, leads: data.map(mapTableToLead) };
     },
     create: async (lead: any) => {
+      // Check for duplicate phone number
+      let cleanPhone = String(lead.phone || '').replace(/[^\d]/g, '');
+      
+      // Normalize with 55 if missing
+      if (cleanPhone.length === 10 || cleanPhone.length === 11) {
+        cleanPhone = '55' + cleanPhone;
+      }
+      
+      if (cleanPhone) {
+        const { data: existing } = await supabase
+          .from('leads')
+          .select('id')
+          .eq('telefone', cleanPhone)
+          .maybeSingle();
+        
+        if (existing) {
+          throw new Error('Já existe um lead cadastrado com este número de telefone.');
+        }
+      }
+
+      const mapped = mapLeadToTable(lead);
+      // Ensure the mapped object has the normalized phone
+      mapped.telefone = cleanPhone;
+
       const { data, error } = await supabase
         .from('leads')
-        .insert([mapLeadToTable(lead)])
+        .insert([mapped])
         .select()
         .single();
       if (error) throw error;
@@ -396,54 +432,89 @@ export const db = {
     },
     import: async (leads: any[], onProgress?: (progress: number) => void) => {
       console.log('Starting leads import:', leads.length, 'records');
-      const CHUNK_SIZE = 200;
-      const total = leads.length;
-      let processed = 0;
-      const results = [];
-
-      if (total === 0) {
-        console.warn('Import called with empty leads array');
-        return [];
-      }
-
-      for (let i = 0; i < total; i += CHUNK_SIZE) {
-        const chunk = leads.slice(i, i + CHUNK_SIZE);
-        console.log(`Processing leads chunk ${i / CHUNK_SIZE + 1} of ${Math.ceil(total / CHUNK_SIZE)} (${chunk.length} items)`);
+      
+      // 1. Initial normalization and internal deduplication
+      const phoneMap = new Map();
+      const uniqueLeads = [];
+      
+      for (const l of leads) {
+        const mapped = mapLeadToTable(l);
+        let phone = String(mapped.telefone || '').replace(/[^\d]/g, '');
         
-        const normalizedChunk = chunk.map(l => {
-          const mapped = mapLeadToTable(l);
-          return {
+        if (!phone) continue; // Skip if no phone
+
+        // Normalize with 55 if missing
+        if (phone.length === 10 || phone.length === 11) {
+          phone = '55' + phone;
+        }
+        
+        if (!phoneMap.has(phone)) {
+          phoneMap.set(phone, true);
+          uniqueLeads.push({
+            ...mapped,
+            telefone: phone,
             nome: String(mapped.nome || 'Sem Nome').substring(0, 255),
-            telefone: String(mapped.telefone || '').replace(/[^\d]/g, '').substring(0, 50),
             email: String(mapped.email || '').substring(0, 255),
             cpf: String(mapped.cpf || '').replace(/\D/g, '').substring(0, 11),
             banco_origem: String(mapped.banco_origem || '').substring(0, 100),
+            importado_por: String(mapped.importado_por || 'Admin').substring(0, 100),
             status: mapped.status || 'Disponível',
             metadata: mapped.metadata || {},
             created_at: mapped.created_at || new Date().toISOString()
-          };
-        });
+          });
+        }
+      }
 
+      const CHUNK_SIZE = 100;
+      const total = uniqueLeads.length;
+      let processed = 0;
+      const results = [];
+      const errors: string[] = [];
+
+      if (total === 0) {
+        console.warn('Import called with empty or duplicate-only leads array');
+        return { count: 0, data: [], errors: [] };
+      }
+
+      for (let i = 0; i < total; i += CHUNK_SIZE) {
+        const chunk = uniqueLeads.slice(i, i + CHUNK_SIZE);
+        const chunkPhones = chunk.map(l => l.telefone);
+        
         try {
-          console.log(`Sending chunk to Supabase...`);
-          const { data, error } = await supabase
+          // 2. Check for existing numbers in database for this chunk
+          const { data: existingLeads } = await withTimeout(supabase
             .from('leads')
-            .insert(normalizedChunk)
-            .select();
-
-          if (error) {
-            console.error('Error importing leads chunk:', error);
-            throw error;
+            .select('telefone')
+            .in('telefone', chunkPhones)) as any;
+          
+          const existingPhones = new Set(existingLeads?.map((l: any) => l.telefone) || []);
+          
+          // 3. Filter out existing numbers
+          const finalChunk = chunk.filter(l => !existingPhones.has(l.telefone));
+          
+          if (finalChunk.length === 0) {
+            processed += chunk.length;
+            if (onProgress) onProgress(Math.round((processed / total) * 100));
+            continue;
           }
-          if (data) {
-            console.log(`Chunk processed successfully. ${data.length} items saved.`);
-            results.push(...data);
-          } else {
-            console.warn('Supabase returned no data for chunk');
+
+          console.log(`Sending chunk to Supabase (${finalChunk.length} new items)...`);
+          const result = await withTimeout(supabase
+            .from('leads')
+            .insert(finalChunk)
+            .select()) as any;
+
+          if (result.error) {
+            console.error('Error importing leads chunk:', result.error);
+            errors.push(`Lote ${i / CHUNK_SIZE + 1}: ${result.error.message}`);
+            continue;
+          }
+          if (result.data) {
+            results.push(...result.data);
           }
         } catch (chunkError: any) {
           console.error('Fatal error in leads chunk:', chunkError);
-          throw new Error(`Erro no lote de leads ${i / CHUNK_SIZE + 1}: ${chunkError.message || 'Erro desconhecido'}`);
+          errors.push(`Erro fatal no lote ${i / CHUNK_SIZE + 1}: ${chunkError.message || 'Erro desconhecido'}`);
         }
 
         processed += chunk.length;
@@ -453,7 +524,11 @@ export const db = {
       }
 
       console.log('Leads import finished successfully. Total results:', results.length);
-      return results.map(mapTableToLead);
+      return {
+        count: results.length,
+        data: results.map(mapTableToLead),
+        errors
+      };
     },
     delete: async (id: string) => {
       const { error } = await supabase
@@ -481,46 +556,123 @@ export const db = {
       return data.map(mapTableToSale);
     },
     create: async (sale: any, user: User) => {
+      console.log('DB: Criando venda:', sale);
       // 1. Create the sale
+      const mappedSale = mapSaleToTable({ ...sale, vendedor_id: user.id });
+      console.log('DB: Venda mapeada para Supabase:', mappedSale);
+      
       const { data: saleData, error: saleError } = await supabase
         .from('sales')
-        .insert([mapSaleToTable({ ...sale, vendedor_id: user.id })])
+        .insert([mappedSale])
         .select()
         .single();
       
-      if (saleError) throw saleError;
+      if (saleError) {
+        console.error('DB Error (sales.create):', saleError);
+        throw saleError;
+      }
 
       // 2. Create corresponding financial entry (Credit for the seller)
       const financialEntry: Partial<FinancialEntry> = {
         vendedor_id: user.id,
         vendedor_nome: user.name,
         tipo: 'Crédito',
-        valor: sale.commission || 0,
+        valor: sale.commission || sale.valor_comissao || 0,
         status: 'Pendente',
-        descricao: `Comissão Venda: ${sale.client || 'Cliente'} - Proposta: ${sale.proposal}`,
+        descricao: `Comissão Venda: ${sale.client || sale.cliente || 'Cliente'} - Proposta: ${sale.proposal || 'S/N'}`,
         data_vencimento: new Date().toISOString().split('T')[0]
       };
 
-      await supabase.from('financial_entries').insert([financialEntry]);
+      const { error: finError } = await supabase.from('financial_entries').insert([financialEntry]);
+      if (finError) {
+        console.error('DB Error (financial_entries.insert from sales.create):', finError);
+      }
 
       return mapTableToSale(saleData);
     },
     update: async (id: string, updates: any) => {
+      console.log('DB: Atualizando venda:', id, updates);
       const { data, error } = await supabase
         .from('sales')
         .update(mapSaleToTable(updates))
         .eq('id', id)
         .select()
         .single();
-      if (error) throw error;
+      if (error) {
+        console.error('DB Error (sales.update):', error);
+        throw error;
+      }
       return mapTableToSale(data);
     },
     delete: async (id: string) => {
+      console.log('DB: Deletando venda:', id);
       const { error } = await supabase
         .from('sales')
         .delete()
         .eq('id', id);
-      if (error) throw error;
+      if (error) {
+        console.error('DB Error (sales.delete):', error);
+        throw error;
+      }
+    },
+    import: async (sales: any[], user: User, onProgress?: (p: number) => void) => {
+      console.log('DB: Iniciando importação de vendas:', sales.length, 'registros');
+      const CHUNK_SIZE = 50;
+      const total = sales.length;
+      let processed = 0;
+      const results = [];
+      const errors: string[] = [];
+
+      for (let i = 0; i < total; i += CHUNK_SIZE) {
+        const chunk = sales.slice(i, i + CHUNK_SIZE);
+        console.log(`DB: Processando lote de vendas ${i / CHUNK_SIZE + 1} de ${Math.ceil(total / CHUNK_SIZE)}`);
+        
+        const mappedChunk = chunk.map(s => mapSaleToTable({ ...s, vendedor_id: user.id }));
+
+        try {
+          const result = await withTimeout(supabase
+            .from('sales')
+            .insert(mappedChunk)
+            .select()) as any;
+
+          if (result.error) {
+            console.error('DB: Erro no lote de vendas:', result.error);
+            errors.push(`Lote ${i / CHUNK_SIZE + 1}: ${result.error.message}`);
+            continue;
+          }
+
+          if (result.data) {
+            results.push(...result.data);
+            
+            // Create financial entries for these sales
+            const financialEntries = result.data.map((sale: any) => ({
+              vendedor_id: user.id,
+              vendedor_nome: user.name,
+              sale_id: sale.id,
+              tipo: 'Crédito',
+              valor: sale.valor_comissao || 0,
+              status: 'Pendente',
+              descricao: `Importação Venda: ${sale.cliente || 'Cliente'} - Proposta: ${sale.proposal || 'S/N'}`,
+              data_vencimento: new Date().toISOString().split('T')[0]
+            }));
+
+            const { error: finError } = await withTimeout(supabase.from('financial_entries').insert(financialEntries)) as any;
+            if (finError) console.error('DB: Erro ao criar entradas financeiras para lote:', finError);
+          }
+        } catch (err: any) {
+          console.error('DB: Erro fatal no lote de vendas:', err);
+          errors.push(`Erro fatal no lote ${i / CHUNK_SIZE + 1}: ${err.message}`);
+        }
+
+        processed += chunk.length;
+        if (onProgress) onProgress(Math.round((processed / total) * 100));
+      }
+
+      return {
+        count: results.length,
+        data: results.map(mapTableToSale),
+        errors
+      };
     }
   },
 
@@ -594,55 +746,163 @@ export const db = {
 
   bancos: {
     getAll: async () => {
-      // Derive banks from commission_tables to follow official schema
       const { data, error } = await supabase
-        .from('commission_tables')
-        .select('banco')
-        .order('banco');
+        .from('banks')
+        .select('*')
+        .order('nome_banco');
       
-      if (error) throw error;
+      if (error) {
+        console.error('Error fetching banks:', error);
+        throw error;
+      }
       
-      // Filter unique banks
-      const uniqueBanks = Array.from(new Set(data.map(d => d.banco)))
-        .map((nome, index) => ({
-          id: String(index + 1),
-          nome,
-          cor: '#1e293b',
-          status: 'Ativo'
-        }));
-      
-      return uniqueBanks;
+      return data.map(b => ({
+        id: b.id,
+        nome: b.nome_banco,
+        tipo: b.tipo_produto,
+        percentual: b.percentual_maximo,
+        status: b.status
+      }));
     },
     create: async (bank: any) => {
-      // Banks are managed via commission_tables import
-      return { id: 'new', ...bank };
+      const { data, error } = await supabase
+        .from('banks')
+        .insert([{
+          nome_banco: bank.nome,
+          tipo_produto: bank.tipo || 'Crédito',
+          percentual_maximo: bank.percentual || 100,
+          status: bank.status || 'Ativo'
+        }])
+        .select()
+        .single();
+      
+      if (error) throw error;
+      return {
+        id: data.id,
+        nome: data.nome_banco,
+        tipo: data.tipo_produto,
+        percentual: data.percentual_maximo,
+        status: data.status
+      };
     },
     update: async (id: string, updates: any) => {
-      return { id, ...updates };
+      const mapped: any = {};
+      if (updates.nome) mapped.nome_banco = updates.nome;
+      if (updates.tipo) mapped.tipo_produto = updates.tipo;
+      if (updates.percentual) mapped.percentual_maximo = updates.percentual;
+      if (updates.status) mapped.status = updates.status;
+
+      const { data, error } = await supabase
+        .from('banks')
+        .update(mapped)
+        .eq('id', id)
+        .select()
+        .single();
+      
+      if (error) throw error;
+      return {
+        id: data.id,
+        nome: data.nome_banco,
+        tipo: data.tipo_produto,
+        percentual: data.percentual_maximo,
+        status: data.status
+      };
     },
     delete: async (id: string) => {
-      return;
+      const { error } = await supabase
+        .from('banks')
+        .delete()
+        .eq('id', id);
+      if (error) throw error;
     }
   },
 
   commissionGroups: {
     getAll: async () => {
-      // Fixed groups as per official schema/business rules
-      return [
-        { id: '1', name: 'MASTER', description: 'Grupo Master', status: 'Ativo' },
-        { id: '2', name: 'OURO', description: 'Grupo Ouro', status: 'Ativo' },
-        { id: '3', name: 'PRATA', description: 'Grupo Prata', status: 'Ativo' },
-        { id: '4', name: 'PLUS', description: 'Grupo Plus', status: 'Ativo' }
-      ];
+      console.log('DB: Buscando grupos de comissão...');
+      const { data, error } = await supabase
+        .from('commission_groups')
+        .select('*')
+        .order('name');
+      
+      if (error) {
+        console.error('DB Error (commissionGroups.getAll):', error);
+        // Fallback to defaults if table doesn't exist yet
+        return [
+          { id: '1', name: 'MASTER', type: 'FGTS', status: 'Ativo', createdAt: new Date().toISOString() },
+          { id: '2', name: 'OURO', type: 'FGTS', status: 'Ativo', createdAt: new Date().toISOString() },
+          { id: '3', name: 'PRATA', type: 'FGTS', status: 'Ativo', createdAt: new Date().toISOString() },
+          { id: '4', name: 'PLUS', type: 'FGTS', status: 'Ativo', createdAt: new Date().toISOString() }
+        ];
+      }
+      
+      return data.map(g => ({
+        id: g.id,
+        name: g.name,
+        type: g.type,
+        banco_id: g.banco_id,
+        status: g.status,
+        createdAt: g.created_at
+      }));
     },
     create: async (group: any) => {
-      return { id: 'new', ...group };
+      console.log('DB: Criando grupo de comissão:', group);
+      const { data, error } = await supabase
+        .from('commission_groups')
+        .insert([{
+          name: group.name,
+          type: group.type,
+          banco_id: group.banco_id,
+          status: group.status || 'Ativo'
+        }])
+        .select()
+        .single();
+      
+      if (error) {
+        console.error('DB Error (commissionGroups.create):', error);
+        throw error;
+      }
+      return {
+        id: data.id,
+        name: data.name,
+        type: data.type,
+        banco_id: data.banco_id,
+        status: data.status,
+        createdAt: data.created_at
+      };
     },
     update: async (id: string, updates: any) => {
-      return { id, ...updates };
+      console.log('DB: Atualizando grupo de comissão:', id, updates);
+      const { data, error } = await supabase
+        .from('commission_groups')
+        .update(updates)
+        .eq('id', id)
+        .select()
+        .single();
+      
+      if (error) {
+        console.error('DB Error (commissionGroups.update):', error);
+        throw error;
+      }
+      return {
+        id: data.id,
+        name: data.name,
+        type: data.type,
+        banco_id: data.banco_id,
+        status: data.status,
+        createdAt: data.created_at
+      };
     },
     delete: async (id: string) => {
-      return;
+      console.log('DB: Deletando grupo de comissão:', id);
+      const { error } = await supabase
+        .from('commission_groups')
+        .delete()
+        .eq('id', id);
+      if (error) {
+        console.error('DB Error (commissionGroups.delete):', error);
+        throw error;
+      }
     }
   },
 
@@ -1057,12 +1317,14 @@ function mapCommissionToTable(c: any): any {
 function mapTableToSale(t: any): Sale {
   return {
     id: t.id,
-    vendedor_id: t.vendedor_id,
-    vendedor_nome: t.profiles?.nome || 'Desconhecido',
+    vendedor_id: t.vendedor,
+    vendedor_nome: t.vendedor_nome || t.profiles?.nome || 'Desconhecido',
     lead_id: t.lead_id,
-    date: t.created_at,
-    client: t.leads?.nome || 'Cliente', // Try to get from lead join
-    cpf: t.leads?.cpf,
+    date: t.data || t.created_at,
+    client: t.cliente || t.leads?.nome || 'Cliente',
+    cpf: t.cpf || t.leads?.cpf,
+    phone: t.phone,
+    proposal: t.proposal,
     bank: t.banco,
     produto: t.produto,
     tabela: t.tabela,
@@ -1077,23 +1339,28 @@ function mapTableToSale(t: any): Sale {
     value: t.valor_venda,
     commission: t.valor_comissao,
     companyCommission: t.percentual_empresa,
-    seller: t.profiles?.nome || 'Desconhecido'
+    seller: t.vendedor_nome || t.profiles?.nome || 'Desconhecido'
   };
 }
 
 function mapSaleToTable(s: any): any {
   const t: any = {};
-  if (s.vendedor_id) t.vendedor_id = s.vendedor_id;
+  if (s.vendedor_id) t.vendedor = s.vendedor_id;
   if (s.lead_id) t.lead_id = s.lead_id;
-  if (s.bank) t.banco = s.bank;
+  if (s.bank || s.banco) t.banco = s.bank || s.banco;
   if (s.produto) t.produto = s.produto;
-  if (s.tabela) t.tabela = s.tabela;
+  if (s.tabela || s.operacao) t.tabela = s.tabela || s.operacao;
   if (s.parcelas) t.parcelas = s.parcelas;
-  if (s.valor_venda) t.valor_venda = s.valor_venda;
-  if (s.valor_comissao) t.valor_comissao = s.valor_comissao;
-  if (s.percentual_empresa) t.percentual_empresa = s.percentual_empresa;
-  if (s.percentual_vendedor) t.percentual_vendedor = s.percentual_vendedor;
+  if (s.valor_venda !== undefined || s.value !== undefined) t.valor_venda = s.valor_venda !== undefined ? s.valor_venda : s.value;
+  if (s.valor_comissao !== undefined || s.commission !== undefined) t.valor_comissao = s.valor_comissao !== undefined ? s.valor_comissao : s.commission;
+  if (s.percentual_empresa !== undefined || s.companyCommission !== undefined) t.percentual_empresa = s.percentual_empresa !== undefined ? s.percentual_empresa : s.companyCommission;
+  if (s.percentual_vendedor !== undefined) t.percentual_vendedor = s.percentual_vendedor;
   if (s.grupo_vendedor) t.grupo_vendedor = s.grupo_vendedor;
   if (s.status) t.status = s.status;
+  if (s.client || s.cliente) t.cliente = s.client || s.cliente;
+  if (s.cpf) t.cpf = s.cpf;
+  if (s.phone) t.phone = s.phone;
+  if (s.proposal) t.proposal = s.proposal;
+  if (s.date) t.data = s.date;
   return t;
 }
