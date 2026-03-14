@@ -559,7 +559,8 @@ export const db = {
     getAll: async (user?: User) => {
       let query = supabase
         .from('sales')
-        .select('*, profiles(nome, grupo_comissao)')
+        // Explicitly specify the relationship 'vendedor_id'
+        .select('*, profiles!vendedor_id(nome, grupo_comissao)')
         .order('created_at', { ascending: false });
       
       if (user && user.role !== 'admin') {
@@ -568,7 +569,7 @@ export const db = {
           query = query.eq('grupo_vendedor', user.grupo_comissao);
         } else {
           // Seller sees only their own
-          query = query.eq('vendedor', user.id);
+          query = query.eq('vendedor_id', user.id);
         }
       }
 
@@ -613,7 +614,7 @@ export const db = {
       const { data: saleData, error: saleError } = await supabase
         .from('sales')
         .insert([mappedSale])
-        .select()
+        .select('*')
         .single();
       
       if (saleError) throw saleError;
@@ -640,7 +641,7 @@ export const db = {
         .from('sales')
         .update(mapSaleToTable(updates))
         .eq('id', id)
-        .select()
+        .select('*')
         .single();
       if (error) {
         console.error('DB Error (sales.update):', error);
@@ -677,7 +678,7 @@ export const db = {
           const result = await withTimeout(supabase
             .from('sales')
             .insert(mappedChunk)
-            .select()) as any;
+            .select('*')) as any;
 
           if (result.error) {
             console.error('DB: Erro no lote de vendas:', result.error);
@@ -1394,7 +1395,7 @@ function mapCommissionToTable(c: any): any {
 function mapTableToSale(t: any): Sale {
   return {
     id: t.id,
-    vendedor_id: t.vendedor,
+    vendedor_id: t.vendedor_id,
     vendedor_nome: t.vendedor_nome || t.profiles?.nome || 'Desconhecido',
     lead_id: t.lead_id,
     date: t.data || t.created_at,
@@ -1426,7 +1427,6 @@ function mapSaleToTable(s: any): any {
   // Vendedor mapping (Critical for not-null constraints)
   const sellerId = s.vendedor_id || s.vendedor || s.usuario_id;
   if (sellerId) {
-    t.vendedor = sellerId;
     t.vendedor_id = sellerId;
   }
   
