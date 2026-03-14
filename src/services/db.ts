@@ -98,12 +98,11 @@ export const db = {
     },
     getByAuthId: async (authId: string) => {
       try {
-        // Try by auth_user_id first (Supabase standard), then by id (fallback/SQLite)
-        // Using or() to support both schemas during transition
+        // Voltando para busca por 'id' pois a coluna 'auth_user_id' não existe no banco atual
         const result = await withTimeout(supabase
           .from('profiles')
           .select('*')
-          .or(`auth_user_id.eq.${authId},id.eq.${authId}`)
+          .eq('id', authId)
           .maybeSingle(), 30000) as any;
         
         if (result.error) throw result.error;
