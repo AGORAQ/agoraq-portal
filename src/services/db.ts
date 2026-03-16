@@ -2,13 +2,24 @@ import { supabase } from '@/lib/supabase';
 import { User, CommissionTable, AccessRequest, PlatformCredential, Sale, Bank, PaymentRequest, Announcement, ExcelImportLog, CommissionGroup, AcademyContent, AcademyView, Lead, FinancialEntry } from '@/types';
 
 // Helper for timeouts
-const withTimeout = <T>(promise: Promise<T> | PromiseLike<T>, timeoutMs: number = 45000): Promise<T> => {
+const withTimeout = <T>(promise: Promise<T> | PromiseLike<T>, timeoutMs: number = 90000): Promise<T> => {
   return Promise.race([
     Promise.resolve(promise),
     new Promise<T>((_, reject) => 
       setTimeout(() => reject(new Error('Tempo limite da operação excedido (Timeout)')), timeoutMs)
     )
   ]);
+};
+
+// Retry helper
+const withRetry = async <T>(fn: () => Promise<T>, retries: number = 3, delay: number = 1000): Promise<T> => {
+  try {
+    return await fn();
+  } catch (error) {
+    if (retries <= 0) throw error;
+    await new Promise(resolve => setTimeout(resolve, delay));
+    return withRetry(fn, retries - 1, delay * 2);
+  }
 };
 
 // Helper functions for data normalization
@@ -69,7 +80,11 @@ export const db = {
   health: {
     check: async () => {
       try {
-        const result = await withTimeout(supabase.from('profiles').select('id').limit(1), 5000) as any;
+        // Aumentado para 45 segundos e com 3 tentativas
+        const result = await withRetry(async () => {
+          return await withTimeout(supabase.from('profiles').select('id').limit(1), 45000);
+        }, 3) as any;
+        
         if (result.error) return { ok: false, error: result.error.message };
         return { ok: true };
       } catch (e: any) {
@@ -494,7 +509,8 @@ export const db = {
         }
       }
 
-      const CHUNK_SIZE = 100;
+      const SELECT_CHUNK_SIZE = 500; // Larger chunk for checking existing
+      const INSERT_CHUNK_SIZE = 100; // Smaller chunk for inserting
       const total = uniqueLeads.length;
       let processed = 0;
       const results = [];
@@ -505,54 +521,66 @@ export const db = {
         return { count: 0, data: [], errors: [] };
       }
 
-      for (let i = 0; i < total; i += CHUNK_SIZE) {
-        const chunk = uniqueLeads.slice(i, i + CHUNK_SIZE);
+      // First, get all existing phones in larger batches to reduce query count
+      const existingPhones = new Set<string>();
+      for (let i = 0; i < total; i += SELECT_CHUNK_SIZE) {
+        const chunk = uniqueLeads.slice(i, i + SELECT_CHUNK_SIZE);
         const chunkPhones = chunk.map(l => l.telefone);
         
         try {
-          // 2. Check for existing numbers in database for this chunk
-          const { data: existingLeads } = await withTimeout(supabase
-            .from('leads')
-            .select('telefone')
-            .in('telefone', chunkPhones)) as any;
+          const result = await withRetry(async () => {
+            return await withTimeout(supabase
+              .from('leads')
+              .select('telefone')
+              .in('telefone', chunkPhones), 60000);
+          }, 2) as any;
           
-          const existingPhones = new Set(existingLeads?.map((l: any) => l.telefone) || []);
-          
-          // 3. Filter out existing numbers
-          const finalChunk = chunk.filter(l => !existingPhones.has(l.telefone));
-          
-          if (finalChunk.length === 0) {
-            processed += chunk.length;
-            if (onProgress) onProgress(Math.round((processed / total) * 100));
-            continue;
+          if (result.data) {
+            result.data.forEach((l: any) => existingPhones.add(l.telefone));
           }
+        } catch (err) {
+          console.error('Error checking existing phones:', err);
+        }
+      }
 
-          console.log(`Sending chunk to Supabase (${finalChunk.length} new items)...`);
-          const result = await withTimeout(supabase
-            .from('leads')
-            .insert(finalChunk)
-            .select()) as any;
+      // Filter out existing leads
+      const finalLeadsToInsert = uniqueLeads.filter(l => !existingPhones.has(l.telefone));
+      const toInsertCount = finalLeadsToInsert.length;
+
+      if (toInsertCount === 0) {
+        return { count: 0, data: [], errors: [] };
+      }
+
+      // Now insert in smaller chunks
+      for (let i = 0; i < toInsertCount; i += INSERT_CHUNK_SIZE) {
+        const chunk = finalLeadsToInsert.slice(i, i + INSERT_CHUNK_SIZE);
+        
+        try {
+          const result = await withRetry(async () => {
+            return await withTimeout(supabase
+              .from('leads')
+              .insert(chunk)
+              .select(), 90000);
+          }, 2) as any;
 
           if (result.error) {
-            console.error('Error importing leads chunk:', result.error);
-            errors.push(`Lote ${i / CHUNK_SIZE + 1}: ${result.error.message}`);
-            continue;
-          }
-          if (result.data) {
+            console.error('Error inserting leads chunk:', result.error);
+            errors.push(`Lote ${i / INSERT_CHUNK_SIZE + 1}: ${result.error.message}`);
+          } else if (result.data) {
             results.push(...result.data);
           }
         } catch (chunkError: any) {
-          console.error('Fatal error in leads chunk:', chunkError);
-          errors.push(`Erro fatal no lote ${i / CHUNK_SIZE + 1}: ${chunkError.message || 'Erro desconhecido'}`);
+          console.error('Fatal error in leads insert chunk:', chunkError);
+          errors.push(`Erro fatal no lote ${i / INSERT_CHUNK_SIZE + 1}: ${chunkError.message || 'Erro desconhecido'}`);
         }
 
         processed += chunk.length;
         if (onProgress) {
-          onProgress(Math.round((processed / total) * 100));
+          onProgress(Math.round((processed / toInsertCount) * 100));
         }
       }
 
-      console.log('Leads import finished successfully. Total results:', results.length);
+      console.log('Leads import finished. Total results:', results.length);
       return {
         count: results.length,
         data: results.map(mapTableToLead),

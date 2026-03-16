@@ -73,6 +73,12 @@ CREATE TABLE IF NOT EXISTS leads (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
+-- Índices para performance de busca e deduplicação
+CREATE INDEX IF NOT EXISTS idx_leads_telefone ON leads(telefone);
+CREATE INDEX IF NOT EXISTS idx_leads_cpf ON leads(cpf);
+CREATE INDEX IF NOT EXISTS idx_leads_status ON leads(status);
+CREATE INDEX IF NOT EXISTS idx_leads_capturado_por ON leads(capturado_por);
+
 -- 5. Tabela de Vendas
 CREATE TABLE IF NOT EXISTS sales (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
