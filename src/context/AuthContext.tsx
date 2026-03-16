@@ -39,7 +39,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     checkSession();
 
     // Listen for changes on auth state (logged in, signed out, etc.)
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+    const { data: { subscription: authSubscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (session?.user) {
         try {
           const profile = await db.users.getByAuthId(session.user.id);
@@ -53,7 +53,38 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setLoading(false);
     });
 
-    return () => subscription.unsubscribe();
+    // Real-time listener for profile changes
+    let profileSubscription: any = null;
+
+    const setupProfileSubscription = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user) {
+        const profile = await db.users.getByAuthId(session.user.id);
+        
+        profileSubscription = supabase
+          .channel(`profile-${profile.id}`)
+          .on('postgres_changes', 
+            { 
+              event: 'UPDATE', 
+              schema: 'public', 
+              table: 'profiles',
+              filter: `id=eq.${profile.id}`
+            }, 
+            (payload) => {
+              console.log('AuthContext: Perfil atualizado em tempo real:', payload.new);
+              setUser(payload.new as User);
+            }
+          )
+          .subscribe();
+      }
+    };
+
+    setupProfileSubscription();
+
+    return () => {
+      authSubscription.unsubscribe();
+      if (profileSubscription) profileSubscription.unsubscribe();
+    };
   }, []);
 
   const login = async (email: string, password?: string) => {

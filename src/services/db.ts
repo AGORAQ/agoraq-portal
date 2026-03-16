@@ -2,7 +2,7 @@ import { supabase } from '@/lib/supabase';
 import { User, CommissionTable, AccessRequest, PlatformCredential, Sale, Bank, PaymentRequest, Announcement, ExcelImportLog, CommissionGroup, AcademyContent, AcademyView, Lead, FinancialEntry } from '@/types';
 
 // Helper for timeouts
-const withTimeout = <T>(promise: Promise<T> | PromiseLike<T>, timeoutMs: number = 15000): Promise<T> => {
+const withTimeout = <T>(promise: Promise<T> | PromiseLike<T>, timeoutMs: number = 45000): Promise<T> => {
   return Promise.race([
     Promise.resolve(promise),
     new Promise<T>((_, reject) => 
@@ -103,7 +103,7 @@ export const db = {
           .from('profiles')
           .select('*')
           .eq('id', authId)
-          .maybeSingle(), 30000) as any;
+          .maybeSingle(), 60000) as any;
         
         if (result.error) throw result.error;
         if (!result.data) throw new Error('Perfil não encontrado para o ID fornecido');
@@ -349,7 +349,7 @@ export const db = {
       return filtered.map(mapTableToLead);
     },
     capture: async (leadId: string, userId: string) => {
-      const { data, error } = await supabase
+      const result = await withTimeout(supabase
         .from('leads')
         .update({
           capturado_por: userId,
@@ -359,13 +359,17 @@ export const db = {
         .eq('id', leadId)
         .eq('status', 'Disponível')
         .select()
-        .single();
-      if (error) throw error;
-      return mapTableToLead(data);
+        .single()) as any;
+      if (result.error) throw result.error;
+      return mapTableToLead(result.data);
     },
     bulkCapture: async (leadIds: string[], userId: string) => {
+      if (!leadIds || leadIds.length === 0) {
+        return { capturedCount: 0, leads: [] };
+      }
+
       // 1. Capture the leads
-      const { data, error } = await supabase
+      const result = await withTimeout(supabase
         .from('leads')
         .update({
           capturado_por: userId,
@@ -374,37 +378,53 @@ export const db = {
         })
         .in('id', leadIds)
         .eq('status', 'Disponível')
-        .select();
+        .select()) as any;
       
-      if (error) throw error;
-      const capturedCount = data?.length || 0;
+      if (result.error) throw result.error;
+      const capturedCount = result.data?.length || 0;
+
+      if (capturedCount === 0) {
+        throw new Error('Nenhum lead disponível pôde ser capturado. Eles podem ter sido capturados por outro usuário.');
+      }
 
       if (capturedCount > 0) {
         // 2. Update user's daily count
         const today = new Date().toISOString().split('T')[0];
         
         // Get current count
-        const { data: profile } = await supabase
+        const profileResult = await withTimeout(supabase
           .from('profiles')
           .select('daily_lead_count, last_lead_date')
           .eq('id', userId)
-          .single();
+          .single()) as any;
         
+        const profile = profileResult.data;
         let newCount = capturedCount;
         if (profile && profile.last_lead_date === today) {
           newCount += (profile.daily_lead_count || 0);
         }
 
-        await supabase
+        await withTimeout(supabase
           .from('profiles')
           .update({
             daily_lead_count: newCount,
             last_lead_date: today
           })
-          .eq('id', userId);
+          .eq('id', userId)) as any;
       }
 
-      return { capturedCount, leads: data.map(mapTableToLead) };
+      return { capturedCount, leads: result.data.map(mapTableToLead) };
+    },
+    getCapturedToday: async (userId: string) => {
+      const today = new Date().toISOString().split('T')[0];
+      const result = await withTimeout(supabase
+        .from('leads')
+        .select('id')
+        .eq('capturado_por', userId)
+        .eq('status', 'Capturado')
+        .gte('capturado_em', today)) as any;
+      if (result.error) throw result.error;
+      return result.data?.length || 0;
     },
     create: async (lead: any) => {
       // Check for duplicate phone number
@@ -559,8 +579,8 @@ export const db = {
     getAll: async (user?: User) => {
       let query = supabase
         .from('sales')
-        // Explicitly specify the relationship 'vendedor_id'
-        .select('*, profiles!vendedor_id(nome, grupo_comissao)')
+        // Explicitly specify the relationship 'vendedor'
+        .select('*, profiles!vendedor(nome, grupo_comissao)')
         .order('created_at', { ascending: false });
       
       if (user && user.role !== 'admin') {
@@ -569,13 +589,13 @@ export const db = {
           query = query.eq('grupo_vendedor', user.grupo_comissao);
         } else {
           // Seller sees only their own
-          query = query.eq('vendedor_id', user.id);
+          query = query.eq('vendedor', user.id);
         }
       }
 
-      const { data, error } = await query;
-      if (error) throw error;
-      return data.map(mapTableToSale);
+      const result = await withTimeout(query) as any;
+      if (result.error) throw result.error;
+      return result.data.map(mapTableToSale);
     },
     subscribe: (user: User, callback: (sales: Sale[]) => void) => {
       let filter = '';
@@ -631,23 +651,41 @@ export const db = {
         data_vencimento: new Date().toISOString().split('T')[0]
       };
 
-      await supabase.from('financial_entries').insert([financialEntry]);
+      const { error: finError } = await supabase.from('financial_entries').insert([financialEntry]);
+      if (finError) {
+        console.error('Erro ao criar entrada financeira:', finError);
+      }
+      
+      // 3. Update user's accumulated balance (fetch latest first to avoid race conditions)
+      const { data: profile, error: profileError } = await supabase
+        .from('profiles')
+        .select('saldo_acumulado')
+        .eq('id', user.id)
+        .single();
+      
+      if (!profileError && profile) {
+        const currentBalance = profile.saldo_acumulado || 0;
+        const newCommission = sale.commission || 0;
+        await db.users.update(user.id, { 
+          saldo_acumulado: currentBalance + newCommission 
+        });
+      }
 
       return mapTableToSale(saleData);
     },
     update: async (id: string, updates: any) => {
       console.log('DB: Atualizando venda:', id, updates);
-      const { data, error } = await supabase
+      const result = await withTimeout(supabase
         .from('sales')
         .update(mapSaleToTable(updates))
         .eq('id', id)
         .select('*')
-        .single();
-      if (error) {
-        console.error('DB Error (sales.update):', error);
-        throw error;
+        .single()) as any;
+      if (result.error) {
+        console.error('DB Error (sales.update):', result.error);
+        throw result.error;
       }
-      return mapTableToSale(data);
+      return mapTableToSale(result.data);
     },
     delete: async (id: string) => {
       console.log('DB: Deletando venda:', id);
@@ -703,6 +741,15 @@ export const db = {
 
             const { error: finError } = await withTimeout(supabase.from('financial_entries').insert(financialEntries)) as any;
             if (finError) console.error('DB: Erro ao criar entradas financeiras para lote:', finError);
+
+            // Update user's accumulated balance
+            const batchCommission = financialEntries.reduce((acc: number, curr: any) => acc + (curr.valor || 0), 0);
+            const currentProfile = await db.users.getById(user.id);
+            if (currentProfile) {
+              await db.users.update(user.id, { 
+                saldo_acumulado: (currentProfile.saldo_acumulado || 0) + batchCommission 
+              });
+            }
           }
         } catch (err: any) {
           console.error('DB: Erro fatal no lote de vendas:', err);
@@ -1007,21 +1054,21 @@ export const db = {
       if (user && user.role !== 'admin') {
         if (user.role === 'supervisor') {
           // Supervisor sees entries for their group members
-          const { data: groupUsers } = await supabase
+          const groupUsersResult = await withTimeout(supabase
             .from('profiles')
             .select('id')
-            .eq('grupo_comissao', user.grupo_comissao);
+            .eq('grupo_comissao', user.grupo_comissao)) as any;
           
-          const userIds = groupUsers?.map(u => u.id) || [];
+          const userIds = groupUsersResult.data?.map((u: any) => u.id) || [];
           query = query.in('vendedor_id', userIds);
         } else {
           query = query.eq('vendedor_id', user.id);
         }
       }
 
-      const { data, error } = await query;
-      if (error) throw error;
-      return (data || []).map((d: any) => ({
+      const result = await withTimeout(query) as any;
+      if (result.error) throw result.error;
+      return (result.data || []).map((d: any) => ({
         ...d,
         usuario_id: d.usuario_id || d.vendedor_id,
         data_solicitacao: d.data_solicitacao || d.created_at,
@@ -1326,6 +1373,7 @@ function mapTableToLead(t: any): Lead {
     phone: t.telefone,
     email: t.email,
     cpf: t.cpf,
+    city: t.cidade,
     banco_origem: t.banco_origem,
     status: t.status,
     usuario_id: t.capturado_por,
@@ -1342,6 +1390,7 @@ function mapLeadToTable(l: any): any {
     telefone: l.phone || l.telefone,
     email: l.email,
     cpf: l.cpf,
+    cidade: l.city || l.cidade,
     banco_origem: l.banco_origem,
     status: l.status || 'Disponível',
     capturado_por: l.usuario_id || l.capturado_por,
@@ -1392,13 +1441,31 @@ function mapCommissionToTable(c: any): any {
   };
 }
 
+function formatDateToISO(dateStr: string | null | undefined): string {
+  if (!dateStr) return '';
+  // If already YYYY-MM-DD
+  if (/^\d{4}-\d{2}-\d{2}/.test(dateStr)) return dateStr.split('T')[0];
+  // If DD/MM/YYYY
+  const parts = dateStr.split('/');
+  if (parts.length === 3) {
+    const [d, m, y] = parts;
+    return `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
+  }
+  // Try native parse
+  try {
+    const d = new Date(dateStr);
+    if (!isNaN(d.getTime())) return d.toISOString().split('T')[0];
+  } catch (e) {}
+  return dateStr;
+}
+
 function mapTableToSale(t: any): Sale {
   return {
     id: t.id,
-    vendedor_id: t.vendedor_id,
+    vendedor_id: t.vendedor || t.vendedor_id,
     vendedor_nome: t.vendedor_nome || t.profiles?.nome || 'Desconhecido',
     lead_id: t.lead_id,
-    date: t.data || t.created_at,
+    date: formatDateToISO(t.data || t.created_at),
     client: t.cliente || t.leads?.nome || 'Cliente',
     cpf: t.cpf || t.leads?.cpf,
     phone: t.phone,
@@ -1417,44 +1484,68 @@ function mapTableToSale(t: any): Sale {
     value: t.valor_venda,
     commission: t.valor_comissao,
     companyCommission: t.percentual_empresa,
+    bankCommission: t.percentual_empresa,
     seller: t.vendedor_nome || t.profiles?.nome || 'Desconhecido'
   };
+}
+
+function parseNumber(val: any): number {
+  if (typeof val === 'number') return val;
+  if (!val) return 0;
+  if (typeof val === 'string') {
+    let clean = val.replace(/[R$\s]/g, '');
+    if (clean.includes('.') && clean.includes(',')) {
+      clean = clean.replace(/\./g, '').replace(',', '.');
+    } else if (clean.includes(',')) {
+      clean = clean.replace(',', '.');
+    }
+    const n = parseFloat(clean);
+    return isNaN(n) ? 0 : n;
+  }
+  return 0;
 }
 
 function mapSaleToTable(s: any): any {
   const t: any = {};
   
-  // Vendedor mapping (Critical for not-null constraints)
+  // Vendedor mapping
   const sellerId = s.vendedor_id || s.vendedor || s.usuario_id;
-  if (sellerId) {
-    t.vendedor_id = sellerId;
-  }
+  if (sellerId) t.vendedor = sellerId; // Match DB column name
   
   if (s.vendedor_nome || s.seller) {
     t.vendedor_nome = s.vendedor_nome || s.seller;
   }
 
-  // Core fields with fallbacks to avoid NULL
-  t.banco = s.banco || s.bank || '';
-  t.produto = s.produto || s.product || '';
-  t.tabela = s.tabela || s.operacao || '';
-  t.cliente = s.cliente || s.client || '';
-  t.cpf = s.cpf || '';
-  t.phone = s.phone || '';
-  t.proposal = s.proposal || '';
-  t.data = s.data || s.date || new Date().toISOString().split('T')[0];
+  // Core fields
+  if (s.banco !== undefined || s.bank !== undefined) t.banco = s.banco || s.bank;
+  if (s.produto !== undefined || s.product !== undefined) t.produto = s.produto || s.product;
+  if (s.tabela !== undefined || s.operacao !== undefined) t.tabela = s.tabela || s.operacao;
+  if (s.cliente !== undefined || s.client !== undefined) t.cliente = s.cliente || s.client;
+  if (s.cpf !== undefined) t.cpf = s.cpf;
+  if (s.phone !== undefined) t.phone = s.phone;
+  if (s.proposal !== undefined) t.proposal = s.proposal;
+  if (s.data !== undefined || s.date !== undefined) t.data = s.data || s.date;
   
   // Numeric fields
-  t.valor_venda = s.valor_venda !== undefined ? s.valor_venda : (s.value !== undefined ? s.value : 0);
-  t.valor_comissao = s.valor_comissao !== undefined ? s.valor_comissao : (s.commission !== undefined ? s.commission : 0);
-  t.percentual_empresa = s.percentual_empresa !== undefined ? s.percentual_empresa : (s.companyCommission !== undefined ? s.companyCommission : 0);
-  t.percentual_vendedor = s.percentual_vendedor !== undefined ? s.percentual_vendedor : 0;
+  if (s.valor_venda !== undefined || s.value !== undefined) {
+    t.valor_venda = parseNumber(s.valor_venda !== undefined ? s.valor_venda : s.value);
+  }
+  if (s.valor_comissao !== undefined || s.commission !== undefined) {
+    t.valor_comissao = parseNumber(s.valor_comissao !== undefined ? s.valor_comissao : s.commission);
+  }
+  if (s.percentual_empresa !== undefined || s.companyCommission !== undefined || s.bankCommission !== undefined) {
+    t.percentual_empresa = parseNumber(s.percentual_empresa !== undefined ? s.percentual_empresa : (s.companyCommission !== undefined ? s.companyCommission : (s.bankCommission !== undefined ? s.bankCommission : 0)));
+  }
+  if (s.percentual_vendedor !== undefined) {
+    t.percentual_vendedor = parseNumber(s.percentual_vendedor);
+  }
   
   // Optional fields
   if (s.parcelas !== undefined) t.parcelas = parseInt(s.parcelas) || 0;
-  if (s.grupo_vendedor) t.grupo_vendedor = s.grupo_vendedor;
-  if (s.status) t.status = s.status;
-  if (s.lead_id) t.lead_id = s.lead_id;
+  if (s.grupo_vendedor !== undefined) t.grupo_vendedor = s.grupo_vendedor;
+  if (s.status !== undefined) t.status = s.status;
+  if (s.lead_id !== undefined) t.lead_id = s.lead_id;
+  if (s.metadata !== undefined) t.metadata = s.metadata;
 
   return t;
 }

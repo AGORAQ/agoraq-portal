@@ -42,26 +42,26 @@ export default function Dashboard() {
   const [canvaLink, setCanvaLink] = React.useState('https://www.canva.com/');
   const [sales, setSales] = React.useState<any[]>([]);
   const [requests, setRequests] = React.useState<any[]>([]);
-  const [chartData, setChartData] = React.useState<any[]>([]);
   const [monthlyGoal, setMonthlyGoal] = React.useState(0);
   const [isGoalModalOpen, setIsGoalModalOpen] = React.useState(false);
   const [tempGoal, setTempGoal] = React.useState('');
-  const [bankDistribution, setBankDistribution] = React.useState<{ name: string; value: number }[]>([]);
-  const [projection, setProjection] = React.useState({ total: 0, company: 0, seller: 0 });
   const [topTables, setTopTables] = React.useState<any[]>([]);
 
   const isAdmin = user?.role === 'admin';
   const isSupervisor = user?.role === 'supervisor';
   const isManagement = isAdmin || isSupervisor;
 
+  // Real-time subscriptions and initial load
   React.useEffect(() => {
+    let salesSub: any;
+    let financialSub: any;
+
     const init = async () => {
       const settings = await db.settings.get();
       if (settings.canvaLink) {
         setCanvaLink(settings.canvaLink);
       }
       
-      // Load Monthly Goal
       if (user?.monthly_goal) {
         setMonthlyGoal(user.monthly_goal);
       }
@@ -75,80 +75,97 @@ export default function Dashboard() {
       setSales(allSales);
       setRequests(allRequests);
 
-      // Real-time subscriptions
-      const salesSub = db.sales.subscribe(user, (updatedSales) => {
-        setSales(updatedSales);
-      });
-
-      const financialSub = db.requests.subscribe(user, (updatedRequests) => {
-        setRequests(updatedRequests);
-      });
-
-      // Top Performing Tables (by seller commission rate)
       const sortedTables = [...allCommissions]
         .sort((a, b) => (b.percentual_vendedor || 0) - (a.percentual_vendedor || 0))
         .slice(0, 3);
       setTopTables(sortedTables);
 
-      // Prepare Chart Data (Last 7 days)
-      const days = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
-      const last7Days = Array.from({ length: 7 }, (_, i) => {
-        const d = new Date();
-        d.setDate(d.getDate() - (6 - i));
-        return d;
+      salesSub = db.sales.subscribe(user, (updatedSales) => {
+        setSales(updatedSales);
       });
 
-      const filteredSales = allSales; // Already filtered by db.sales.getAll(user)
-      const newChartData = last7Days.map(date => {
-        const dateStr = date.toISOString().split('T')[0];
-        const daySales = filteredSales.filter(s => s.date === dateStr);
-        const total = daySales.reduce((acc, curr) => acc + (Number(curr.value) || 0), 0);
-        return {
-          name: days[date.getDay()],
-          vendas: total
-        };
+      financialSub = db.requests.subscribe(user, (updatedRequests) => {
+        setRequests(updatedRequests);
       });
-      setChartData(newChartData);
-
-      // Bank Distribution
-      const dist: Record<string, number> = {};
-      filteredSales.forEach(s => {
-        const val = Number(s.value) || 0;
-        dist[s.bank] = (dist[s.bank] || 0) + val;
-      });
-      setBankDistribution(Object.entries(dist).map(([name, value]) => ({ name, value })));
-
-      // Automatic Projection based on Goal
-      const now = new Date();
-      const currentMonth = now.getMonth();
-      const currentYear = now.getFullYear();
-      const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
-      const currentDay = now.getDate();
-      
-      const monthSales = filteredSales.filter(s => {
-        if (!s.date) return false;
-        const d = new Date(s.date);
-        return !isNaN(d.getTime()) && d.getMonth() === currentMonth && d.getFullYear() === currentYear;
-      });
-      
-      const monthTotal = monthSales.reduce((acc, curr) => acc + (Number(curr.value) || 0), 0);
-      
-      const dailyAvg = currentDay > 0 ? monthTotal / currentDay : 0;
-      const projectedTotal = dailyAvg * daysInMonth;
-      
-      setProjection({
-        total: projectedTotal,
-        company: 0,
-        seller: 0
-      });
-
-      return () => {
-        salesSub.unsubscribe();
-        financialSub.unsubscribe();
-      };
     };
+
     init();
-  }, [user, monthlyGoal, isManagement]);
+
+    return () => {
+      if (salesSub) salesSub.unsubscribe();
+      if (financialSub) financialSub.unsubscribe();
+    };
+  }, [user]);
+
+  // Reactive Calculations
+  const chartData = React.useMemo(() => {
+    const days = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+    const last7Days = Array.from({ length: 7 }, (_, i) => {
+      const d = new Date();
+      d.setDate(d.getDate() - (6 - i));
+      return d;
+    });
+
+    return last7Days.map(date => {
+      const dateStr = date.toISOString().split('T')[0];
+      const daySales = sales.filter(s => s.date === dateStr);
+      const total = daySales.reduce((acc, curr) => acc + (Number(curr.value) || 0), 0);
+      const profit = daySales.reduce((acc, curr) => acc + (Number(curr.companyCommission) - Number(curr.commission) || 0), 0);
+      return {
+        name: days[date.getDay()],
+        vendas: total,
+        lucro: profit
+      };
+    });
+  }, [sales]);
+
+  const bankDistribution = React.useMemo(() => {
+    const dist: Record<string, number> = {};
+    sales.forEach(s => {
+      const val = Number(s.value) || 0;
+      dist[s.bank] = (dist[s.bank] || 0) + val;
+    });
+    return Object.entries(dist).map(([name, value]) => ({ name, value }));
+  }, [sales]);
+
+  const totalSalesValue = React.useMemo(() => 
+    sales.reduce((acc, curr) => acc + (Number(curr.value) || 0), 0)
+  , [sales]);
+
+  const monthTotal = React.useMemo(() => {
+    const now = new Date();
+    const currentMonth = now.getMonth();
+    const currentYear = now.getFullYear();
+    return sales.filter(s => {
+      if (!s.date) return false;
+      const d = new Date(s.date);
+      return !isNaN(d.getTime()) && d.getMonth() === currentMonth && d.getFullYear() === currentYear;
+    }).reduce((acc, curr) => acc + (Number(curr.value) || 0), 0);
+  }, [sales]);
+
+  const neededPerDay = React.useMemo(() => {
+    const now = new Date();
+    const currentMonth = now.getMonth();
+    const currentYear = now.getFullYear();
+    const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
+    const currentDay = now.getDate();
+    const remainingDays = daysInMonth - currentDay;
+    return remainingDays > 0 ? Math.max(0, (monthlyGoal - monthTotal) / remainingDays) : 0;
+  }, [monthlyGoal, monthTotal]);
+
+  const totalCommissionsValue = React.useMemo(() => 
+    sales.reduce((acc, curr) => acc + (Number(curr.commission) || 0), 0)
+  , [sales]);
+
+  const totalProfitValue = React.useMemo(() => {
+    const totalCompany = sales.reduce((acc, curr) => acc + (Number(curr.companyCommission) || 0), 0);
+    const totalSeller = sales.reduce((acc, curr) => acc + (Number(curr.commission) || 0), 0);
+    return totalCompany - totalSeller;
+  }, [sales]);
+
+  const pendingRequestsCount = React.useMemo(() => 
+    requests.filter(r => r.status === 'Pendente').length
+  , [requests]);
 
   const handleSaveGoal = async () => {
     const goal = parseFloat(tempGoal);
@@ -158,28 +175,6 @@ export default function Dashboard() {
       setIsGoalModalOpen(false);
     }
   };
-
-  const totalSalesValue = sales.reduce((acc, curr) => acc + (Number(curr.value) || 0), 0);
-  
-  // Calculate Monthly Progress
-  const now = new Date();
-  const currentMonth = now.getMonth();
-  const currentYear = now.getFullYear();
-  const monthSales = sales.filter(s => {
-    if (!s.date) return false;
-    const d = new Date(s.date);
-    return !isNaN(d.getTime()) && d.getMonth() === currentMonth && d.getFullYear() === currentYear;
-  });
-  const monthTotal = monthSales.reduce((acc, curr) => acc + (Number(curr.value) || 0), 0);
-  
-  const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
-  const currentDay = now.getDate();
-  const remainingDays = daysInMonth - currentDay;
-  const neededPerDay = remainingDays > 0 ? Math.max(0, (monthlyGoal - monthTotal) / remainingDays) : 0;
-
-  const totalCommissionsValue = sales.reduce((acc, curr) => acc + (Number(curr.commission) || 0), 0);
-  const totalProfitValue = sales.reduce((acc, curr) => acc + (Number(curr.companyCommission) || 0), 0);
-  const pendingRequestsCount = requests.filter(r => r.status === 'Pendente').length;
 
   return (
     <div className="space-y-6">
@@ -348,7 +343,8 @@ export default function Dashboard() {
                     contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
                     formatter={(value: number) => formatCurrency(value)}
                   />
-                  <Bar dataKey="vendas" fill="#1e3a8a" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="vendas" name="Vendas" fill="#1e3a8a" radius={[4, 4, 0, 0]} />
+                  {isManagement && <Bar dataKey="lucro" name="Lucro" fill="#10b981" radius={[4, 4, 0, 0]} />}
                 </BarChart>
               </ResponsiveContainer>
             </div>

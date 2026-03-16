@@ -39,12 +39,13 @@ export default function CRM() {
       const today = new Date().toISOString().split('T')[0];
       
       // Calculate leads captured today by this user
-      const userLeadsToday = allLeads.filter(l => 
-        l.createdAt.startsWith(today) && 
-        (isAdmin || l.usuario_id === user?.id)
-      );
+      const userLeadsToday = allLeads.filter(l => {
+        const isToday = l.createdAt?.startsWith(today) || l.capturedAt?.startsWith(today);
+        const isOwner = l.usuario_id === user?.id;
+        return isToday && (isAdmin || isOwner);
+      });
       
-      setLeadsCapturedToday(userLeadsToday.length);
+      setLeadsCapturedToday(userLeadsToday.filter(l => l.usuario_id === user?.id && l.capturedAt?.startsWith(today)).length);
 
       if (isAdmin) {
         setLeads(allLeads);
@@ -57,33 +58,34 @@ export default function CRM() {
   }, [isAdmin, user?.id]);
 
   const refreshLeads = async () => {
-    const [allLeads, allUsers] = await Promise.all([
-      db.leads.getAll(),
-      db.users.getAll()
-    ]);
+    if (!user) return;
     
-    setUsers(allUsers);
-    const today = new Date().toISOString().split('T')[0];
-    
-    const userLeadsToday = allLeads.filter((l: any) => 
-      l.createdAt.startsWith(today) && 
-      (isAdmin || l.usuario_id === user?.id)
-    );
-    
-    if (isAdmin) {
-      setLeads(allLeads);
-    } else {
-      setLeads(userLeadsToday);
-    }
-
-    // Sync user daily count from backend
-    if (user?.id) {
-      const updatedUser = allUsers.find(u => u.id === user.id);
-      if (updatedUser && updatedUser.last_lead_date === today) {
-        setLeadsCapturedToday(updatedUser.daily_lead_count || 0);
+    try {
+      const [allLeads, allUsers, capturedTodayCount] = await Promise.all([
+        db.leads.getAll(),
+        db.users.getAll(),
+        db.leads.getCapturedToday(user.id)
+      ]);
+      
+      setUsers(allUsers);
+      const today = new Date().toISOString().split('T')[0];
+      
+      const userLeadsToday = allLeads.filter((l: any) => {
+        const isToday = l.createdAt?.startsWith(today) || l.capturedAt?.startsWith(today);
+        const isOwner = l.usuario_id === user?.id;
+        return isToday && (isAdmin || isOwner);
+      });
+      
+      if (isAdmin) {
+        setLeads(allLeads);
       } else {
-        setLeadsCapturedToday(0);
+        setLeads(userLeadsToday);
       }
+
+      setLeadsCapturedToday(capturedTodayCount);
+    } catch (error) {
+      console.error('Error refreshing leads:', error);
+      notify('error', 'Erro ao atualizar leads.');
     }
   };
 
@@ -176,7 +178,7 @@ export default function CRM() {
         phone: String(row.phone || row.telefone || ''),
         email: row.email || '',
         city: row.city || row.cidade || 'Importado',
-        status: 'Novo'
+        status: 'Disponível'
       }));
 
       const result = await db.leads.import(leadsToImport);

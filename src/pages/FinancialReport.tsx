@@ -66,7 +66,7 @@ export default function FinancialReport() {
 
   const filteredData = useMemo(() => {
     return sales.filter(s => {
-      const matchesBank = bankFilter === 'all' || s.bank === banks.find(b => b.id === bankFilter)?.nome;
+      const matchesBank = bankFilter === 'all' || s.bank === banks.find(b => b.id === bankFilter)?.nome_banco || s.bank === banks.find(b => b.id === bankFilter)?.nome;
       const matchesGroup = groupFilter === 'all' || s.table === groups.find(g => g.id === groupFilter)?.name;
       const matchesDate = (!startDate || new Date(s.date) >= new Date(startDate)) && 
                          (!endDate || new Date(s.date) <= new Date(endDate));
@@ -75,11 +75,11 @@ export default function FinancialReport() {
   }, [sales, bankFilter, groupFilter, startDate, endDate, banks, groups]);
 
   const stats = useMemo(() => {
-    const totalSold = filteredData.reduce((acc, s) => acc + s.value, 0);
-    const totalCompanyComm = filteredData.reduce((acc, s) => acc + (s.companyCommission || 0), 0);
-    const totalSellerComm = filteredData.reduce((acc, s) => acc + (s.commission || 0), 0);
-    const totalPaid = payments.filter(p => p.status === 'Pago').reduce((acc, p) => acc + p.valor, 0);
-    const netProfit = totalCompanyComm; // companyCommission is already profit (bank - seller)
+    const totalSold = filteredData.reduce((acc, s) => acc + (Number(s.value) || 0), 0);
+    const totalCompanyComm = filteredData.reduce((acc, s) => acc + (Number(s.companyCommission) || 0), 0);
+    const totalSellerComm = filteredData.reduce((acc, s) => acc + (Number(s.commission) || 0), 0);
+    const totalPaid = payments.filter(p => p.status === 'Pago').reduce((acc, p) => acc + (Number(p.valor) || 0), 0);
+    const netProfit = totalCompanyComm - totalSellerComm;
 
     return { totalSold, totalCompanyComm, totalSellerComm, totalPaid, netProfit };
   }, [filteredData, payments]);
@@ -87,13 +87,15 @@ export default function FinancialReport() {
   const chartData = useMemo(() => {
     const data: any[] = [];
     banks.forEach(b => {
-      const bankSales = filteredData.filter(s => s.bank === b.nome);
+      const bankSales = filteredData.filter(s => s.bank === b.nome_banco || s.bank === b.nome);
       if (bankSales.length > 0) {
+        const totalCompany = bankSales.reduce((acc, s) => acc + (Number(s.companyCommission) || 0), 0);
+        const totalSeller = bankSales.reduce((acc, s) => acc + (Number(s.commission) || 0), 0);
         data.push({
-          name: b.nome,
-          receita: bankSales.reduce((acc, s) => acc + (s.bankCommission || 0), 0),
-          lucro: bankSales.reduce((acc, s) => acc + (s.companyCommission || 0), 0),
-          comissao: bankSales.reduce((acc, s) => acc + (s.commission || 0), 0),
+          name: b.nome_banco || b.nome,
+          receita: totalCompany,
+          lucro: totalCompany - totalSeller,
+          comissao: totalSeller,
         });
       }
     });
@@ -124,12 +126,12 @@ export default function FinancialReport() {
 
     const worksheet = XLSX.utils.json_to_sheet(filteredData.map(s => ({
       Data: new Date(s.date).toLocaleDateString(),
-      Vendedor: s.seller,
+      Vendedor: s.vendedor_nome || s.seller,
       Banco: s.bank,
-      'Valor Venda': s.value,
+      'Valor Venda': s.value || s.valor_venda,
+      'Comissão Banco (Total)': s.companyCommission || 0,
       'Comissão Vendedor': s.commission || 0,
-      'Comissão Banco': s.bankCommission || 0,
-      'Comissão Empresa (Lucro)': s.companyCommission || 0,
+      'Lucro Empresa': (Number(s.companyCommission) || 0) - (Number(s.commission) || 0),
       Status: s.status
     })));
     const workbook = XLSX.utils.book_new();
@@ -165,7 +167,7 @@ export default function FinancialReport() {
                 onChange={(e) => setBankFilter(e.target.value)}
               >
                 <option value="all">Todos os Bancos</option>
-                {banks.map(b => <option key={b.id} value={b.id}>{b.nome}</option>)}
+                {banks.map(b => <option key={b.id} value={b.id}>{b.nome_banco || b.nome}</option>)}
               </select>
             </div>
             <div>

@@ -28,6 +28,8 @@ export default function SalesData() {
   const [isSaving, setIsSaving] = useState(false);
   const [isGlobalImporterOpen, setIsGlobalImporterOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<'list' | 'financial'>('list');
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [editingSale, setEditingSale] = useState<Sale | null>(null);
   
   // Filters
   const [startDate, setStartDate] = useState('');
@@ -74,25 +76,36 @@ export default function SalesData() {
 
       if (selectedTable) {
         const saleValue = parseFloat(formData.value) || 0;
-        let sellerRate = 0;
+        let sellerShareRate = 0;
+        
+        // Get the group percentage (e.g., 40%)
         if (selectedTable.percentual_vendedor !== undefined) {
-          sellerRate = selectedTable.percentual_vendedor / 100;
+          sellerShareRate = selectedTable.percentual_vendedor / 100;
         } else {
           const userGroup = user?.grupo_comissao;
-          if (userGroup === 'MASTER') sellerRate = selectedTable.comissao_master / 100;
-          else if (userGroup === 'OURO') sellerRate = selectedTable.comissao_ouro / 100;
-          else if (userGroup === 'PRATA') sellerRate = selectedTable.comissao_prata / 100;
-          else if (userGroup === 'PLUS') sellerRate = selectedTable.comissao_plus / 100;
+          if (userGroup === 'MASTER') sellerShareRate = selectedTable.comissao_master / 100;
+          else if (userGroup === 'OURO') sellerShareRate = selectedTable.comissao_ouro / 100;
+          else if (userGroup === 'PRATA') sellerShareRate = selectedTable.comissao_prata / 100;
+          else if (userGroup === 'PLUS') sellerShareRate = selectedTable.comissao_plus / 100;
         }
 
+        // Total percentage the bank pays (e.g., 10%)
         const bankRate = (selectedTable.percentual_total_empresa || selectedTable.bank_rate || 0) / 100;
+        
+        // Calculations:
+        // 1. Total commission from the bank (Percentage of Sale Value)
+        const totalBankCommission = saleValue * bankRate;
+        // 2. Seller's share (Percentage of Sale Value)
+        const sellerCommission = saleValue * sellerShareRate;
         
         setFormData(prev => ({
           ...prev,
           table_name: selectedTable.nome_tabela,
-          bankCommission: saleValue * bankRate,
-          companyCommission: (saleValue * bankRate) - (saleValue * sellerRate),
-          commission: saleValue * sellerRate
+          bankCommission: totalBankCommission,
+          companyCommission: totalBankCommission, 
+          commission: sellerCommission,
+          percentual_vendedor: sellerShareRate * 100,
+          percentual_empresa: bankRate * 100
         }));
       }
     }
@@ -288,6 +301,30 @@ export default function SalesData() {
     return matchesSearch && matchesStatus && matchesBank && matchesProduct && matchesDate && matchesSeller;
   });
 
+  const handleEdit = (sale: Sale) => {
+    setEditingSale(sale);
+    setIsEditModalOpen(true);
+  };
+
+  const handleUpdateStatus = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingSale) return;
+
+    setIsSaving(true);
+    try {
+      await db.sales.update(editingSale.id, { status: editingSale.status });
+      await refreshData();
+      setIsEditModalOpen(false);
+      setEditingSale(null);
+      notify('success', 'Status da venda atualizado com sucesso!');
+    } catch (error) {
+      console.error('Error updating sale status:', error);
+      notify('error', 'Erro ao atualizar status da venda.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   const handleExport = () => {
     if (filteredSales.length === 0) {
       notify('warning', 'Não há vendas para exportar.');
@@ -319,7 +356,7 @@ export default function SalesData() {
   // Strategic metrics - only for management
   const totalCompanyCommission = isManagement ? filteredSales.reduce((acc, curr) => acc + (curr.companyCommission || 0), 0) : 0;
   const totalBankCommission = isManagement ? filteredSales.reduce((acc, curr) => acc + (curr.bankCommission || 0), 0) : 0;
-  const totalProfit = totalCompanyCommission;
+  const totalProfit = totalCompanyCommission - totalCommission;
 
   // Chart Data Preparation
   const chartData = [
@@ -582,6 +619,52 @@ export default function SalesData() {
                   <Button type="button" variant="outline" onClick={() => setIsPixModalOpen(false)}>Cancelar</Button>
                   <Button type="submit" className="bg-emerald-600 hover:bg-emerald-700 text-white">
                     Confirmar Solicitação
+                  </Button>
+                </div>
+              </form>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {isEditModalOpen && editingSale && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <Card className="w-full max-w-md shadow-2xl animate-in zoom-in-95 duration-200">
+            <CardHeader className="flex flex-row items-center justify-between bg-blue-600 text-white rounded-t-xl">
+              <CardTitle className="flex items-center gap-2">
+                <Edit className="w-5 h-5" />
+                Editar Status da Venda
+              </CardTitle>
+              <Button variant="ghost" size="icon" className="text-white hover:bg-blue-700" onClick={() => setIsEditModalOpen(false)}>
+                <X className="w-4 h-4" />
+              </Button>
+            </CardHeader>
+            <CardContent className="p-6">
+              <form onSubmit={handleUpdateStatus} className="space-y-6">
+                <div className="p-4 bg-slate-50 rounded-lg border border-slate-100 space-y-2">
+                  <p className="text-sm text-slate-500">Cliente: <span className="font-medium text-slate-900">{editingSale.client}</span></p>
+                  <p className="text-sm text-slate-500">Proposta: <span className="font-medium text-slate-900">{editingSale.proposal}</span></p>
+                  <p className="text-sm text-slate-500">Valor: <span className="font-medium text-slate-900">{formatCurrency(editingSale.value)}</span></p>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Status da Venda</label>
+                  <select 
+                    className="flex h-10 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm"
+                    value={editingSale.status}
+                    onChange={e => setEditingSale({...editingSale, status: e.target.value as Sale['status']})}
+                  >
+                    <option value="Pendente">Pendente</option>
+                    <option value="Em Averbação">Em Averbação</option>
+                    <option value="Paga">Paga</option>
+                    <option value="Cancelada">Cancelada</option>
+                  </select>
+                </div>
+
+                <div className="flex justify-end gap-2 pt-2">
+                  <Button type="button" variant="outline" onClick={() => setIsEditModalOpen(false)}>Cancelar</Button>
+                  <Button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white" disabled={isSaving}>
+                    {isSaving ? 'Salvando...' : 'Salvar Alterações'}
                   </Button>
                 </div>
               </form>
@@ -938,10 +1021,26 @@ export default function SalesData() {
                       </td>
                       <td className="px-4 py-3 whitespace-nowrap text-center">
                         <div className="flex items-center justify-center gap-2">
-                          <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-500 hover:text-blue-600">
+                          <Button 
+                            variant="ghost" 
+                            size="icon" 
+                            className="h-8 w-8 text-slate-500 hover:text-blue-600"
+                            onClick={() => handleEdit(sale)}
+                          >
                             <Edit className="h-4 w-4" />
                           </Button>
-                          <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-500 hover:text-red-600">
+                          <Button 
+                            variant="ghost" 
+                            size="icon" 
+                            className="h-8 w-8 text-slate-500 hover:text-red-600"
+                            onClick={async () => {
+                              if (await confirm({ message: 'Tem certeza que deseja excluir esta venda?', type: 'danger' })) {
+                                await db.sales.delete(sale.id);
+                                await refreshData();
+                                notify('success', 'Venda excluída com sucesso!');
+                              }
+                            }}
+                          >
                             <Trash2 className="h-4 w-4" />
                           </Button>
                         </div>
