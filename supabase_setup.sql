@@ -13,6 +13,7 @@ CREATE TABLE IF NOT EXISTS profiles (
   daily_goal NUMERIC DEFAULT 0,
   daily_lead_count INTEGER DEFAULT 0,
   last_lead_date DATE,
+  can_capture_leads BOOLEAN DEFAULT TRUE,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );

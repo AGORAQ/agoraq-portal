@@ -317,45 +317,82 @@ export const db = {
 
   leads: {
     getAll: async () => {
-      const { data, error } = await supabase
-        .from('leads')
-        .select('*')
-        .order('created_at', { ascending: false });
-      if (error) throw error;
-      return data.map(mapTableToLead);
+      try {
+        const result = await withRetry(async () => {
+          return await withTimeout(supabase
+            .from('leads')
+            .select('*')
+            .order('created_at', { ascending: false }), 45000);
+        }, 2) as any;
+        
+        if (result.error) {
+          console.error('Error in leads.getAll:', result.error);
+          throw result.error;
+        }
+        
+        console.log(`leads.getAll returned ${result.data?.length || 0} records`);
+        return (result.data || []).map(mapTableToLead);
+      } catch (err) {
+        console.error('Fatal error in leads.getAll:', err);
+        throw err;
+      }
     },
     getAvailable: async () => {
-      const { data, error } = await supabase
-        .from('leads')
-        .select('*')
-        .eq('status', 'Disponível')
-        .order('created_at', { ascending: false });
-      if (error) throw error;
-      return data.map(mapTableToLead);
+      try {
+        const result = await withRetry(async () => {
+          return await withTimeout(supabase
+            .from('leads')
+            .select('*')
+            .eq('status', 'Disponível')
+            .order('created_at', { ascending: false }), 45000);
+        }, 2) as any;
+        
+        if (result.error) throw result.error;
+        return (result.data || []).map(mapTableToLead);
+      } catch (err) {
+        console.error('Error in leads.getAvailable:', err);
+        throw err;
+      }
     },
     getAvailableForUser: async (userId: string) => {
+      // 0. Check if user can capture leads
+      const { data: profile, error: profileError } = await supabase
+        .from('profiles')
+        .select('can_capture_leads')
+        .eq('id', userId)
+        .single();
+      
+      if (profileError) throw profileError;
+      if (profile && profile.can_capture_leads === false) {
+        return [];
+      }
+
       // 1. Get user's already captured leads to avoid duplicates
-      const { data: userLeads, error: userError } = await supabase
-        .from('leads')
-        .select('cpf, telefone')
-        .eq('capturado_por', userId);
+      const { data: userLeads, error: userError } = await withRetry(async () => {
+        return await withTimeout(supabase
+          .from('leads')
+          .select('cpf, telefone')
+          .eq('capturado_por', userId), 30000);
+      }, 2) as any;
       
       if (userError) throw userError;
 
-      const userCpfs = new Set(userLeads.map(l => l.cpf).filter(Boolean));
-      const userPhones = new Set(userLeads.map(l => l.telefone).filter(Boolean));
+      const userCpfs = new Set((userLeads || []).map((l: any) => l.cpf).filter(Boolean));
+      const userPhones = new Set((userLeads || []).map((l: any) => l.telefone).filter(Boolean));
 
       // 2. Get available leads
-      const { data, error } = await supabase
-        .from('leads')
-        .select('*')
-        .eq('status', 'Disponível')
-        .order('created_at', { ascending: false });
+      const { data, error } = await withRetry(async () => {
+        return await withTimeout(supabase
+          .from('leads')
+          .select('*')
+          .eq('status', 'Disponível')
+          .order('created_at', { ascending: false }), 45000);
+      }, 2) as any;
       
       if (error) throw error;
 
       // 3. Filter out leads that have same CPF or Phone as user's existing leads
-      const filtered = data.filter(l => {
+      const filtered = (data || []).filter((l: any) => {
         const hasDuplicateCpf = l.cpf && userCpfs.has(l.cpf);
         const hasDuplicatePhone = l.telefone && userPhones.has(l.telefone);
         return !hasDuplicateCpf && !hasDuplicatePhone;
@@ -477,6 +514,7 @@ export const db = {
     import: async (leads: any[], onProgress?: (progress: number) => void) => {
       console.log('Starting leads import:', leads.length, 'records');
       
+      console.log(`Starting import of ${leads.length} leads...`);
       // 1. Initial normalization and internal deduplication
       const phoneMap = new Map();
       const uniqueLeads = [];
@@ -502,12 +540,14 @@ export const db = {
             cpf: String(mapped.cpf || '').replace(/\D/g, '').substring(0, 11),
             banco_origem: String(mapped.banco_origem || '').substring(0, 100),
             importado_por: String(mapped.importado_por || 'Admin').substring(0, 100),
-            status: mapped.status || 'Disponível',
+            status: 'Disponível', // Force available status on import
             metadata: mapped.metadata || {},
             created_at: mapped.created_at || new Date().toISOString()
           });
         }
       }
+
+      console.log(`Unique leads after normalization: ${uniqueLeads.length}`);
 
       const SELECT_CHUNK_SIZE = 500; // Larger chunk for checking existing
       const INSERT_CHUNK_SIZE = 100; // Smaller chunk for inserting
@@ -546,6 +586,7 @@ export const db = {
       // Filter out existing leads
       const finalLeadsToInsert = uniqueLeads.filter(l => !existingPhones.has(l.telefone));
       const toInsertCount = finalLeadsToInsert.length;
+      console.log(`Leads to insert after database deduplication: ${toInsertCount}`);
 
       if (toInsertCount === 0) {
         return { count: 0, data: [], errors: [] };
@@ -1373,7 +1414,8 @@ function mapProfileToUser(p: any): User {
     daily_goal: p.meta_diaria,
     monthly_goal: p.monthly_goal,
     daily_lead_count: p.daily_lead_count,
-    last_lead_date: p.last_lead_date
+    last_lead_date: p.last_lead_date,
+    can_capture_leads: p.can_capture_leads ?? true
   };
 }
 
@@ -1391,6 +1433,7 @@ function mapUserToProfile(u: any): any {
   if (u.daily_goal !== undefined) p.meta_diaria = u.daily_goal;
   if (u.daily_lead_count !== undefined) p.daily_lead_count = u.daily_lead_count;
   if (u.last_lead_date !== undefined) p.last_lead_date = u.last_lead_date;
+  if (u.can_capture_leads !== undefined) p.can_capture_leads = u.can_capture_leads;
   return p;
 }
 

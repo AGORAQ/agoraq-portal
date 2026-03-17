@@ -21,6 +21,7 @@ export interface User {
   last_lead_date?: string;
   monthly_goal?: number;
   daily_goal?: number;
+  can_capture_leads?: boolean;
 }
 
 export interface Bank {

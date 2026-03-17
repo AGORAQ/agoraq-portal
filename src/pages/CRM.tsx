@@ -8,6 +8,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useNotification } from '@/context/NotificationContext';
 import GlobalImporter from '@/components/GlobalImporter';
 import { db } from '@/services/db';
+import { supabase } from '@/lib/supabase';
 import { parseFile } from '@/lib/importer';
 import * as XLSX from 'xlsx';
 
@@ -67,6 +68,7 @@ export default function CRM() {
         db.leads.getCapturedToday(user.id)
       ]);
       
+      console.log('CRM Data Loaded:', { allLeadsCount: allLeads.length, allUsersCount: allUsers.length });
       setUsers(allUsers);
       const today = new Date().toISOString().split('T')[0];
       
@@ -104,6 +106,11 @@ export default function CRM() {
 
     if (leadsCapturedToday + qty > DAILY_LIMIT) {
       notify('warning', `Quantidade excede o limite diário restante (${DAILY_LIMIT - leadsCapturedToday}).`);
+      return;
+    }
+
+    if (user && !user.can_capture_leads) {
+      notify('error', 'Sua captura de leads está bloqueada pelo administrador.');
       return;
     }
 
@@ -487,6 +494,18 @@ export default function CRM() {
                 <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
                   {leads.filter(l => !l.usuario_id).length} Leads Disponíveis
                 </Badge>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  className="border-slate-200 text-slate-600"
+                  onClick={async () => {
+                    const { count, error } = await supabase.from('leads').select('*', { count: 'exact', head: true });
+                    const { count: availCount } = await supabase.from('leads').select('*', { count: 'exact', head: true }).eq('status', 'Disponível');
+                    alert(`Total Leads: ${count}, Disponíveis: ${availCount}, Error: ${error?.message || 'none'}`);
+                  }}
+                >
+                  Debug Base
+                </Button>
                 <Button 
                   variant="outline" 
                   size="sm" 
