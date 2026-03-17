@@ -5,11 +5,14 @@ const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
 if (!supabaseUrl || !supabaseAnonKey) {
   console.error('ERRO CRÍTICO: URL ou Chave Anon do Supabase não configuradas no ambiente VITE!');
-  console.log('Verifique se as variáveis VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY estão definidas.');
+  console.log('VITE_SUPABASE_URL:', supabaseUrl);
+  console.log('VITE_SUPABASE_ANON_KEY:', supabaseAnonKey ? 'Configurada (oculta)' : 'Não configurada');
   if (typeof window !== 'undefined') {
     // @ts-ignore
     window.supabaseConfigError = true;
   }
+} else {
+  console.log('Supabase configurado com URL:', supabaseUrl);
 }
 
 // Ensure we don't pass undefined to createClient which would throw

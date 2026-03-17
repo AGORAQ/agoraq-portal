@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Badge } from '@/components/ui/Badge';
-import { ExternalLink, Copy, Database, Upload, UserPlus, Download, LayoutGrid, List, RefreshCw, FileSpreadsheet, Trash2, User } from 'lucide-react';
+import { ExternalLink, Copy, Database, Upload, UserPlus, Download, LayoutGrid, List, RefreshCw, FileSpreadsheet, Trash2, User, CheckCircle } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useNotification } from '@/context/NotificationContext';
 import GlobalImporter from '@/components/GlobalImporter';
@@ -27,32 +27,48 @@ export default function CRM() {
   const [leads, setLeads] = useState<any[]>([]);
   const [users, setUsers] = useState<any[]>([]);
   const [isSaving, setIsSaving] = useState(false);
+  const [totalLeadsInDb, setTotalLeadsInDb] = useState<number | null>(null);
+  const [availableLeadsInDb, setAvailableLeadsInDb] = useState<number | null>(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const DAILY_LIMIT = 100;
 
   useEffect(() => {
     const loadData = async () => {
-      const [allLeads, allUsers] = await Promise.all([
-        db.leads.getAll(),
-        db.users.getAll()
-      ]);
-      
-      setUsers(allUsers);
-      const today = new Date().toISOString().split('T')[0];
-      
-      // Calculate leads captured today by this user
-      const userLeadsToday = allLeads.filter(l => {
-        const isToday = l.createdAt?.startsWith(today) || l.capturedAt?.startsWith(today);
-        const isOwner = l.usuario_id === user?.id;
-        return isToday && (isAdmin || isOwner);
-      });
-      
-      setLeadsCapturedToday(userLeadsToday.filter(l => l.usuario_id === user?.id && l.capturedAt?.startsWith(today)).length);
+      setIsRefreshing(true);
+      try {
+        const [allLeads, allUsers, totalCount, availCount] = await Promise.all([
+          db.leads.getAll(),
+          db.users.getAll(),
+          isAdmin ? db.leads.getTotalCount() : Promise.resolve(null),
+          isAdmin ? db.leads.getAvailableCount() : Promise.resolve(null)
+        ]);
+        
+        setUsers(allUsers);
+        if (isAdmin) {
+          setTotalLeadsInDb(totalCount);
+          setAvailableLeadsInDb(availCount);
+        }
+        const today = new Date().toISOString().split('T')[0];
+        
+        // Calculate leads captured today by this user
+        const userLeadsToday = allLeads.filter(l => {
+          const isToday = l.createdAt?.startsWith(today) || l.capturedAt?.startsWith(today);
+          const isOwner = l.usuario_id === user?.id;
+          return isToday && (isAdmin || isOwner);
+        });
+        
+        setLeadsCapturedToday(userLeadsToday.filter(l => l.usuario_id === user?.id && l.capturedAt?.startsWith(today)).length);
 
-      if (isAdmin) {
-        setLeads(allLeads);
-      } else {
-        // Sellers only see today's leads
-        setLeads(userLeadsToday);
+        if (isAdmin) {
+          setLeads(allLeads);
+        } else {
+          // Sellers only see today's leads
+          setLeads(userLeadsToday);
+        }
+      } catch (err) {
+        console.error('Error loading initial data:', err);
+      } finally {
+        setIsRefreshing(false);
       }
     };
     loadData();
@@ -60,16 +76,22 @@ export default function CRM() {
 
   const refreshLeads = async () => {
     if (!user) return;
+    setIsRefreshing(true);
     
     try {
-      const [allLeads, allUsers, capturedTodayCount] = await Promise.all([
+      const [allLeads, allUsers, capturedTodayCount, totalCount, availCount] = await Promise.all([
         db.leads.getAll(),
         db.users.getAll(),
-        db.leads.getCapturedToday(user.id)
+        db.leads.getCapturedToday(user.id),
+        isAdmin ? db.leads.getTotalCount() : Promise.resolve(null),
+        isAdmin ? db.leads.getAvailableCount() : Promise.resolve(null)
       ]);
       
       console.log('CRM Data Loaded:', { allLeadsCount: allLeads.length, allUsersCount: allUsers.length });
-      console.table(allLeads.slice(0, 5)); // Debug sample data
+      if (isAdmin) {
+        setTotalLeadsInDb(totalCount);
+        setAvailableLeadsInDb(availCount);
+      }
       setUsers(allUsers);
       const today = new Date().toISOString().split('T')[0];
       
@@ -89,6 +111,8 @@ export default function CRM() {
     } catch (error) {
       console.error('Error refreshing leads:', error);
       notify('error', 'Erro ao atualizar leads.');
+    } finally {
+      setIsRefreshing(false);
     }
   };
 
@@ -229,22 +253,40 @@ export default function CRM() {
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Gestão de Automação</h1>
-          <div className="flex items-center gap-2 mt-1">
+          <div className="flex flex-wrap items-center gap-2 mt-1">
             <p className="text-slate-500">Gestão de relacionamento e captura de leads.</p>
-            <span className="text-slate-300">•</span>
-            <div className="flex items-center gap-1 text-xs text-emerald-600 font-medium bg-emerald-50 px-2 py-0.5 rounded-full">
-              <RefreshCw className="w-3 h-3" />
-              Sincronizado
-            </div>
+            {isAdmin && totalLeadsInDb !== null && (
+              <>
+                <span className="text-slate-300">•</span>
+                <Badge variant="secondary" className="bg-slate-100 text-slate-600">
+                  Total na Base: {totalLeadsInDb}
+                </Badge>
+                <Badge variant="secondary" className="bg-blue-50 text-blue-600">
+                  Disponíveis: {availableLeadsInDb}
+                </Badge>
+              </>
+            )}
           </div>
         </div>
-        <Button 
-          className="bg-blue-900 hover:bg-blue-800 shadow-md"
-          onClick={() => window.open('https://inbox.agoraqoficial.com/entrar', '_blank')}
-        >
-          <ExternalLink className="w-4 h-4 mr-2" />
-          Acessar App CRM
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={refreshLeads}
+            disabled={isRefreshing}
+            className="bg-white"
+          >
+            <RefreshCw className={`w-4 h-4 mr-2 ${isRefreshing ? 'animate-spin' : ''}`} />
+            {isRefreshing ? 'Atualizando...' : 'Atualizar'}
+          </Button>
+          <Button 
+            className="bg-blue-900 hover:bg-blue-800 shadow-md"
+            onClick={() => window.open('https://inbox.agoraqoficial.com/entrar', '_blank')}
+          >
+            <ExternalLink className="w-4 h-4 mr-2" />
+            Acessar App CRM
+          </Button>
+        </div>
       </div>
 
       {/* Navigation Tabs as Icons/Buttons */}
@@ -485,12 +527,57 @@ export default function CRM() {
         )}
 
         {activeTab === 'database' && isAdmin && (
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
-              <div>
-                <CardTitle>Base de Dados de Leads (Pool)</CardTitle>
-                <p className="text-sm text-slate-500">Leads importados aguardando captura pelos vendedores.</p>
-              </div>
+          <div className="space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <Card className="bg-white border-slate-200">
+                <CardContent className="pt-6">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-slate-500">Total de Leads</p>
+                      <h3 className="text-2xl font-bold text-slate-900">{totalLeadsInDb ?? '...'}</h3>
+                    </div>
+                    <div className="p-3 bg-slate-100 rounded-lg">
+                      <Database className="w-5 h-5 text-slate-600" />
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+              <Card className="bg-white border-blue-200">
+                <CardContent className="pt-6">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-blue-600">Disponíveis</p>
+                      <h3 className="text-2xl font-bold text-slate-900">{availableLeadsInDb ?? '...'}</h3>
+                    </div>
+                    <div className="p-3 bg-blue-50 rounded-lg">
+                      <UserPlus className="w-5 h-5 text-blue-600" />
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+              <Card className="bg-white border-emerald-200">
+                <CardContent className="pt-6">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-emerald-600">Capturados</p>
+                      <h3 className="text-2xl font-bold text-slate-900">
+                        {(totalLeadsInDb !== null && availableLeadsInDb !== null) ? totalLeadsInDb - availableLeadsInDb : '...'}
+                      </h3>
+                    </div>
+                    <div className="p-3 bg-emerald-50 rounded-lg">
+                      <CheckCircle className="w-5 h-5 text-emerald-600" />
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between">
+                <div>
+                  <CardTitle>Base de Dados de Leads (Pool)</CardTitle>
+                  <p className="text-sm text-slate-500">Leads importados aguardando captura pelos vendedores.</p>
+                </div>
               <div className="flex gap-2">
                 <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
                   {leads.filter(l => !l.usuario_id && !l.capturado_por).length} Leads Disponíveis
@@ -501,14 +588,23 @@ export default function CRM() {
                   className="border-slate-200 text-slate-600"
                   onClick={async () => {
                     try {
-                      const { count, error, data: sampleData } = await supabase.from('leads').select('*', { count: 'exact' }).limit(5);
+                      const { count, error, data: sampleData } = await supabase.from('leads').select('*', { count: 'exact' }).order('created_at', { ascending: false }).limit(5);
                       const { count: availCount } = await supabase.from('leads').select('*', { count: 'exact', head: true }).is('capturado_por', null);
-                      const sample = sampleData?.[0];
-                      const info = `Total: ${count}, Disponíveis: ${availCount}\n` +
-                                   `Amostra ID: ${sample?.id || 'N/A'}\n` +
-                                   `Status: ${sample?.status || 'N/A'}\n` +
-                                   `Capturado Por: ${sample?.capturado_por || 'null'}\n` +
-                                   `Erro: ${error?.message || 'nenhum'}`;
+                      
+                      let info = `Total no Banco: ${count}\n`;
+                      info += `Disponíveis para Captura: ${availCount}\n\n`;
+                      
+                      if (sampleData && sampleData.length > 0) {
+                        info += `Últimos 5 Leads Inseridos:\n`;
+                        sampleData.forEach((s, i) => {
+                          info += `${i+1}. ID: ${s.id.substring(0,8)}... | Status: ${s.status} | Criado em: ${new Date(s.created_at).toLocaleString()}\n`;
+                        });
+                      } else {
+                        info += `Nenhum lead encontrado no banco.`;
+                      }
+
+                      if (error) info += `\nErro: ${error.message}`;
+                      
                       console.log('DEBUG BASE RAW DATA:', sampleData);
                       alert(info);
                     } catch (e: any) {
@@ -576,7 +672,8 @@ export default function CRM() {
               </div>
             </CardContent>
           </Card>
-        )}
+        </div>
+      )}
 
         {activeTab === 'upload' && isAdmin && (
           <Card>

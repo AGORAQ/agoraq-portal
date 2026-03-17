@@ -2,7 +2,7 @@ import { supabase } from '@/lib/supabase';
 import { User, CommissionTable, AccessRequest, PlatformCredential, Sale, Bank, PaymentRequest, Announcement, ExcelImportLog, CommissionGroup, AcademyContent, AcademyView, Lead, FinancialEntry } from '@/types';
 
 // Helper for timeouts
-const withTimeout = <T>(promise: Promise<T> | PromiseLike<T>, timeoutMs: number = 90000): Promise<T> => {
+const withTimeout = <T>(promise: Promise<T> | PromiseLike<T>, timeoutMs: number = 120000): Promise<T> => {
   return Promise.race([
     Promise.resolve(promise),
     new Promise<T>((_, reject) => 
@@ -80,9 +80,9 @@ export const db = {
   health: {
     check: async () => {
       try {
-        // Aumentado para 45 segundos e com 3 tentativas
+        // Aumentado para 60 segundos e com 3 tentativas
         const result = await withRetry(async () => {
-          return await withTimeout(supabase.from('profiles').select('id').limit(1), 45000);
+          return await withTimeout(supabase.from('profiles').select('id').limit(1), 60000);
         }, 3) as any;
         
         if (result.error) return { ok: false, error: result.error.message };
@@ -113,15 +113,36 @@ export const db = {
     },
     getByAuthId: async (authId: string) => {
       try {
-        // Voltando para busca por 'id' pois a coluna 'auth_user_id' não existe no banco atual
-        const result = await withTimeout(supabase
-          .from('profiles')
-          .select('*')
-          .eq('id', authId)
-          .maybeSingle(), 60000) as any;
+        console.log('DB: Buscando perfil por Auth ID:', authId);
+        // Aumentado timeout e adicionado retry para maior resiliência
+        const result = await withRetry(async () => {
+          return await withTimeout(supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', authId)
+            .maybeSingle(), 90000); // 90 segundos
+        }, 3) as any;
         
-        if (result.error) throw result.error;
-        if (!result.data) throw new Error('Perfil não encontrado para o ID fornecido');
+        if (result.error) {
+          console.error('DB Error in getByAuthId:', result.error);
+          throw result.error;
+        }
+        
+        if (!result.data) {
+          console.warn('DB: Perfil não encontrado para ID:', authId);
+          // Tentar buscar por auth_user_id caso o schema seja diferente
+          const fallbackResult = await withTimeout(supabase
+            .from('profiles')
+            .select('*')
+            .eq('auth_user_id', authId)
+            .maybeSingle(), 30000) as any;
+            
+          if (fallbackResult.data) {
+            return mapProfileToUser(fallbackResult.data);
+          }
+          
+          throw new Error('Perfil não encontrado para o ID fornecido');
+        }
         
         return mapProfileToUser(result.data);
       } catch (e: any) {
@@ -318,13 +339,14 @@ export const db = {
   leads: {
     getAll: async () => {
       try {
-        console.log('DB: Buscando todos os leads...');
+        console.log('DB: Buscando todos os leads (limite 10.000)...');
         const result = await withRetry(async () => {
           return await withTimeout(supabase
             .from('leads')
             .select('*')
-            .order('created_at', { ascending: false }), 45000);
-        }, 2) as any;
+            .order('created_at', { ascending: false })
+            .limit(10000), 120000); // Aumentado para 120s
+        }, 3) as any; // Aumentado para 3 retries
 
         if (result.error) {
           console.error('DB Error (leads.getAll):', result.error);
@@ -341,14 +363,15 @@ export const db = {
     },
     getAvailable: async () => {
       try {
-        console.log('DB: Buscando leads disponíveis...');
+        console.log('DB: Buscando leads disponíveis (limite 10.000)...');
         const result = await withRetry(async () => {
           return await withTimeout(supabase
             .from('leads')
             .select('*')
             .is('capturado_por', null)
-            .order('created_at', { ascending: false }), 45000);
-        }, 2) as any;
+            .order('created_at', { ascending: false })
+            .limit(10000), 120000); // Aumentado para 120s
+        }, 3) as any; // Aumentado para 3 retries
 
         if (result.error) {
           console.error('DB Error (leads.getAvailable):', result.error);
@@ -361,6 +384,31 @@ export const db = {
       } catch (err) {
         console.error('DB Fatal Error (leads.getAvailable):', err);
         return [];
+      }
+    },
+    getTotalCount: async () => {
+      try {
+        const { count, error } = await supabase
+          .from('leads')
+          .select('*', { count: 'exact', head: true });
+        if (error) throw error;
+        return count || 0;
+      } catch (err) {
+        console.error('DB Error (getTotalCount):', err);
+        return 0;
+      }
+    },
+    getAvailableCount: async () => {
+      try {
+        const { count, error } = await supabase
+          .from('leads')
+          .select('*', { count: 'exact', head: true })
+          .is('capturado_por', null);
+        if (error) throw error;
+        return count || 0;
+      } catch (err) {
+        console.error('DB Error (getAvailableCount):', err);
+        return 0;
       }
     },
     getAvailableForUser: async (userId: string) => {
@@ -384,8 +432,8 @@ export const db = {
         return await withTimeout(supabase
           .from('leads')
           .select('cpf, telefone')
-          .eq('capturado_por', userId), 30000);
-      }, 2) as any;
+          .eq('capturado_por', userId), 60000); // Aumentado para 60s
+      }, 3) as any; // Aumentado para 3 retries
       
       if (userError) throw userError;
 
@@ -398,8 +446,8 @@ export const db = {
           .from('leads')
           .select('*')
           .is('capturado_por', null)
-          .order('created_at', { ascending: false }), 45000);
-      }, 2) as any;
+          .order('created_at', { ascending: false }), 90000); // Aumentado para 90s
+      }, 3) as any; // Aumentado para 3 retries
       
       if (error) throw error;
 
@@ -526,7 +574,8 @@ export const db = {
     import: async (leads: any[], onProgress?: (progress: number) => void) => {
       console.log('DB: Iniciando importação de leads:', leads.length, 'registros');
       
-      // 1. Normalização inicial e deduplicação interna
+      let skippedEmptyPhone = 0;
+      let skippedInternalDuplicate = 0;
       const phoneMap = new Map();
       const uniqueLeads = [];
       
@@ -534,7 +583,10 @@ export const db = {
         const mapped = mapLeadToTable(l);
         let phone = String(mapped.telefone || '').replace(/[^\d]/g, '');
         
-        if (!phone) continue;
+        if (!phone) {
+          skippedEmptyPhone++;
+          continue;
+        }
 
         // Normalizar com 55 se faltar (Brasil)
         if (phone.length === 10 || phone.length === 11) {
@@ -559,17 +611,27 @@ export const db = {
             },
             created_at: new Date().toISOString()
           });
+        } else {
+          skippedInternalDuplicate++;
         }
       }
 
-      console.log(`DB: Leads únicos após normalização: ${uniqueLeads.length}`);
+      console.log(`DB: Estatísticas Iniciais:
+        - Total recebido: ${leads.length}
+        - Pulados (Telefone vazio): ${skippedEmptyPhone}
+        - Pulados (Duplicados na planilha): ${skippedInternalDuplicate}
+        - Únicos para verificar no banco: ${uniqueLeads.length}`);
 
       if (uniqueLeads.length === 0) {
-        return { count: 0, data: [], errors: ['Nenhum lead válido encontrado para importação.'] };
+        return { 
+          count: 0, 
+          data: [], 
+          errors: [`Nenhum lead válido encontrado. (Vazios: ${skippedEmptyPhone}, Duplicados: ${skippedInternalDuplicate})`] 
+        };
       }
 
-      const SELECT_CHUNK_SIZE = 500;
-      const INSERT_CHUNK_SIZE = 100;
+      const SELECT_CHUNK_SIZE = 1000;
+      const INSERT_CHUNK_SIZE = 500;
       const total = uniqueLeads.length;
       const results = [];
       const errors: string[] = [];
@@ -585,24 +647,33 @@ export const db = {
             return await withTimeout(supabase
               .from('leads')
               .select('telefone')
-              .in('telefone', chunkPhones), 60000);
-          }, 2) as any;
+              .in('telefone', chunkPhones), 90000); // Aumentado para 90s
+          }, 3) as any; // Aumentado para 3 retries
           
           if (result.data) {
             result.data.forEach((l: any) => existingPhones.add(l.telefone));
           }
         } catch (err) {
           console.error('DB Error (checking existing phones):', err);
+          // Se falhar por timeout, podemos continuar mas corremos risco de duplicados
         }
       }
 
       // Filtrar leads que já existem
       const finalLeadsToInsert = uniqueLeads.filter(l => !existingPhones.has(l.telefone));
+      const skippedByDb = uniqueLeads.length - finalLeadsToInsert.length;
       const toInsertCount = finalLeadsToInsert.length;
-      console.log(`DB: Leads para inserir após deduplicação no banco: ${toInsertCount}`);
+      
+      console.log(`DB: Estatísticas de Banco:
+        - Já existem no banco: ${skippedByDb}
+        - Novos para inserir: ${toInsertCount}`);
 
       if (toInsertCount === 0) {
-        return { count: 0, data: [], errors: ['Todos os leads já existem no banco de dados.'] };
+        return { 
+          count: 0, 
+          data: [], 
+          errors: [`Todos os ${uniqueLeads.length} leads já existem no banco de dados.`] 
+        };
       }
 
       // Inserir em lotes
@@ -612,11 +683,23 @@ export const db = {
         
         try {
           const result = await withRetry(async () => {
-            return await withTimeout(supabase
+            let insertResult = await withTimeout(supabase
               .from('leads')
               .insert(chunk)
-              .select(), 90000);
-          }, 2) as any;
+              .select(), 180000); // Aumentado para 180s
+            
+            // Se falhar especificamente por causa da coluna 'cidade'
+            if (insertResult.error && insertResult.error.message?.includes('cidade')) {
+              console.warn('DB: Coluna "cidade" não encontrada, tentando inserir sem ela...');
+              const chunkWithoutCidade = chunk.map(({ cidade, ...rest }) => rest);
+              insertResult = await withTimeout(supabase
+                .from('leads')
+                .insert(chunkWithoutCidade)
+                .select(), 180000);
+            }
+            
+            return insertResult;
+          }, 3) as any; // Aumentado para 3 retries
 
           if (result.error) {
             console.error('DB Error (inserting leads chunk):', result.error);
@@ -639,7 +722,14 @@ export const db = {
       return {
         count: results.length,
         data: results.map(mapTableToLead),
-        errors
+        errors,
+        stats: {
+          total: leads.length,
+          skippedEmpty: skippedEmptyPhone,
+          skippedDuplicate: skippedInternalDuplicate,
+          skippedExisting: skippedByDb,
+          inserted: results.length
+        }
       };
     },
     delete: async (id: string) => {
@@ -677,7 +767,10 @@ export const db = {
         }
       }
 
-      const result = await withTimeout(query) as any;
+      const result = await withRetry(async () => {
+        return await withTimeout(query, 120000); // Aumentado para 120s
+      }, 3) as any;
+      
       if (result.error) throw result.error;
       return result.data.map(mapTableToSale);
     },
