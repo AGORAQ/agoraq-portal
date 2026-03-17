@@ -499,9 +499,10 @@ export default function CRM() {
                   size="sm" 
                   className="border-slate-200 text-slate-600"
                   onClick={async () => {
-                    const { count, error } = await supabase.from('leads').select('*', { count: 'exact', head: true });
+                    const { count, error, data: sampleData } = await supabase.from('leads').select('*', { count: 'exact' }).limit(1);
                     const { count: availCount } = await supabase.from('leads').select('*', { count: 'exact', head: true }).eq('status', 'Disponível');
-                    alert(`Total Leads: ${count}, Disponíveis: ${availCount}, Error: ${error?.message || 'none'}`);
+                    const sampleStatus = sampleData?.[0]?.status || 'N/A';
+                    alert(`Total Leads: ${count}, Disponíveis: ${availCount}, Sample Status: "${sampleStatus}", Error: ${error?.message || 'none'}`);
                   }}
                 >
                   Debug Base

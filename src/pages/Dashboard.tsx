@@ -320,7 +320,7 @@ export default function Dashboard() {
             <TrendingUp className="w-4 h-4 text-slate-400" />
           </CardHeader>
           <CardContent className="pl-2">
-            <div className="h-[300px] w-full">
+            <div className="h-[300px] min-h-[300px] w-full">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={chartData}>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
@@ -357,7 +357,7 @@ export default function Dashboard() {
               <CardTitle>Distribuição por Banco</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="h-[200px] w-full">
+              <div className="h-[200px] min-h-[200px] w-full">
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
                     <Pie

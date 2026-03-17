@@ -343,7 +343,7 @@ export const db = {
           return await withTimeout(supabase
             .from('leads')
             .select('*')
-            .eq('status', 'Disponível')
+            .is('capturado_por', null)
             .order('created_at', { ascending: false }), 45000);
         }, 2) as any;
         
@@ -359,14 +359,9 @@ export const db = {
       try {
         const { data: profile, error: profileError } = await supabase
           .from('profiles')
-          .select('can_capture_leads')
+          .select('*') // Select all to avoid column missing error if we specify it
           .eq('id', userId)
           .single();
-        
-        // If column doesn't exist (PGRST204), we ignore and assume true
-        if (profileError && profileError.code !== 'PGRST204') {
-          console.warn('Erro ao verificar permissão de captura (pode ser coluna ausente):', profileError);
-        }
         
         if (profile && profile.can_capture_leads === false) {
           return [];
@@ -393,7 +388,7 @@ export const db = {
         return await withTimeout(supabase
           .from('leads')
           .select('*')
-          .eq('status', 'Disponível')
+          .is('capturado_por', null)
           .order('created_at', { ascending: false }), 45000);
       }, 2) as any;
       
@@ -549,6 +544,7 @@ export const db = {
             banco_origem: String(mapped.banco_origem || '').substring(0, 100),
             importado_por: String(mapped.importado_por || 'Admin').substring(0, 100),
             status: 'Disponível', // Force available status on import
+            capturado_por: null,
             metadata: {
               ...mapped.metadata,
               import_date: new Date().toISOString()
@@ -647,10 +643,11 @@ export const db = {
       if (error) throw error;
     },
     deleteAllAvailable: async () => {
+      // Delete all leads that are NOT captured yet, regardless of status string
       const { error } = await supabase
         .from('leads')
         .delete()
-        .eq('status', 'Disponível');
+        .is('capturado_por', null);
       if (error) throw error;
     }
   },
@@ -1204,12 +1201,24 @@ export const db = {
 
   announcements: {
     getAll: async () => {
-      const { data, error } = await supabase
-        .from('announcements')
-        .select('*')
-        .order('date', { ascending: false });
-      if (error) throw error;
-      return data;
+      try {
+        const { data, error } = await supabase
+          .from('announcements')
+          .select('*')
+          .order('created_at', { ascending: false }); // Use created_at which is more standard
+        if (error) {
+          // Try without order if date/created_at fails
+          const { data: data2, error: error2 } = await supabase
+            .from('announcements')
+            .select('*');
+          if (error2) return [];
+          return data2;
+        }
+        return data;
+      } catch (e) {
+        console.error('Error fetching announcements:', e);
+        return [];
+      }
     },
     create: async (ann: any) => {
       const { data, error } = await supabase

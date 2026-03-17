@@ -19,13 +19,6 @@ export default defineConfig(({mode}) => {
     server: {
       host: '0.0.0.0',
       port: 3000,
-      proxy: {
-        '/api': {
-          target: 'http://localhost:8888/.netlify/functions/api',
-          changeOrigin: true,
-          rewrite: (path) => path.replace(/^\/api/, ''),
-        },
-      },
       // HMR is disabled in AI Studio via DISABLE_HMR env var.
       hmr: process.env.DISABLE_HMR !== 'true',
     },
