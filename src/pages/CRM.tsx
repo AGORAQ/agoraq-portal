@@ -109,7 +109,7 @@ export default function CRM() {
       return;
     }
 
-    if (user && !user.can_capture_leads) {
+    if (user && user.can_capture_leads === false) {
       notify('error', 'Sua captura de leads está bloqueada pelo administrador.');
       return;
     }

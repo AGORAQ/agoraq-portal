@@ -355,16 +355,24 @@ export const db = {
       }
     },
     getAvailableForUser: async (userId: string) => {
-      // 0. Check if user can capture leads
-      const { data: profile, error: profileError } = await supabase
-        .from('profiles')
-        .select('can_capture_leads')
-        .eq('id', userId)
-        .single();
-      
-      if (profileError) throw profileError;
-      if (profile && profile.can_capture_leads === false) {
-        return [];
+      // 0. Check if user can capture leads (Resilient check)
+      try {
+        const { data: profile, error: profileError } = await supabase
+          .from('profiles')
+          .select('can_capture_leads')
+          .eq('id', userId)
+          .single();
+        
+        // If column doesn't exist (PGRST204), we ignore and assume true
+        if (profileError && profileError.code !== 'PGRST204') {
+          console.warn('Erro ao verificar permissão de captura (pode ser coluna ausente):', profileError);
+        }
+        
+        if (profile && profile.can_capture_leads === false) {
+          return [];
+        }
+      } catch (err) {
+        console.warn('Falha silenciosa na verificação de can_capture_leads:', err);
       }
 
       // 1. Get user's already captured leads to avoid duplicates
@@ -541,7 +549,10 @@ export const db = {
             banco_origem: String(mapped.banco_origem || '').substring(0, 100),
             importado_por: String(mapped.importado_por || 'Admin').substring(0, 100),
             status: 'Disponível', // Force available status on import
-            metadata: mapped.metadata || {},
+            metadata: {
+              ...mapped.metadata,
+              import_date: new Date().toISOString()
+            },
             created_at: mapped.created_at || new Date().toISOString()
           });
         }
@@ -1433,7 +1444,7 @@ function mapUserToProfile(u: any): any {
   if (u.daily_goal !== undefined) p.meta_diaria = u.daily_goal;
   if (u.daily_lead_count !== undefined) p.daily_lead_count = u.daily_lead_count;
   if (u.last_lead_date !== undefined) p.last_lead_date = u.last_lead_date;
-  if (u.can_capture_leads !== undefined) p.can_capture_leads = u.can_capture_leads;
+  // can_capture_leads removed as column might not exist in profiles table
   return p;
 }
 

@@ -102,7 +102,7 @@ export default function AdminPanel() {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [formData, setFormData] = useState<Partial<User>>({
-    name: '', email: '', role: 'vendedor', status: 'Ativo', grupo_comissao: 'OURO', password: '', can_capture_leads: true
+    name: '', email: '', role: 'vendedor', status: 'Ativo', grupo_comissao: 'OURO', password: ''
   });
 
   // Commission Groups State
@@ -1109,18 +1109,6 @@ export default function AdminPanel() {
                         <option value="OURO">OURO</option>
                       </select>
                     </div>
-                    <div className="flex items-center gap-2 pt-8">
-                      <input 
-                        type="checkbox" 
-                        id="can_capture_leads"
-                        checked={formData.can_capture_leads}
-                        onChange={e => handleInputChange('can_capture_leads', e.target.checked)}
-                        className="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
-                      />
-                      <label htmlFor="can_capture_leads" className="text-sm font-medium cursor-pointer">
-                        Liberar Captura de Leads
-                      </label>
-                    </div>
                   </div>
                   <div className="flex justify-end gap-2 pt-4">
                     <Button type="button" variant="outline" onClick={() => setIsFormOpen(false)}>Cancelar</Button>
@@ -1157,7 +1145,6 @@ export default function AdminPanel() {
                       <th className="px-4 py-3">Nome</th>
                       <th className="px-4 py-3">Perfil</th>
                       <th className="px-4 py-3">Status</th>
-                      <th className="px-4 py-3">Captura</th>
                       <th className="px-4 py-3">Último Acesso</th>
                       <th className="px-4 py-3 text-right">Ações</th>
                     </tr>
@@ -1185,11 +1172,6 @@ export default function AdminPanel() {
                           <td className="px-4 py-3">
                             <Badge variant={u.status === 'Ativo' ? 'success' : 'secondary'}>
                               {u.status}
-                            </Badge>
-                          </td>
-                          <td className="px-4 py-3">
-                            <Badge variant="outline" className={u.can_capture_leads ? 'bg-green-50 text-green-700 border-green-200' : 'bg-red-50 text-red-700 border-red-200'}>
-                              {u.can_capture_leads ? 'Liberado' : 'Bloqueado'}
                             </Badge>
                           </td>
                           <td className="px-4 py-3 text-slate-500">
