@@ -147,6 +147,10 @@ export default function GlobalImporter({ type, onImportComplete, onClose }: Glob
 
         if (result.errors && result.errors.length > 0) {
           console.error('Import errors:', result.errors);
+          notify('error', `Erro na importação: ${result.errors[0]}`);
+          if (result.errors.length > 1) {
+            console.warn(`Mais ${result.errors.length - 1} erros ocorreram.`);
+          }
         }
       }
 

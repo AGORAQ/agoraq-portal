@@ -69,12 +69,13 @@ export default function CRM() {
       ]);
       
       console.log('CRM Data Loaded:', { allLeadsCount: allLeads.length, allUsersCount: allUsers.length });
+      console.table(allLeads.slice(0, 5)); // Debug sample data
       setUsers(allUsers);
       const today = new Date().toISOString().split('T')[0];
       
       const userLeadsToday = allLeads.filter((l: any) => {
-        const isToday = l.createdAt?.startsWith(today) || l.capturedAt?.startsWith(today);
-        const isOwner = l.usuario_id === user?.id;
+        const isToday = l.createdAt?.startsWith(today) || l.created_at?.startsWith(today) || l.capturedAt?.startsWith(today);
+        const isOwner = l.usuario_id === user?.id || l.capturado_por === user?.id;
         return isToday && (isAdmin || isOwner);
       });
       
@@ -492,17 +493,27 @@ export default function CRM() {
               </div>
               <div className="flex gap-2">
                 <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
-                  {leads.filter(l => !l.usuario_id).length} Leads Disponíveis
+                  {leads.filter(l => !l.usuario_id && !l.capturado_por).length} Leads Disponíveis
                 </Badge>
                 <Button 
                   variant="outline" 
                   size="sm" 
                   className="border-slate-200 text-slate-600"
                   onClick={async () => {
-                    const { count, error, data: sampleData } = await supabase.from('leads').select('*', { count: 'exact' }).limit(1);
-                    const { count: availCount } = await supabase.from('leads').select('*', { count: 'exact', head: true }).eq('status', 'Disponível');
-                    const sampleStatus = sampleData?.[0]?.status || 'N/A';
-                    alert(`Total Leads: ${count}, Disponíveis: ${availCount}, Sample Status: "${sampleStatus}", Error: ${error?.message || 'none'}`);
+                    try {
+                      const { count, error, data: sampleData } = await supabase.from('leads').select('*', { count: 'exact' }).limit(5);
+                      const { count: availCount } = await supabase.from('leads').select('*', { count: 'exact', head: true }).is('capturado_por', null);
+                      const sample = sampleData?.[0];
+                      const info = `Total: ${count}, Disponíveis: ${availCount}\n` +
+                                   `Amostra ID: ${sample?.id || 'N/A'}\n` +
+                                   `Status: ${sample?.status || 'N/A'}\n` +
+                                   `Capturado Por: ${sample?.capturado_por || 'null'}\n` +
+                                   `Erro: ${error?.message || 'nenhum'}`;
+                      console.log('DEBUG BASE RAW DATA:', sampleData);
+                      alert(info);
+                    } catch (e: any) {
+                      alert('Erro ao depurar: ' + e.message);
+                    }
                   }}
                 >
                   Debug Base
@@ -537,15 +548,15 @@ export default function CRM() {
                     </tr>
                   </thead>
                   <tbody className="divide-y">
-                    {leads.filter(l => !l.usuario_id).length > 0 ? leads.filter(l => !l.usuario_id).map((lead) => (
+                    {leads.filter(l => !l.usuario_id && !l.capturado_por).length > 0 ? leads.filter(l => !l.usuario_id && !l.capturado_por).map((lead) => (
                       <tr key={lead.id} className="hover:bg-slate-50 transition-colors">
-                        <td className="px-4 py-3 font-medium text-slate-900"><span>{lead.name}</span></td>
+                        <td className="px-4 py-3 font-medium text-slate-900"><span>{lead.name || lead.nome}</span></td>
                         <td className="px-4 py-3 text-slate-500"><span>{lead.cpf || '-'}</span></td>
-                        <td className="px-4 py-3"><span>{lead.phone}</span></td>
+                        <td className="px-4 py-3"><span>{lead.phone || lead.telefone}</span></td>
                         <td className="px-4 py-3 text-slate-500"><span>{lead.email}</span></td>
-                        <td className="px-4 py-3 text-slate-500"><span>{lead.city}</span></td>
+                        <td className="px-4 py-3 text-slate-500"><span>{lead.city || lead.cidade}</span></td>
                         <td className="px-4 py-3 text-slate-400 text-xs">
-                          <span>{new Date(lead.createdAt).toLocaleDateString()}</span>
+                          <span>{new Date(lead.createdAt || lead.created_at).toLocaleDateString()}</span>
                         </td>
                         <td className="px-4 py-3 text-right">
                           <Button variant="ghost" size="icon" className="h-8 w-8 text-red-600" onClick={() => handleDeleteLead(lead.id)}>

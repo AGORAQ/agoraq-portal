@@ -318,27 +318,30 @@ export const db = {
   leads: {
     getAll: async () => {
       try {
+        console.log('DB: Buscando todos os leads...');
         const result = await withRetry(async () => {
           return await withTimeout(supabase
             .from('leads')
             .select('*')
             .order('created_at', { ascending: false }), 45000);
         }, 2) as any;
-        
+
         if (result.error) {
-          console.error('Error in leads.getAll:', result.error);
-          throw result.error;
+          console.error('DB Error (leads.getAll):', result.error);
+          return [];
         }
-        
-        console.log(`leads.getAll returned ${result.data?.length || 0} records`);
-        return (result.data || []).map(mapTableToLead);
+
+        const data = result.data || [];
+        console.log(`DB: ${data.length} leads encontrados.`);
+        return data.map(mapTableToLead);
       } catch (err) {
-        console.error('Fatal error in leads.getAll:', err);
-        throw err;
+        console.error('DB Fatal Error (leads.getAll):', err);
+        return [];
       }
     },
     getAvailable: async () => {
       try {
+        console.log('DB: Buscando leads disponíveis...');
         const result = await withRetry(async () => {
           return await withTimeout(supabase
             .from('leads')
@@ -346,12 +349,18 @@ export const db = {
             .is('capturado_por', null)
             .order('created_at', { ascending: false }), 45000);
         }, 2) as any;
-        
-        if (result.error) throw result.error;
-        return (result.data || []).map(mapTableToLead);
+
+        if (result.error) {
+          console.error('DB Error (leads.getAvailable):', result.error);
+          return [];
+        }
+
+        const data = result.data || [];
+        console.log(`DB: ${data.length} leads disponíveis encontrados.`);
+        return data.map(mapTableToLead);
       } catch (err) {
-        console.error('Error in leads.getAvailable:', err);
-        throw err;
+        console.error('DB Fatal Error (leads.getAvailable):', err);
+        return [];
       }
     },
     getAvailableForUser: async (userId: string) => {
@@ -412,7 +421,7 @@ export const db = {
           status: 'Capturado'
         })
         .eq('id', leadId)
-        .eq('status', 'Disponível')
+        .is('capturado_por', null)
         .select()
         .single()) as any;
       if (result.error) throw result.error;
@@ -432,7 +441,7 @@ export const db = {
           status: 'Capturado'
         })
         .in('id', leadIds)
-        .eq('status', 'Disponível')
+        .is('capturado_por', null)
         .select()) as any;
       
       if (result.error) throw result.error;
@@ -515,10 +524,9 @@ export const db = {
       return mapTableToLead(data);
     },
     import: async (leads: any[], onProgress?: (progress: number) => void) => {
-      console.log('Starting leads import:', leads.length, 'records');
+      console.log('DB: Iniciando importação de leads:', leads.length, 'registros');
       
-      console.log(`Starting import of ${leads.length} leads...`);
-      // 1. Initial normalization and internal deduplication
+      // 1. Normalização inicial e deduplicação interna
       const phoneMap = new Map();
       const uniqueLeads = [];
       
@@ -526,9 +534,9 @@ export const db = {
         const mapped = mapLeadToTable(l);
         let phone = String(mapped.telefone || '').replace(/[^\d]/g, '');
         
-        if (!phone) continue; // Skip if no phone
+        if (!phone) continue;
 
-        // Normalize with 55 if missing
+        // Normalizar com 55 se faltar (Brasil)
         if (phone.length === 10 || phone.length === 11) {
           phone = '55' + phone;
         }
@@ -536,39 +544,37 @@ export const db = {
         if (!phoneMap.has(phone)) {
           phoneMap.set(phone, true);
           uniqueLeads.push({
-            ...mapped,
-            telefone: phone,
             nome: String(mapped.nome || 'Sem Nome').substring(0, 255),
+            telefone: phone,
             email: String(mapped.email || '').substring(0, 255),
             cpf: String(mapped.cpf || '').replace(/\D/g, '').substring(0, 11),
+            cidade: String(mapped.cidade || '').substring(0, 100),
             banco_origem: String(mapped.banco_origem || '').substring(0, 100),
             importado_por: String(mapped.importado_por || 'Admin').substring(0, 100),
-            status: 'Disponível', // Force available status on import
+            status: 'Disponível',
             capturado_por: null,
             metadata: {
-              ...mapped.metadata,
+              ...(mapped.metadata || {}),
               import_date: new Date().toISOString()
             },
-            created_at: mapped.created_at || new Date().toISOString()
+            created_at: new Date().toISOString()
           });
         }
       }
 
-      console.log(`Unique leads after normalization: ${uniqueLeads.length}`);
+      console.log(`DB: Leads únicos após normalização: ${uniqueLeads.length}`);
 
-      const SELECT_CHUNK_SIZE = 500; // Larger chunk for checking existing
-      const INSERT_CHUNK_SIZE = 100; // Smaller chunk for inserting
+      if (uniqueLeads.length === 0) {
+        return { count: 0, data: [], errors: ['Nenhum lead válido encontrado para importação.'] };
+      }
+
+      const SELECT_CHUNK_SIZE = 500;
+      const INSERT_CHUNK_SIZE = 100;
       const total = uniqueLeads.length;
-      let processed = 0;
       const results = [];
       const errors: string[] = [];
 
-      if (total === 0) {
-        console.warn('Import called with empty or duplicate-only leads array');
-        return { count: 0, data: [], errors: [] };
-      }
-
-      // First, get all existing phones in larger batches to reduce query count
+      // Verificar telefones existentes
       const existingPhones = new Set<string>();
       for (let i = 0; i < total; i += SELECT_CHUNK_SIZE) {
         const chunk = uniqueLeads.slice(i, i + SELECT_CHUNK_SIZE);
@@ -586,20 +592,21 @@ export const db = {
             result.data.forEach((l: any) => existingPhones.add(l.telefone));
           }
         } catch (err) {
-          console.error('Error checking existing phones:', err);
+          console.error('DB Error (checking existing phones):', err);
         }
       }
 
-      // Filter out existing leads
+      // Filtrar leads que já existem
       const finalLeadsToInsert = uniqueLeads.filter(l => !existingPhones.has(l.telefone));
       const toInsertCount = finalLeadsToInsert.length;
-      console.log(`Leads to insert after database deduplication: ${toInsertCount}`);
+      console.log(`DB: Leads para inserir após deduplicação no banco: ${toInsertCount}`);
 
       if (toInsertCount === 0) {
-        return { count: 0, data: [], errors: [] };
+        return { count: 0, data: [], errors: ['Todos os leads já existem no banco de dados.'] };
       }
 
-      // Now insert in smaller chunks
+      // Inserir em lotes
+      let processed = 0;
       for (let i = 0; i < toInsertCount; i += INSERT_CHUNK_SIZE) {
         const chunk = finalLeadsToInsert.slice(i, i + INSERT_CHUNK_SIZE);
         
@@ -612,14 +619,14 @@ export const db = {
           }, 2) as any;
 
           if (result.error) {
-            console.error('Error inserting leads chunk:', result.error);
-            errors.push(`Lote ${i / INSERT_CHUNK_SIZE + 1}: ${result.error.message}`);
+            console.error('DB Error (inserting leads chunk):', result.error);
+            errors.push(`Lote ${Math.floor(i / INSERT_CHUNK_SIZE) + 1}: ${result.error.message}`);
           } else if (result.data) {
             results.push(...result.data);
           }
         } catch (chunkError: any) {
-          console.error('Fatal error in leads insert chunk:', chunkError);
-          errors.push(`Erro fatal no lote ${i / INSERT_CHUNK_SIZE + 1}: ${chunkError.message || 'Erro desconhecido'}`);
+          console.error('DB Fatal Error (leads insert chunk):', chunkError);
+          errors.push(`Erro fatal no lote ${Math.floor(i / INSERT_CHUNK_SIZE) + 1}: ${chunkError.message || 'Erro desconhecido'}`);
         }
 
         processed += chunk.length;
@@ -628,7 +635,7 @@ export const db = {
         }
       }
 
-      console.log('Leads import finished. Total results:', results.length);
+      console.log('DB: Importação finalizada. Total inserido:', results.length);
       return {
         count: results.length,
         data: results.map(mapTableToLead),
