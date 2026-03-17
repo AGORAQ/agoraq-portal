@@ -52,6 +52,7 @@ function initDb() {
         daily_lead_count INTEGER DEFAULT 0,
         last_lead_date TEXT,
         monthly_goal REAL DEFAULT 0,
+        can_capture_leads INTEGER DEFAULT 1,
         deleted_at TEXT
       );
 
@@ -291,9 +292,9 @@ function initDb() {
   db.prepare('DELETE FROM users WHERE id = ?').run('1');
   
   db.prepare(`
-    INSERT INTO users (id, name, email, role, status, lastAccess, password, grupo_comissao)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-  `).run('1', 'Administrador', adminEmail, 'admin', 'Ativo', new Date().toISOString(), hashedPassword, 'MASTER');
+    INSERT INTO users (id, name, email, role, status, lastAccess, password, grupo_comissao, can_capture_leads)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run('1', 'Administrador', adminEmail, 'admin', 'Ativo', new Date().toISOString(), hashedPassword, 'MASTER', 1);
 
 
   // Seed Initial Banks if not exists
@@ -361,13 +362,14 @@ async function startServer() {
         return res.status(500).json({ error: 'Supabase Admin not configured. Please set SUPABASE_SERVICE_ROLE_KEY in Settings.' });
       }
 
-      const { email, password, name, role, status, grupo_comissao } = req.body;
+      const { email, password, name, role, status, grupo_comissao, can_capture_leads } = req.body;
 
       if (!email || !password) {
         return res.status(400).json({ error: 'Email and password are required' });
       }
 
-      // 1. Create user in auth.users
+  // 1. Create user in auth.users
+      console.log('Creating user in Supabase Auth:', email);
       const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
         email,
         password,
@@ -376,34 +378,97 @@ async function startServer() {
       });
 
       if (authError) {
+        // If user already exists, try to update their profile
+        if (authError.message.includes('already registered') || authError.message.includes('already exists')) {
+          console.log('User already exists in Auth, checking profile for:', email);
+          const { data: existingProfile } = await supabaseAdmin
+            .from('profiles')
+            .select('id')
+            .eq('email', email)
+            .single();
+          
+          if (existingProfile) {
+            console.log('Updating existing profile:', existingProfile.id);
+            const { error: updateError } = await supabaseAdmin
+              .from('profiles')
+              .update({
+                nome: name || 'Usuário',
+                perfil: role || 'vendedor',
+                grupo_comissao: grupo_comissao || 'OURO',
+                ativo: status === 'Ativo',
+                can_capture_leads: can_capture_leads !== false
+              })
+              .eq('id', existingProfile.id);
+            
+            if (updateError) {
+              console.error('Error updating existing profile:', updateError);
+              throw updateError;
+            }
+            return res.json({ success: true, message: 'Perfil atualizado com sucesso' });
+          }
+        }
         console.error('Auth Error:', authError);
         return res.status(400).json({ error: authError.message });
       }
 
       const userId = authData.user.id;
-      console.log('User created in Auth:', userId);
+      console.log('User created in Auth with ID:', userId);
 
-      // 2. The trigger handle_new_user should have created the profile.
-      // We use upsert to be safe and ensure all fields are set.
+      // 2. Create/Update profile in profiles table
       const { error: profileError } = await supabaseAdmin
         .from('profiles')
         .upsert({
           id: userId,
+          auth_user_id: userId,
           nome: name || 'Usuário',
-          email: email,
+          email: email.trim().toLowerCase(),
           perfil: role || 'vendedor',
           grupo_comissao: grupo_comissao || 'OURO',
           ativo: status === 'Ativo',
+          can_capture_leads: can_capture_leads !== false,
           meta_diaria: 0
-        });
+        }, { onConflict: 'email' });
 
       if (profileError) {
         console.error('Profile Upsert Error:', profileError);
-        // We don't return error here because the user was created successfully in Auth
-        // But we log it for debugging
       }
 
-      return res.json({ success: true, user: authData.user });
+      // 3. Sync to local SQLite for redundancy
+      try {
+        const hashedPassword = bcrypt.hashSync(password, 10);
+        db.prepare(`
+          INSERT OR REPLACE INTO users (id, name, email, role, status, password, grupo_comissao, can_capture_leads)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(userId, name, email.trim().toLowerCase(), role, status, hashedPassword, grupo_comissao, can_capture_leads !== false ? 1 : 0);
+      } catch (sqliteError) {
+        console.warn('SQLite sync error:', sqliteError);
+      }
+
+      // 4. Fetch the final profile to return
+      const { data: finalProfile, error: fetchError } = await supabaseAdmin
+        .from('profiles')
+        .select('*')
+        .eq('id', userId)
+        .single();
+
+      if (fetchError) {
+        console.error('Error fetching final profile:', fetchError);
+        return res.json({ success: true, user: { id: userId, email, name, role, status, can_capture_leads } });
+      }
+
+      return res.json({ 
+        success: true, 
+        user: {
+          id: finalProfile.id,
+          name: finalProfile.nome,
+          email: finalProfile.email,
+          role: finalProfile.perfil,
+          status: finalProfile.ativo ? 'Ativo' : 'Inativo',
+          grupo_comissao: finalProfile.grupo_comissao,
+          can_capture_leads: finalProfile.can_capture_leads !== false,
+          lastAccess: finalProfile.updated_at || finalProfile.created_at
+        } 
+      });
     } catch (error: any) {
       console.error('Create user error:', error);
       return res.status(500).json({ error: error.message || 'Internal server error' });
@@ -486,27 +551,104 @@ async function startServer() {
   });
 
   // Users
-  app.get('/api/users', (req, res) => {
-    const users = db.prepare('SELECT id, name, email, role, status, lastAccess, grupo_comissao, saldo_acumulado, saldo_pago, monthly_goal FROM users WHERE deleted_at IS NULL').all();
-    res.json(users);
+  app.get('/api/users', async (req, res) => {
+    console.log('GET /api/users - Request received');
+    try {
+      if (supabaseAdmin) {
+        console.log('GET /api/users - Fetching from Supabase profiles...');
+        const { data: profiles, error } = await supabaseAdmin
+          .from('profiles')
+          .select('*')
+          .order('nome');
+        
+        if (error) {
+          console.error('GET /api/users - Supabase error:', error);
+          // Don't throw, try fallback
+        } else if (profiles) {
+          console.log(`GET /api/users - Found ${profiles.length} users in Supabase.`);
+          return res.json(profiles.map(p => ({
+            id: p.id,
+            name: p.nome || 'Sem Nome',
+            email: p.email,
+            role: p.perfil || 'vendedor',
+            status: p.ativo !== false ? 'Ativo' : 'Inativo',
+            grupo_comissao: p.grupo_comissao || 'OURO',
+            can_capture_leads: p.can_capture_leads !== false,
+            monthly_goal: p.monthly_goal || 0,
+            daily_lead_count: p.daily_lead_count || 0,
+            last_lead_date: p.last_lead_date,
+            lastAccess: p.updated_at || p.created_at
+          })));
+        } else {
+          console.log('GET /api/users - No profiles found in Supabase.');
+        }
+      }
+      
+      // Fallback to SQLite
+      console.log('GET /api/users - Falling back to SQLite...');
+      const users = db.prepare('SELECT id, name, email, role, status, lastAccess, grupo_comissao, saldo_acumulado, saldo_pago, monthly_goal, can_capture_leads FROM users WHERE deleted_at IS NULL').all();
+      console.log(`GET /api/users - Found ${users.length} users in SQLite.`);
+      res.json(users.map((u: any) => ({ 
+        ...u, 
+        can_capture_leads: u.can_capture_leads !== 0,
+        status: u.status || 'Ativo'
+      })));
+    } catch (error: any) {
+      console.error('GET /api/users - Fatal error:', error);
+      res.status(500).json({ error: error.message || 'Erro interno ao buscar usuários' });
+    }
   });
 
-  app.get('/api/users/:id', (req, res) => {
-    const user = db.prepare('SELECT id, name, email, role, status, lastAccess, grupo_comissao, saldo_acumulado, saldo_pago, monthly_goal FROM users WHERE id = ?').get(req.params.id);
-    if (!user) return res.status(404).json({ error: 'User not found' });
-    res.json(user);
+  app.get('/api/users/:id', async (req, res) => {
+    const { id } = req.params;
+    console.log('GET /api/users/:id', id);
+    try {
+      if (supabaseAdmin) {
+        const { data: profile, error } = await supabaseAdmin
+          .from('profiles')
+          .select('*')
+          .eq('id', id)
+          .single();
+        
+        if (error && error.code !== 'PGRST116') {
+          throw error;
+        }
+        
+        if (profile) {
+          return res.json({
+            id: profile.id,
+            name: profile.nome,
+            email: profile.email,
+            role: profile.perfil,
+            status: profile.ativo ? 'Ativo' : 'Inativo',
+            grupo_comissao: profile.grupo_comissao,
+            can_capture_leads: profile.can_capture_leads !== false,
+            monthly_goal: profile.monthly_goal || 0,
+            daily_lead_count: profile.daily_lead_count || 0,
+            last_lead_date: profile.last_lead_date
+          });
+        }
+      }
+      
+      const user = db.prepare('SELECT id, name, email, role, status, lastAccess, grupo_comissao, saldo_acumulado, saldo_pago, monthly_goal, can_capture_leads FROM users WHERE id = ?').get(id) as any;
+      if (!user) return res.status(404).json({ error: 'User not found' });
+      res.json({ ...user, can_capture_leads: user.can_capture_leads === 1 });
+    } catch (error: any) {
+      console.error('Error fetching user by ID:', error);
+      res.status(500).json({ error: error.message });
+    }
   });
 
   app.post('/api/users', (req, res) => {
-    const { name, email, role, status, grupo_comissao, password } = req.body;
+    const { name, email, role, status, grupo_comissao, password, can_capture_leads } = req.body;
     const id = uuidv4();
     const hashedPassword = bcrypt.hashSync(password || '123456', 10);
     try {
       db.prepare(`
-        INSERT INTO users (id, name, email, role, status, lastAccess, password, grupo_comissao)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-      `).run(id, name, email.trim().toLowerCase(), role, status, new Date().toISOString(), hashedPassword, grupo_comissao);
-      res.json({ id, name, email, role, status, grupo_comissao });
+        INSERT INTO users (id, name, email, role, status, lastAccess, password, grupo_comissao, can_capture_leads)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(id, name, email.trim().toLowerCase(), role, status, new Date().toISOString(), hashedPassword, grupo_comissao, can_capture_leads !== false ? 1 : 0);
+      res.json({ id, name, email, role, status, grupo_comissao, can_capture_leads: can_capture_leads !== false });
     } catch (e: any) {
       res.status(400).json({ error: e.message });
     }
@@ -514,7 +656,12 @@ async function startServer() {
 
   app.put('/api/users/:id', (req, res) => {
     const { id } = req.params;
-    const updates = req.body;
+    const updates = { ...req.body };
+    
+    if (updates.can_capture_leads !== undefined) {
+      updates.can_capture_leads = updates.can_capture_leads ? 1 : 0;
+    }
+
     const fields = Object.keys(updates).filter(k => k !== 'id' && k !== 'password');
     
     if (updates.password) {

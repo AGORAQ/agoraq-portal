@@ -37,7 +37,7 @@ export default function CRM() {
       setIsRefreshing(true);
       try {
         const [allLeads, allUsers, totalCount, availCount] = await Promise.all([
-          db.leads.getAll(),
+          db.leads.getAll(isAdmin ? 2000 : 500),
           db.users.getAll(),
           isAdmin ? db.leads.getTotalCount() : Promise.resolve(null),
           isAdmin ? db.leads.getAvailableCount() : Promise.resolve(null)
@@ -48,22 +48,23 @@ export default function CRM() {
           setTotalLeadsInDb(totalCount);
           setAvailableLeadsInDb(availCount);
         }
-        const today = new Date().toISOString().split('T')[0];
-        
-        // Calculate leads captured today by this user
-        const userLeadsToday = allLeads.filter(l => {
-          const isToday = l.createdAt?.startsWith(today) || l.capturedAt?.startsWith(today);
-          const isOwner = l.usuario_id === user?.id;
-          return isToday && (isAdmin || isOwner);
+        const userLeads = allLeads.filter(l => {
+          const isOwner = l.usuario_id === user?.id || l.capturado_por === user?.id;
+          return isAdmin || isOwner;
         });
         
-        setLeadsCapturedToday(userLeadsToday.filter(l => l.usuario_id === user?.id && l.capturedAt?.startsWith(today)).length);
+        const today = new Date().toISOString().split('T')[0];
+        const capturedToday = userLeads.filter(l => 
+          l.usuario_id === user?.id && 
+          (l.capturedAt?.startsWith(today) || l.capturado_em?.startsWith(today))
+        ).length;
+
+        setLeadsCapturedToday(capturedToday);
 
         if (isAdmin) {
           setLeads(allLeads);
         } else {
-          // Sellers only see today's leads
-          setLeads(userLeadsToday);
+          setLeads(userLeads);
         }
       } catch (err) {
         console.error('Error loading initial data:', err);
@@ -80,7 +81,7 @@ export default function CRM() {
     
     try {
       const [allLeads, allUsers, capturedTodayCount, totalCount, availCount] = await Promise.all([
-        db.leads.getAll(),
+        db.leads.getAll(isAdmin ? 2000 : 500),
         db.users.getAll(),
         db.leads.getCapturedToday(user.id),
         isAdmin ? db.leads.getTotalCount() : Promise.resolve(null),
@@ -93,18 +94,16 @@ export default function CRM() {
         setAvailableLeadsInDb(availCount);
       }
       setUsers(allUsers);
-      const today = new Date().toISOString().split('T')[0];
       
-      const userLeadsToday = allLeads.filter((l: any) => {
-        const isToday = l.createdAt?.startsWith(today) || l.created_at?.startsWith(today) || l.capturedAt?.startsWith(today);
+      const userLeads = allLeads.filter((l: any) => {
         const isOwner = l.usuario_id === user?.id || l.capturado_por === user?.id;
-        return isToday && (isAdmin || isOwner);
+        return isAdmin || isOwner;
       });
       
       if (isAdmin) {
         setLeads(allLeads);
       } else {
-        setLeads(userLeadsToday);
+        setLeads(userLeads);
       }
 
       setLeadsCapturedToday(capturedTodayCount);

@@ -95,21 +95,43 @@ export const db = {
 
   users: {
     getAll: async () => {
-      const result = await withTimeout(supabase
-        .from('profiles')
-        .select('*')
-        .order('nome')) as any;
-      if (result.error) throw result.error;
-      return result.data.map(mapProfileToUser);
+      try {
+        const response = await fetch('/api/users');
+        if (!response.ok) {
+          const error = await response.json();
+          throw new Error(error.error || 'Erro ao buscar usuários');
+        }
+        return await response.json();
+      } catch (error) {
+        console.error('DB: Erro ao buscar usuários via API:', error);
+        // Fallback to direct Supabase if API fails
+        const result = await withTimeout(supabase
+          .from('profiles')
+          .select('*')
+          .order('nome')) as any;
+        if (result.error) throw result.error;
+        return result.data.map(mapProfileToUser);
+      }
     },
     getById: async (id: string) => {
-      const result = await withTimeout(supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', id)
-        .single()) as any;
-      if (result.error) throw result.error;
-      return mapProfileToUser(result.data);
+      try {
+        const response = await fetch(`/api/users/${id}`);
+        if (!response.ok) {
+          const error = await response.json();
+          throw new Error(error.error || 'Erro ao buscar usuário');
+        }
+        return await response.json();
+      } catch (error) {
+        console.error('DB: Erro ao buscar usuário via API:', error);
+        // Fallback to direct Supabase if API fails
+        const result = await withTimeout(supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', id)
+          .single()) as any;
+        if (result.error) throw result.error;
+        return mapProfileToUser(result.data);
+      }
     },
     getByAuthId: async (authId: string) => {
       try {
@@ -337,15 +359,15 @@ export const db = {
   },
 
   leads: {
-    getAll: async () => {
+    getAll: async (limit = 1000) => {
       try {
-        console.log('DB: Buscando todos os leads (limite 10.000)...');
+        console.log(`DB: Buscando todos os leads (limite ${limit})...`);
         const result = await withRetry(async () => {
           return await withTimeout(supabase
             .from('leads')
             .select('*')
             .order('created_at', { ascending: false })
-            .limit(10000), 120000); // Aumentado para 120s
+            .limit(limit), 120000); // Aumentado para 120s
         }, 3) as any; // Aumentado para 3 retries
 
         if (result.error) {
@@ -361,17 +383,18 @@ export const db = {
         return [];
       }
     },
-    getAvailable: async () => {
+    getAvailable: async (limit = 1000) => {
       try {
-        console.log('DB: Buscando leads disponíveis (limite 10.000)...');
+        console.log(`DB: Buscando leads disponíveis (limite ${limit})...`);
         const result = await withRetry(async () => {
           return await withTimeout(supabase
             .from('leads')
             .select('*')
+            .eq('status', 'Disponível')
             .is('capturado_por', null)
             .order('created_at', { ascending: false })
-            .limit(10000), 120000); // Aumentado para 120s
-        }, 3) as any; // Aumentado para 3 retries
+            .limit(limit), 120000);
+        }, 3) as any;
 
         if (result.error) {
           console.error('DB Error (leads.getAvailable):', result.error);
@@ -411,28 +434,31 @@ export const db = {
         return 0;
       }
     },
-    getAvailableForUser: async (userId: string) => {
+    getAvailableForUser: async (userId: string, limit = 500) => {
       // 0. Check if user can capture leads (Resilient check)
       try {
         const { data: profile, error: profileError } = await supabase
           .from('profiles')
-          .select('*') // Select all to avoid column missing error if we specify it
+          .select('can_capture_leads') 
           .eq('id', userId)
           .single();
         
         if (profile && profile.can_capture_leads === false) {
+          console.log(`DB: Usuário ${userId} está com captura bloqueada.`);
           return [];
         }
       } catch (err) {
         console.warn('Falha silenciosa na verificação de can_capture_leads:', err);
       }
 
-      // 1. Get user's already captured leads to avoid duplicates
+      // 1. Get user's already captured leads to avoid duplicates (limit to recent)
       const { data: userLeads, error: userError } = await withRetry(async () => {
         return await withTimeout(supabase
           .from('leads')
           .select('cpf, telefone')
-          .eq('capturado_por', userId), 60000); // Aumentado para 60s
+          .eq('capturado_por', userId)
+          .order('created_at', { ascending: false })
+          .limit(2000), 60000); // Aumentado para 60s
       }, 3) as any; // Aumentado para 3 retries
       
       if (userError) throw userError;
@@ -445,9 +471,11 @@ export const db = {
         return await withTimeout(supabase
           .from('leads')
           .select('*')
+          .eq('status', 'Disponível')
           .is('capturado_por', null)
-          .order('created_at', { ascending: false }), 90000); // Aumentado para 90s
-      }, 3) as any; // Aumentado para 3 retries
+          .order('created_at', { ascending: false })
+          .limit(limit), 90000);
+      }, 3) as any;
       
       if (error) throw error;
 
@@ -457,6 +485,8 @@ export const db = {
         const hasDuplicatePhone = l.telefone && userPhones.has(l.telefone);
         return !hasDuplicateCpf && !hasDuplicatePhone;
       });
+
+      console.log(`DB: getAvailableForUser(${userId}): Encontrados ${data?.length || 0}, Filtrados ${filtered.length} (CPFs: ${userCpfs.size}, Phones: ${userPhones.size})`);
 
       return filtered.map(mapTableToLead);
     },
@@ -626,12 +656,19 @@ export const db = {
         return { 
           count: 0, 
           data: [], 
-          errors: [`Nenhum lead válido encontrado. (Vazios: ${skippedEmptyPhone}, Duplicados: ${skippedInternalDuplicate})`] 
+          errors: [`Nenhum lead válido encontrado. (Vazios: ${skippedEmptyPhone}, Duplicados: ${skippedInternalDuplicate})`],
+          stats: {
+            total: leads.length,
+            skippedEmpty: skippedEmptyPhone,
+            skippedDuplicate: skippedInternalDuplicate,
+            skippedExisting: 0,
+            inserted: 0
+          }
         };
       }
 
       const SELECT_CHUNK_SIZE = 1000;
-      const INSERT_CHUNK_SIZE = 500;
+      const INSERT_CHUNK_SIZE = 100; // Reduzido para 100 para maior segurança
       const total = uniqueLeads.length;
       const results = [];
       const errors: string[] = [];
@@ -647,15 +684,14 @@ export const db = {
             return await withTimeout(supabase
               .from('leads')
               .select('telefone')
-              .in('telefone', chunkPhones), 90000); // Aumentado para 90s
-          }, 3) as any; // Aumentado para 3 retries
+              .in('telefone', chunkPhones), 90000);
+          }, 3) as any;
           
           if (result.data) {
             result.data.forEach((l: any) => existingPhones.add(l.telefone));
           }
         } catch (err) {
           console.error('DB Error (checking existing phones):', err);
-          // Se falhar por timeout, podemos continuar mas corremos risco de duplicados
         }
       }
 
@@ -669,12 +705,22 @@ export const db = {
         - Novos para inserir: ${toInsertCount}`);
 
       if (toInsertCount === 0) {
+        console.log('DB: Nenhum lead novo para inserir (todos já existem).');
         return { 
           count: 0, 
           data: [], 
-          errors: [`Todos os ${uniqueLeads.length} leads já existem no banco de dados.`] 
+          errors: [`Todos os ${uniqueLeads.length} leads já existem no banco de dados.`],
+          stats: {
+            total: leads.length,
+            skippedEmpty: skippedEmptyPhone,
+            skippedDuplicate: skippedInternalDuplicate,
+            skippedExisting: skippedByDb,
+            inserted: 0
+          }
         };
       }
+
+      console.log(`DB: Tentando inserir ${toInsertCount} leads em lotes de ${INSERT_CHUNK_SIZE}...`);
 
       // Inserir em lotes
       let processed = 0;
@@ -686,7 +732,7 @@ export const db = {
             let insertResult = await withTimeout(supabase
               .from('leads')
               .insert(chunk)
-              .select(), 180000); // Aumentado para 180s
+              .select(), 180000);
             
             // Se falhar especificamente por causa da coluna 'cidade'
             if (insertResult.error && insertResult.error.message?.includes('cidade')) {
@@ -699,12 +745,24 @@ export const db = {
             }
             
             return insertResult;
-          }, 3) as any; // Aumentado para 3 retries
+          }, 3) as any;
 
           if (result.error) {
-            console.error('DB Error (inserting leads chunk):', result.error);
-            errors.push(`Lote ${Math.floor(i / INSERT_CHUNK_SIZE) + 1}: ${result.error.message}`);
+            console.error(`DB Error (inserting leads chunk ${Math.floor(i / INSERT_CHUNK_SIZE) + 1}):`, result.error);
+            errors.push(`Lote ${Math.floor(i / INSERT_CHUNK_SIZE) + 1}: ${result.error.message || JSON.stringify(result.error)}`);
+            
+            // Fallback individual para este lote se falhar
+            console.log(`DB: Tentando inserção individual para o lote ${Math.floor(i / INSERT_CHUNK_SIZE) + 1}...`);
+            for (const l of chunk) {
+              try {
+                const { data: singleData, error: singleError } = await supabase.from('leads').insert([l]).select();
+                if (!singleError && singleData) {
+                  results.push(...singleData);
+                }
+              } catch (e) {}
+            }
           } else if (result.data) {
+            console.log(`DB: Lote ${Math.floor(i / INSERT_CHUNK_SIZE) + 1} inserido com sucesso: ${result.data.length} registros.`);
             results.push(...result.data);
           }
         } catch (chunkError: any) {
@@ -1516,11 +1574,12 @@ export const db = {
       }
       return retVal;
     }
-  }
+  },
+  mapProfileToUser
 };
 
 // Mappers
-function mapProfileToUser(p: any): User {
+export function mapProfileToUser(p: any): User {
   return {
     id: p.id,
     name: p.nome,
@@ -1553,7 +1612,7 @@ function mapUserToProfile(u: any): any {
   if (u.daily_goal !== undefined) p.meta_diaria = u.daily_goal;
   if (u.daily_lead_count !== undefined) p.daily_lead_count = u.daily_lead_count;
   if (u.last_lead_date !== undefined) p.last_lead_date = u.last_lead_date;
-  // can_capture_leads removed as column might not exist in profiles table
+  if (u.can_capture_leads !== undefined) p.can_capture_leads = u.can_capture_leads;
   return p;
 }
 

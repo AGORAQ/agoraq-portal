@@ -72,7 +72,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             }, 
             (payload) => {
               console.log('AuthContext: Perfil atualizado em tempo real:', payload.new);
-              setUser(payload.new as User);
+              // Map the raw profile data to the User type
+              const updatedUser = db.mapProfileToUser(payload.new);
+              setUser(updatedUser);
             }
           )
           .subscribe();

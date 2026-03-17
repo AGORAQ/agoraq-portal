@@ -102,7 +102,7 @@ export default function AdminPanel() {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [formData, setFormData] = useState<Partial<User>>({
-    name: '', email: '', role: 'vendedor', status: 'Ativo', grupo_comissao: 'OURO', password: ''
+    name: '', email: '', role: 'vendedor', status: 'Ativo', grupo_comissao: 'OURO', password: '', can_capture_leads: true
   });
 
   // Commission Groups State
@@ -144,6 +144,7 @@ export default function AdminPanel() {
 
   const [isTesting, setIsTesting] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
 
   const handleRunTests = async () => {
     if (!await confirm({ message: 'Deseja rodar os testes de integridade do sistema? Isso criará dados de teste.' })) return;
@@ -159,16 +160,27 @@ export default function AdminPanel() {
   };
 
   const loadData = async () => {
-    const [allUsers, allRequests, allGroups, allBanks] = await Promise.all([
-      db.users.getAll(),
-      db.access_requests.getAll(),
-      db.commissionGroups.getAll(),
-      db.bancos.getAll()
-    ]);
-    setUsers(allUsers);
-    setAccessRequests(allRequests);
-    setCommissionGroups(allGroups);
-    setBanks(allBanks);
+    setIsLoading(true);
+    try {
+      console.log('AdminPanel: Carregando dados...');
+      const [allUsers, allRequests, allGroups, allBanks] = await Promise.all([
+        db.users.getAll().catch(err => { console.error('Erro ao buscar usuários:', err); return []; }),
+        db.access_requests.getAll().catch(err => { console.error('Erro ao buscar solicitações:', err); return []; }),
+        db.commissionGroups.getAll().catch(err => { console.error('Erro ao buscar grupos:', err); return []; }),
+        db.bancos.getAll().catch(err => { console.error('Erro ao buscar bancos:', err); return []; })
+      ]);
+      
+      setUsers(allUsers);
+      setAccessRequests(allRequests);
+      setCommissionGroups(allGroups);
+      setBanks(allBanks);
+      console.log('AdminPanel: Dados carregados com sucesso. Usuários:', allUsers.length);
+    } catch (error: any) {
+      console.error('AdminPanel: Erro fatal ao carregar dados:', error);
+      notify('error', 'Erro ao carregar dados do painel: ' + (error.message || 'Erro de conexão'));
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   useEffect(() => {
@@ -293,7 +305,8 @@ export default function AdminPanel() {
           password: finalPassword,
           role: formData.role,
           status: formData.status,
-          grupo_comissao: formData.grupo_comissao
+          grupo_comissao: formData.grupo_comissao,
+          can_capture_leads: formData.can_capture_leads !== false
         });
 
         setPasswordModal({
@@ -1036,7 +1049,7 @@ export default function AdminPanel() {
               </Button>
               <Button className="bg-blue-900 hover:bg-blue-800" onClick={() => {
                 setEditingUser(null);
-                setFormData({ name: '', email: '', role: 'vendedor', status: 'Ativo' });
+                setFormData({ name: '', email: '', role: 'vendedor', status: 'Ativo', can_capture_leads: true });
                 setIsFormOpen(true);
               }}>
                 <Plus className="w-4 h-4 mr-2" />
@@ -1109,6 +1122,19 @@ export default function AdminPanel() {
                         <option value="OURO">OURO</option>
                       </select>
                     </div>
+
+                    <div className="flex items-center space-x-2 pt-8">
+                      <input
+                        type="checkbox"
+                        id="can_capture_leads"
+                        className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-600"
+                        checked={formData.can_capture_leads}
+                        onChange={e => setFormData(prev => ({ ...prev, can_capture_leads: e.target.checked }))}
+                      />
+                      <label htmlFor="can_capture_leads" className="text-sm font-medium text-slate-700">
+                        Pode capturar leads no CRM
+                      </label>
+                    </div>
                   </div>
                   <div className="flex justify-end gap-2 pt-4">
                     <Button type="button" variant="outline" onClick={() => setIsFormOpen(false)}>Cancelar</Button>
@@ -1145,6 +1171,7 @@ export default function AdminPanel() {
                       <th className="px-4 py-3">Nome</th>
                       <th className="px-4 py-3">Perfil</th>
                       <th className="px-4 py-3">Status</th>
+                      <th className="px-4 py-3">Captura</th>
                       <th className="px-4 py-3">Último Acesso</th>
                       <th className="px-4 py-3 text-right">Ações</th>
                     </tr>
@@ -1172,6 +1199,11 @@ export default function AdminPanel() {
                           <td className="px-4 py-3">
                             <Badge variant={u.status === 'Ativo' ? 'success' : 'secondary'}>
                               {u.status}
+                            </Badge>
+                          </td>
+                          <td className="px-4 py-3">
+                            <Badge variant={u.can_capture_leads !== false ? 'success' : 'destructive'} className="text-[10px]">
+                              {u.can_capture_leads !== false ? 'Liberado' : 'Bloqueado'}
                             </Badge>
                           </td>
                           <td className="px-4 py-3 text-slate-500">
