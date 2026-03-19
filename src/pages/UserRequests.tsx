@@ -121,8 +121,8 @@ export default function UserRequests() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!formData.name || !formData.email || !formData.bank || !formData.sellerName || !formData.cpf || !formData.fgtsGroup || !formData.cltGroup) {
-      notify('error', 'Preencha os campos obrigatórios (incluindo grupos de comissão).');
+    if (!formData.name || !formData.email || !formData.bank || !formData.sellerName || !formData.cpf) {
+      notify('error', 'Preencha os campos obrigatórios.');
       return;
     }
 
@@ -170,10 +170,6 @@ export default function UserRequests() {
       requestedAccessType: formData.requestedAccessType,
 
       pixKey: formData.pixKey || '',
-      observation: formData.observation || '',
-      fgtsGroup: formData.fgtsGroup,
-      cltGroup: formData.cltGroup,
-      othersGroup: formData.othersGroup,
       tipo_solicitacao: 'novo_usuario'
     });
 
@@ -553,64 +549,6 @@ export default function UserRequests() {
                 </div>
               </div>
 
-              <div className="border-t pt-4">
-                <h3 className="font-semibold text-slate-900 mb-4">Grupos de Comissão</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">Tabela FGTS <span className="text-red-500">*</span></label>
-                    <select 
-                      className="flex h-10 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-900"
-                      required
-                      value={formData.fgtsGroup || ''} 
-                      onChange={e => handleInputChange('fgtsGroup', e.target.value)}
-                    >
-                      <option value="">Selecionar Grupo FGTS</option>
-                      {fgtsGroups.map(group => (
-                        <option key={group.id} value={group.name}>{group.name}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">Tabela CLT <span className="text-red-500">*</span></label>
-                    <select 
-                      className="flex h-10 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-900"
-                      required
-                      value={formData.cltGroup || ''} 
-                      onChange={e => handleInputChange('cltGroup', e.target.value)}
-                    >
-                      <option value="">Selecionar Grupo CLT</option>
-                      {cltGroups.map(group => (
-                        <option key={group.id} value={group.name}>{group.name}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">Outros Produtos</label>
-                    <select 
-                      className="flex h-10 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-900"
-                      value={formData.othersGroup || ''} 
-                      onChange={e => handleInputChange('othersGroup', e.target.value)}
-                    >
-                      <option value="">Selecionar Grupo Outros</option>
-                      {othersGroups.map(group => (
-                        <option key={group.id} value={group.name}>{group.name}</option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-              </div>
-
-              <div className="border-t pt-4">
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Observação Interna</label>
-                  <textarea 
-                    className="flex min-h-[80px] w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm"
-                    value={formData.observation || ''}
-                    onChange={e => handleInputChange('observation', e.target.value)}
-                  />
-                </div>
-              </div>
-
               <div className="flex justify-end gap-2 pt-4">
                 <Button type="button" variant="outline" onClick={() => setIsFormOpen(false)}>Cancelar</Button>
                 <Button type="submit" className="bg-blue-900 hover:bg-blue-800">
@@ -754,18 +692,6 @@ export default function UserRequests() {
                         <label className="text-xs font-medium text-slate-500 uppercase">Banco Solicitado</label>
                         <p className="font-medium text-blue-700">{selectedRequest.bank}</p>
                       </div>
-                      <div>
-                        <label className="text-xs font-medium text-slate-500 uppercase">Tabela FGTS</label>
-                        <p className="font-medium text-emerald-700">{selectedRequest.fgtsGroup || '-'}</p>
-                      </div>
-                      <div>
-                        <label className="text-xs font-medium text-slate-500 uppercase">Tabela CLT</label>
-                        <p className="font-medium text-emerald-700">{selectedRequest.cltGroup || '-'}</p>
-                      </div>
-                      <div>
-                        <label className="text-xs font-medium text-slate-500 uppercase">Outros Produtos</label>
-                        <p className="font-medium text-emerald-700">{selectedRequest.othersGroup || '-'}</p>
-                      </div>
                     </div>
                   </div>
                 )}
@@ -807,15 +733,6 @@ export default function UserRequests() {
                         <p className="font-mono bg-slate-50 p-2 rounded border">{selectedRequest.pixKey || '-'}</p>
                       </div>
                     </div>
-                  </div>
-                )}
-
-                {selectedRequest.observation && (
-                  <div className="md:col-span-2 border-t pt-4">
-                    <label className="text-xs font-medium text-slate-500 uppercase">Observação Interna</label>
-                    <p className="bg-amber-50 p-3 rounded-md text-amber-900 border border-amber-100 mt-1">
-                      {selectedRequest.observation}
-                    </p>
                   </div>
                 )}
 

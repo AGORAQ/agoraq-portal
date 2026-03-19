@@ -441,12 +441,26 @@ export const db = {
         // 0. Check if user can capture leads (Resilient check)
         const { data: profile, error: profileError } = await supabase
           .from('profiles')
-          .select('can_capture_leads, daily_lead_count, daily_lead_limit, last_lead_date') 
+          .select('can_capture_leads, daily_lead_count, last_lead_date') 
           .eq('id', userId)
           .single();
         
         if (profileError) {
           console.error('[DEBUG] getAvailableForUser: Erro ao buscar perfil:', profileError);
+          // Se o erro for de coluna inexistente, tentamos buscar apenas o básico
+          if (profileError.message.includes('column') || profileError.message.includes('does not exist')) {
+            console.log('[DEBUG] getAvailableForUser: Tentando busca simplificada de perfil...');
+            const { data: simpleProfile } = await supabase
+              .from('profiles')
+              .select('can_capture_leads')
+              .eq('id', userId)
+              .single();
+            
+            if (simpleProfile && simpleProfile.can_capture_leads === false) {
+              console.warn(`[DEBUG] getAvailableForUser: Usuário ${userId} está BLOQUEADO para captura.`);
+              return [];
+            }
+          }
         } else {
           console.log('[DEBUG] getAvailableForUser: Perfil do usuário:', profile);
           if (profile && profile.can_capture_leads === false) {
@@ -900,7 +914,9 @@ export const db = {
         .subscribe();
     },
     create: async (sale: any, user: User) => {
-      console.log('DB: Criando venda:', sale);
+      console.log('[DEBUG] sales.create: Iniciando criação de venda para usuário:', user.id);
+      console.log('[DEBUG] sales.create: Dados recebidos:', sale);
+      
       // 1. Create the sale
       const mappedSale = mapSaleToTable({ 
         ...sale, 
@@ -909,13 +925,20 @@ export const db = {
         grupo_vendedor: user.grupo_comissao 
       });
       
+      console.log('[DEBUG] sales.create: Dados mapeados para o banco:', mappedSale);
+      
       const { data: saleData, error: saleError } = await supabase
         .from('sales')
         .insert([mappedSale])
         .select('*')
         .single();
       
-      if (saleError) throw saleError;
+      if (saleError) {
+        console.error('[DEBUG] sales.create: Erro ao inserir venda:', saleError);
+        throw saleError;
+      }
+      
+      console.log('[DEBUG] sales.create: Venda inserida com sucesso:', saleData.id);
 
       // 2. Create corresponding financial entry (Credit for the seller)
       const financialEntry = {
@@ -929,24 +952,37 @@ export const db = {
         data_vencimento: new Date().toISOString().split('T')[0]
       };
 
+      console.log('[DEBUG] sales.create: Criando entrada financeira:', financialEntry);
       const { error: finError } = await supabase.from('financial_entries').insert([financialEntry]);
       if (finError) {
-        console.error('Erro ao criar entrada financeira:', finError);
+        console.error('[DEBUG] sales.create: Erro ao criar entrada financeira:', finError);
       }
       
       // 3. Update user's accumulated balance (fetch latest first to avoid race conditions)
-      const { data: profile, error: profileError } = await supabase
-        .from('profiles')
-        .select('saldo_acumulado')
-        .eq('id', user.id)
-        .single();
-      
-      if (!profileError && profile) {
-        const currentBalance = profile.saldo_acumulado || 0;
-        const newCommission = sale.commission || 0;
-        await db.users.update(user.id, { 
-          saldo_acumulado: currentBalance + newCommission 
-        });
+      console.log('[DEBUG] sales.create: Atualizando saldo do usuário...');
+      try {
+        const { data: profile, error: profileError } = await supabase
+          .from('profiles')
+          .select('saldo_acumulado')
+          .eq('id', user.id)
+          .single();
+        
+        if (!profileError && profile) {
+          const currentBalance = profile.saldo_acumulado || 0;
+          const newCommission = sale.commission || 0;
+          console.log(`[DEBUG] sales.create: Saldo atual: ${currentBalance}, Nova comissão: ${newCommission}, Novo saldo: ${currentBalance + newCommission}`);
+          
+          await db.users.update(user.id, { 
+            saldo_acumulado: currentBalance + newCommission 
+          });
+          console.log('[DEBUG] sales.create: Saldo atualizado com sucesso');
+        } else if (profileError) {
+          console.error('[DEBUG] sales.create: Erro ao buscar perfil para atualizar saldo:', profileError);
+          // Se a coluna saldo_acumulado não existir, não falhamos a criação da venda
+        }
+      } catch (updateError) {
+        console.error('[DEBUG] sales.create: Erro crítico ao atualizar saldo:', updateError);
+        // Não falhamos a criação da venda se apenas o saldo falhar
       }
 
       return mapTableToSale(saleData);
@@ -1632,6 +1668,7 @@ export function mapProfileToUser(p: any): User {
     lastAccess: p.created_at,
     grupo_comissao: p.grupo_comissao,
     meta_diaria: p.meta_diaria,
+    saldo_acumulado: p.saldo_acumulado || 0,
     // Legacy fields for compatibility
     daily_goal: p.meta_diaria,
     monthly_goal: p.monthly_goal,
@@ -1651,6 +1688,7 @@ function mapUserToProfile(u: any): any {
   if (u.status) p.ativo = u.status === 'Ativo';
   if (u.grupo_comissao) p.grupo_comissao = u.grupo_comissao;
   if (u.meta_diaria !== undefined) p.meta_diaria = u.meta_diaria;
+  if (u.saldo_acumulado !== undefined) p.saldo_acumulado = u.saldo_acumulado;
   // Legacy fields
   if (u.daily_goal !== undefined) p.meta_diaria = u.daily_goal;
   if (u.daily_lead_count !== undefined) p.daily_lead_count = u.daily_lead_count;

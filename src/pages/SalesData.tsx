@@ -264,7 +264,11 @@ export default function SalesData() {
         bank: '',
         product: '',
         operacao: '',
+        table_name: '',
         value: '',
+        commission: 0,
+        companyCommission: 0,
+        bankCommission: 0,
         status: 'Pendente',
         seller: user?.name || ''
       });

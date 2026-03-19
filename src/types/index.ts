@@ -100,12 +100,8 @@ export interface AccessRequest {
 
   pixKey?: string;
   status: 'Pendente' | 'Aprovado' | 'Recusado' | 'Aguardando Documentos' | 'Aguardando Criação/Liberação' | 'Solicitação com Pendência' | 'Aguardando Banco' | 'Finalizado' | 'Rejeitado';
-  observation?: string;
   createdAt: string;
   data_criacao?: string; // Added for consistency
-  fgtsGroup?: string;
-  cltGroup?: string;
-  othersGroup?: string;
   
   // New fields
   tipo_solicitacao?: 'novo_usuario' | 'reset_senha';

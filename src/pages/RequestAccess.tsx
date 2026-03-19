@@ -31,8 +31,6 @@ export default function RequestAccess() {
     neighborhood: '',
     city: '',
     state: '',
-    
-    observation: ''
   });
 
   const handleCepBlur = async () => {
@@ -245,19 +243,7 @@ export default function RequestAccess() {
                   <Input id="sellerName" name="sellerName" placeholder="Opcional" value={formData.sellerName} onChange={handleChange} />
                 </div>
               </div>
-              <div className="space-y-2">
-                <label htmlFor="observation" className="text-sm font-medium text-slate-700">Observações Adicionais</label>
-                <textarea 
-                  id="observation" 
-                  name="observation" 
-                  className="flex min-h-[80px] w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-900 focus-visible:ring-offset-2"
-                  placeholder="Alguma informação extra?"
-                  value={formData.observation}
-                  onChange={handleChange}
-                />
-              </div>
             </div>
-
             <Button type="submit" className="w-full bg-blue-900 hover:bg-blue-800 text-lg py-6 mt-6">
               <UserPlus className="w-5 h-5 mr-2" />
               Enviar Solicitação
