@@ -238,7 +238,12 @@ export default function SalesData() {
         value: parseFloat(formData.value) || 0,
       };
 
-      console.log('[DEBUG] SalesData: Chamando db.sales.create com:', saleData);
+      console.log('[DEBUG] SalesData: Chamando db.sales.create', {
+        saleData,
+        userId: user.id,
+        userName: user.name,
+        userRole: user.role
+      });
       const newSale = await db.sales.create(saleData, user);
       console.log('[DEBUG] SalesData: Venda criada com sucesso:', newSale);
       

@@ -1089,23 +1089,39 @@ export const db = {
     },
     create: async (sale: any, user: User) => {
       console.log('[DEBUG] sales.create: Iniciando criação de venda');
-      console.log('[DEBUG] sales.create: Usuário:', { id: user.id, name: user.name, role: user.role, group: user.grupo_comissao });
+      console.log('[DEBUG] sales.create: Usuário Auth ID:', user.id);
+      console.log('[DEBUG] sales.create: Usuário Nome:', user.name);
+      console.log('[DEBUG] sales.create: Usuário Role:', user.role);
+      console.log('[DEBUG] sales.create: Usuário Grupo:', user.grupo_comissao);
       console.log('[DEBUG] sales.create: Dados da venda recebidos:', sale);
       
       if (!user.id) {
-        console.error('[DEBUG] sales.create: ID do usuário ausente');
+        console.error('[DEBUG] sales.create: ID do usuário ausente (vendedor_id)');
         throw new Error('ID do usuário ausente. Por favor, faça login novamente.');
+      }
+
+      // Hard validation for vendedor_id
+      const vendedorId = user.id;
+      if (!vendedorId || vendedorId === 'null' || vendedorId === 'undefined') {
+        console.error('[DEBUG] sales.create: vendedor_id inválido detectado:', vendedorId);
+        throw new Error('Erro de identificação do vendedor. Por favor, recarregue a página.');
       }
 
       // 1. Create the sale
       const mappedSale = mapSaleToTable({ 
         ...sale, 
-        vendedor_id: user.id,
+        vendedor_id: vendedorId,
         vendedor_nome: user.name,
         grupo_vendedor: user.grupo_comissao 
       });
       
-      console.log('[DEBUG] sales.create: Dados mapeados para o banco:', mappedSale);
+      console.log('[DEBUG] sales.create: Payload final antes do insert:', mappedSale);
+      
+      // Double check if vendedor is present in mappedSale
+      if (!mappedSale.vendedor && !mappedSale.vendedor_id) {
+        console.error('[DEBUG] sales.create: Falha crítica no mapeamento - vendedor_id está nulo no payload final');
+        throw new Error('Falha ao mapear identificação do vendedor.');
+      }
       
       const { data: saleData, error: saleError } = await supabase
         .from('sales')
@@ -1115,6 +1131,12 @@ export const db = {
       
       if (saleError) {
         console.error('[DEBUG] sales.create: Erro ao inserir venda no Supabase:', saleError);
+        console.error('[DEBUG] sales.create: Detalhes do erro:', {
+          code: saleError.code,
+          message: saleError.message,
+          details: saleError.details,
+          hint: saleError.hint
+        });
         throw new Error(`Erro ao inserir venda: ${saleError.message || 'Erro desconhecido'}`);
       }
       
@@ -2157,7 +2179,10 @@ function mapSaleToTable(s: any): any {
   
   // Vendedor mapping
   const sellerId = s.vendedor_id || s.vendedor || s.usuario_id;
-  if (sellerId) t.vendedor = sellerId; // Match DB column name
+  if (sellerId) {
+    t.vendedor = sellerId; // Match DB column name (foreign key)
+    t.vendedor_id = sellerId; // Match common naming convention just in case
+  }
   
   if (s.vendedor_nome || s.seller) {
     t.vendedor_nome = s.vendedor_nome || s.seller;
