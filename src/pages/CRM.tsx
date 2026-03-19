@@ -30,7 +30,36 @@ export default function CRM() {
   const [totalLeadsInDb, setTotalLeadsInDb] = useState<number | null>(null);
   const [availableLeadsInDb, setAvailableLeadsInDb] = useState<number | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [showDebug, setShowDebug] = useState(false);
+  const [debugInfo, setDebugInfo] = useState<any>(null);
   const DAILY_LIMIT = 100;
+
+  const fetchDebugInfo = async () => {
+    try {
+      console.log('CRM: Buscando informações de diagnóstico...');
+      const { count: totalCount } = await supabase.from('leads').select('*', { count: 'exact', head: true });
+      const { count: availCount } = await supabase.from('leads').select('*', { count: 'exact', head: true }).is('capturado_por', null).is('usuario_id', null);
+      const { data: profile } = await supabase.from('profiles').select('*').eq('id', user?.id).single();
+      
+      setDebugInfo({
+        totalLeads: totalCount || 0,
+        availableLeads: availCount || 0,
+        userProfile: profile,
+        authId: user?.id,
+        role: user?.role,
+        timestamp: new Date().toLocaleString()
+      });
+    } catch (err) {
+      console.error('CRM: Erro ao buscar info de debug:', err);
+      setDebugInfo({ error: String(err) });
+    }
+  };
+
+  useEffect(() => {
+    if (isAdmin && showDebug) {
+      fetchDebugInfo();
+    }
+  }, [isAdmin, showDebug]);
 
   useEffect(() => {
     const loadData = async () => {
@@ -80,6 +109,7 @@ export default function CRM() {
     setIsRefreshing(true);
     
     try {
+      console.log('CRM: Atualizando leads...');
       const [allLeads, allUsers, capturedTodayCount, totalCount, availCount] = await Promise.all([
         db.leads.getAll(isAdmin ? 2000 : 500),
         db.users.getAll(),
@@ -88,7 +118,13 @@ export default function CRM() {
         isAdmin ? db.leads.getAvailableCount() : Promise.resolve(null)
       ]);
       
-      console.log('CRM Data Loaded:', { allLeadsCount: allLeads.length, allUsersCount: allUsers.length });
+      console.log('CRM Data Loaded:', { 
+        allLeadsCount: allLeads.length, 
+        allUsersCount: allUsers.length,
+        capturedToday: capturedTodayCount,
+        totalInDb: totalCount,
+        availableInDb: availCount
+      });
       if (isAdmin) {
         setTotalLeadsInDb(totalCount);
         setAvailableLeadsInDb(availCount);
@@ -140,16 +176,25 @@ export default function CRM() {
 
     setIsSaving(true);
     try {
+      console.log(`CRM: Iniciando captura de ${qty} leads para usuário ${user?.id}`);
       // Get all unassigned leads, filtering out duplicates for this user
       const unassignedLeads = await db.leads.getAvailableForUser(user!.id);
+      console.log(`CRM: Leads disponíveis retornados: ${unassignedLeads.length}`);
       
-      if (unassignedLeads.length < qty) {
-        notify('warning', `Apenas ${unassignedLeads.length} leads disponíveis na base.`);
+      if (unassignedLeads.length === 0) {
+        notify('warning', 'Nenhum lead disponível para captura no momento.');
         return;
       }
 
-      const leadIdsToCapture = unassignedLeads.slice(0, qty).map(l => l.id);
+      if (unassignedLeads.length < qty) {
+        notify('warning', `Apenas ${unassignedLeads.length} leads disponíveis na base. Capturando o máximo possível.`);
+      }
+
+      const leadIdsToCapture = unassignedLeads.slice(0, Math.min(qty, unassignedLeads.length)).map(l => l.id);
+      console.log(`CRM: IDs selecionados para captura:`, leadIdsToCapture);
+      
       const result = await db.leads.bulkCapture(leadIdsToCapture, user!.id);
+      console.log(`CRM: Resultado do bulkCapture:`, result);
 
       await refreshLeads();
       notify('success', `${result.capturedCount} leads capturados com sucesso!`);
@@ -213,20 +258,27 @@ export default function CRM() {
       }));
 
       const result = await db.leads.import(leadsToImport);
-      await refreshLeads();
+      console.log('CRM: Resultado da importação:', result);
       
       if (result.count > 0) {
         notify('success', `${result.count} leads importados com sucesso!`);
-        if (leadsToImport.length > result.count) {
-          notify('info', `${leadsToImport.length - result.count} duplicados foram ignorados.`);
-        }
-      } else if (leadsToImport.length > 0) {
-        notify('warning', 'Nenhum lead novo foi importado (todos eram duplicados ou inválidos).');
       }
       
-      if (result.errors && result.errors.length > 0) {
-        console.error('Import errors:', result.errors);
+      if (result.stats) {
+        const { total, skippedEmpty, skippedDuplicate, skippedExisting, inserted } = result.stats;
+        console.log(`CRM: Estatísticas detalhadas: Total: ${total}, Inseridos: ${inserted}, Já existiam: ${skippedExisting}, Duplicados: ${skippedDuplicate}, Vazios: ${skippedEmpty}`);
+        
+        if (inserted === 0 && total > 0) {
+          notify('warning', `Nenhum lead novo inserido. ${skippedExisting} já existiam no banco.`);
+        }
       }
+
+      if (result.errors && result.errors.length > 0) {
+        console.warn('CRM: Erros durante importação:', result.errors);
+        notify('warning', `Alguns erros ocorreram: ${result.errors[0]}`);
+      }
+      
+      await refreshLeads();
     } catch (error) {
       console.error('Error importing leads:', error);
       notify('error', 'Erro ao processar o arquivo. Verifique o formato.');
@@ -268,6 +320,17 @@ export default function CRM() {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          {isAdmin && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowDebug(!showDebug)}
+              className={showDebug ? 'bg-slate-800 text-white' : 'bg-white'}
+            >
+              <Database className="w-4 h-4 mr-2" />
+              {showDebug ? 'Ocultar Debug' : 'Diagnóstico'}
+            </Button>
+          )}
           <Button 
             variant="outline" 
             size="sm" 
@@ -287,6 +350,61 @@ export default function CRM() {
           </Button>
         </div>
       </div>
+
+      {showDebug && debugInfo && (
+        <Card className="border-blue-200 bg-blue-50/30">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-bold flex items-center gap-2 text-blue-800">
+              <Database className="w-4 h-4" /> Painel de Diagnóstico do Banco de Dados
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs font-mono">
+              <div className="p-3 bg-white rounded border border-blue-100 space-y-1">
+                <p className="font-bold text-blue-700 underline mb-2">Estatísticas Leads</p>
+                <p>Total no Banco: {debugInfo.totalLeads}</p>
+                <p>Disponíveis (Null): {debugInfo.availableLeads}</p>
+                <p>Capturados: {debugInfo.totalLeads - debugInfo.availableLeads}</p>
+              </div>
+              <div className="p-3 bg-white rounded border border-blue-100 space-y-1">
+                <p className="font-bold text-blue-700 underline mb-2">Sessão Atual</p>
+                <p>User ID: {debugInfo.authId}</p>
+                <p>Role: {debugInfo.role}</p>
+                <p>Can Capture: {debugInfo.userProfile?.can_capture_leads ? 'SIM' : 'NÃO'}</p>
+              </div>
+              <div className="p-3 bg-white rounded border border-blue-100 space-y-1">
+                <p className="font-bold text-blue-700 underline mb-2">Limites Diários</p>
+                <p>Limite: {debugInfo.userProfile?.daily_lead_limit || 100}</p>
+                <p>Capturados Hoje: {debugInfo.userProfile?.daily_lead_count || 0}</p>
+                <p>Última Captura: {debugInfo.userProfile?.last_lead_date || 'N/A'}</p>
+              </div>
+            </div>
+            <div className="mt-4 flex flex-wrap gap-2">
+              <Button size="sm" variant="outline" onClick={fetchDebugInfo}>
+                <RefreshCw className="w-3 h-3 mr-1" /> Atualizar Info
+              </Button>
+              <Button size="sm" variant="outline" onClick={async () => {
+                if (await confirm({ message: 'Zerar sua contagem diária de leads?' })) {
+                  await supabase.from('profiles').update({ daily_lead_count: 0, last_lead_date: null }).eq('id', user?.id);
+                  fetchDebugInfo();
+                  notify('success', 'Contagem diária zerada!');
+                }
+              }}>
+                <RefreshCw className="w-3 h-3 mr-1" /> Zerar Meu Limite
+              </Button>
+              <Button size="sm" variant="destructive" onClick={async () => {
+                if (await confirm({ message: 'EXCLUIR TODOS OS LEADS DISPONÍVEIS? Esta ação não pode ser desfeita.', type: 'danger' })) {
+                  await db.leads.deleteAllAvailable();
+                  await refreshLeads();
+                  await fetchDebugInfo();
+                }
+              }}>
+                <Trash2 className="w-3 h-3 mr-1" /> Limpar Base Disponível
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Navigation Tabs as Icons/Buttons */}
       <div className="grid grid-cols-2 md:grid-cols-3 gap-4">

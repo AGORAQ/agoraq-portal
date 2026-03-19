@@ -415,6 +415,7 @@ async function startServer() {
       console.log('User created in Auth with ID:', userId);
 
       // 2. Create/Update profile in profiles table
+      console.log('Upserting profile for user:', userId);
       const { error: profileError } = await supabaseAdmin
         .from('profiles')
         .upsert({
@@ -426,11 +427,15 @@ async function startServer() {
           grupo_comissao: grupo_comissao || 'OURO',
           ativo: status === 'Ativo',
           can_capture_leads: can_capture_leads !== false,
-          meta_diaria: 0
+          daily_goal: 0
         }, { onConflict: 'email' });
 
       if (profileError) {
         console.error('Profile Upsert Error:', profileError);
+        // We don't throw here to allow SQLite sync to happen, 
+        // but we should probably inform the client if it's a critical failure.
+      } else {
+        console.log('Profile upserted successfully in Supabase.');
       }
 
       // 3. Sync to local SQLite for redundancy
@@ -554,6 +559,9 @@ async function startServer() {
   app.get('/api/users', async (req, res) => {
     console.log('GET /api/users - Request received');
     try {
+      let allUsers: any[] = [];
+      let supabaseUsers: any[] = [];
+      
       if (supabaseAdmin) {
         console.log('GET /api/users - Fetching from Supabase profiles...');
         const { data: profiles, error } = await supabaseAdmin
@@ -563,10 +571,9 @@ async function startServer() {
         
         if (error) {
           console.error('GET /api/users - Supabase error:', error);
-          // Don't throw, try fallback
-        } else if (profiles) {
+        } else if (profiles && profiles.length > 0) {
           console.log(`GET /api/users - Found ${profiles.length} users in Supabase.`);
-          return res.json(profiles.map(p => ({
+          supabaseUsers = profiles.map(p => ({
             id: p.id,
             name: p.nome || 'Sem Nome',
             email: p.email,
@@ -578,21 +585,33 @@ async function startServer() {
             daily_lead_count: p.daily_lead_count || 0,
             last_lead_date: p.last_lead_date,
             lastAccess: p.updated_at || p.created_at
-          })));
+          }));
+          allUsers = [...supabaseUsers];
         } else {
           console.log('GET /api/users - No profiles found in Supabase.');
         }
       }
       
-      // Fallback to SQLite
-      console.log('GET /api/users - Falling back to SQLite...');
-      const users = db.prepare('SELECT id, name, email, role, status, lastAccess, grupo_comissao, saldo_acumulado, saldo_pago, monthly_goal, can_capture_leads FROM users WHERE deleted_at IS NULL').all();
-      console.log(`GET /api/users - Found ${users.length} users in SQLite.`);
-      res.json(users.map((u: any) => ({ 
-        ...u, 
-        can_capture_leads: u.can_capture_leads !== 0,
-        status: u.status || 'Ativo'
-      })));
+      // Fallback/Merge with SQLite
+      console.log('GET /api/users - Checking SQLite for additional users...');
+      const sqliteUsers = db.prepare('SELECT id, name, email, role, status, lastAccess, grupo_comissao, monthly_goal, can_capture_leads FROM users WHERE deleted_at IS NULL').all();
+      console.log(`GET /api/users - Found ${sqliteUsers.length} users in SQLite.`);
+      
+      // Merge: Add SQLite users that are not in Supabase (by email)
+      const supabaseEmails = new Set(supabaseUsers.map(u => u.email.toLowerCase()));
+      
+      sqliteUsers.forEach((u: any) => {
+        if (!supabaseEmails.has(u.email.toLowerCase())) {
+          allUsers.push({
+            ...u,
+            can_capture_leads: u.can_capture_leads !== 0,
+            status: u.status || 'Ativo'
+          });
+        }
+      });
+
+      console.log(`GET /api/users - Total users after merge: ${allUsers.length}`);
+      res.json(allUsers);
     } catch (error: any) {
       console.error('GET /api/users - Fatal error:', error);
       res.status(500).json({ error: error.message || 'Erro interno ao buscar usuários' });

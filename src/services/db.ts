@@ -435,60 +435,78 @@ export const db = {
       }
     },
     getAvailableForUser: async (userId: string, limit = 500) => {
-      // 0. Check if user can capture leads (Resilient check)
+      console.log(`[DEBUG] getAvailableForUser: Iniciando para usuário ${userId}, limite ${limit}`);
+      
       try {
+        // 0. Check if user can capture leads (Resilient check)
         const { data: profile, error: profileError } = await supabase
           .from('profiles')
-          .select('can_capture_leads') 
+          .select('can_capture_leads, daily_lead_count, daily_lead_limit, last_lead_date') 
           .eq('id', userId)
           .single();
         
-        if (profile && profile.can_capture_leads === false) {
-          console.log(`DB: Usuário ${userId} está com captura bloqueada.`);
-          return [];
+        if (profileError) {
+          console.error('[DEBUG] getAvailableForUser: Erro ao buscar perfil:', profileError);
+        } else {
+          console.log('[DEBUG] getAvailableForUser: Perfil do usuário:', profile);
+          if (profile && profile.can_capture_leads === false) {
+            console.warn(`[DEBUG] getAvailableForUser: Usuário ${userId} está BLOQUEADO para captura.`);
+            return [];
+          }
         }
+
+        // 1. Get user's already captured leads to avoid duplicates
+        console.log('[DEBUG] getAvailableForUser: Buscando leads já capturados pelo usuário para evitar duplicidade...');
+        const { data: userLeads, error: userError } = await withRetry(async () => {
+          return await withTimeout(supabase
+            .from('leads')
+            .select('cpf, telefone')
+            .eq('capturado_por', userId)
+            .limit(5000), 60000);
+        }, 3) as any;
+        
+        if (userError) {
+          console.error('[DEBUG] getAvailableForUser: Erro ao buscar leads do usuário:', userError);
+        }
+
+        const userCpfs = new Set((userLeads || []).map((l: any) => l.cpf).filter(Boolean));
+        const userPhones = new Set((userLeads || []).map((l: any) => l.telefone).filter(Boolean));
+        console.log(`[DEBUG] getAvailableForUser: Usuário já possui ${userLeads?.length || 0} leads. (CPFs únicos: ${userCpfs.size}, Telefones únicos: ${userPhones.size})`);
+
+        // 2. Get available leads
+        console.log('[DEBUG] getAvailableForUser: Buscando leads com status "Disponível" e capturado_por IS NULL...');
+        const { data, error } = await withRetry(async () => {
+          return await withTimeout(supabase
+            .from('leads')
+            .select('*')
+            .eq('status', 'Disponível')
+            .is('capturado_por', null)
+            .is('usuario_id', null)
+            .order('created_at', { ascending: false })
+            .limit(limit), 90000);
+        }, 3) as any;
+        
+        if (error) {
+          console.error('[DEBUG] getAvailableForUser: Erro ao buscar leads disponíveis:', error);
+          throw error;
+        }
+
+        console.log(`[DEBUG] getAvailableForUser: Encontrados ${data?.length || 0} leads brutos disponíveis.`);
+
+        // 3. Filter out leads that have same CPF or Phone as user's existing leads
+        const filtered = (data || []).filter((l: any) => {
+          const hasDuplicateCpf = l.cpf && userCpfs.has(l.cpf);
+          const hasDuplicatePhone = l.telefone && userPhones.has(l.telefone);
+          return !hasDuplicateCpf && !hasDuplicatePhone;
+        });
+
+        console.log(`[DEBUG] getAvailableForUser: Resultado final: ${filtered.length} leads após filtragem de duplicidade.`);
+
+        return filtered.map(mapTableToLead);
       } catch (err) {
-        console.warn('Falha silenciosa na verificação de can_capture_leads:', err);
+        console.error('[DEBUG] getAvailableForUser: Erro fatal:', err);
+        throw err;
       }
-
-      // 1. Get user's already captured leads to avoid duplicates (limit to recent)
-      const { data: userLeads, error: userError } = await withRetry(async () => {
-        return await withTimeout(supabase
-          .from('leads')
-          .select('cpf, telefone')
-          .eq('capturado_por', userId)
-          .order('created_at', { ascending: false })
-          .limit(2000), 60000); // Aumentado para 60s
-      }, 3) as any; // Aumentado para 3 retries
-      
-      if (userError) throw userError;
-
-      const userCpfs = new Set((userLeads || []).map((l: any) => l.cpf).filter(Boolean));
-      const userPhones = new Set((userLeads || []).map((l: any) => l.telefone).filter(Boolean));
-
-      // 2. Get available leads
-      const { data, error } = await withRetry(async () => {
-        return await withTimeout(supabase
-          .from('leads')
-          .select('*')
-          .eq('status', 'Disponível')
-          .is('capturado_por', null)
-          .order('created_at', { ascending: false })
-          .limit(limit), 90000);
-      }, 3) as any;
-      
-      if (error) throw error;
-
-      // 3. Filter out leads that have same CPF or Phone as user's existing leads
-      const filtered = (data || []).filter((l: any) => {
-        const hasDuplicateCpf = l.cpf && userCpfs.has(l.cpf);
-        const hasDuplicatePhone = l.telefone && userPhones.has(l.telefone);
-        return !hasDuplicateCpf && !hasDuplicatePhone;
-      });
-
-      console.log(`DB: getAvailableForUser(${userId}): Encontrados ${data?.length || 0}, Filtrados ${filtered.length} (CPFs: ${userCpfs.size}, Phones: ${userPhones.size})`);
-
-      return filtered.map(mapTableToLead);
     },
     capture: async (leadId: string, userId: string) => {
       const result = await withTimeout(supabase
@@ -506,11 +524,14 @@ export const db = {
       return mapTableToLead(result.data);
     },
     bulkCapture: async (leadIds: string[], userId: string) => {
+      console.log(`[DEBUG] bulkCapture: Iniciando captura de ${leadIds.length} leads para usuário ${userId}`);
       if (!leadIds || leadIds.length === 0) {
+        console.warn('[DEBUG] bulkCapture: Nenhum ID de lead fornecido.');
         return { capturedCount: 0, leads: [] };
       }
 
       // 1. Capture the leads
+      console.log('[DEBUG] bulkCapture: Executando UPDATE no Supabase...');
       const result = await withTimeout(supabase
         .from('leads')
         .update({
@@ -522,16 +543,23 @@ export const db = {
         .is('capturado_por', null)
         .select()) as any;
       
-      if (result.error) throw result.error;
+      if (result.error) {
+        console.error('[DEBUG] bulkCapture: Erro no UPDATE:', result.error);
+        throw result.error;
+      }
+      
       const capturedCount = result.data?.length || 0;
+      console.log(`[DEBUG] bulkCapture: ${capturedCount} leads capturados com sucesso.`);
 
       if (capturedCount === 0) {
+        console.warn('[DEBUG] bulkCapture: Nenhum lead foi atualizado (pode ter sido capturado por outro usuário).');
         throw new Error('Nenhum lead disponível pôde ser capturado. Eles podem ter sido capturados por outro usuário.');
       }
 
       if (capturedCount > 0) {
         // 2. Update user's daily count
         const today = new Date().toISOString().split('T')[0];
+        console.log(`[DEBUG] bulkCapture: Atualizando contagem diária para ${today}...`);
         
         // Get current count
         const profileResult = await withTimeout(supabase
@@ -546,13 +574,21 @@ export const db = {
           newCount += (profile.daily_lead_count || 0);
         }
 
-        await withTimeout(supabase
+        console.log(`[DEBUG] bulkCapture: Nova contagem diária: ${newCount}`);
+
+        const updateProfileResult = await withTimeout(supabase
           .from('profiles')
           .update({
             daily_lead_count: newCount,
             last_lead_date: today
           })
           .eq('id', userId)) as any;
+        
+        if (updateProfileResult.error) {
+          console.error('[DEBUG] bulkCapture: Erro ao atualizar perfil:', updateProfileResult.error);
+        } else {
+          console.log('[DEBUG] bulkCapture: Perfil atualizado com sucesso.');
+        }
       }
 
       return { capturedCount, leads: result.data.map(mapTableToLead) };
@@ -602,7 +638,7 @@ export const db = {
       return mapTableToLead(data);
     },
     import: async (leads: any[], onProgress?: (progress: number) => void) => {
-      console.log('DB: Iniciando importação de leads:', leads.length, 'registros');
+      console.log('[DEBUG] import: Iniciando importação de leads:', leads.length, 'registros');
       
       let skippedEmptyPhone = 0;
       let skippedInternalDuplicate = 0;
@@ -635,6 +671,7 @@ export const db = {
             importado_por: String(mapped.importado_por || 'Admin').substring(0, 100),
             status: 'Disponível',
             capturado_por: null,
+            usuario_id: null,
             metadata: {
               ...(mapped.metadata || {}),
               import_date: new Date().toISOString()
@@ -646,13 +683,14 @@ export const db = {
         }
       }
 
-      console.log(`DB: Estatísticas Iniciais:
+      console.log(`[DEBUG] import: Estatísticas Iniciais:
         - Total recebido: ${leads.length}
         - Pulados (Telefone vazio): ${skippedEmptyPhone}
         - Pulados (Duplicados na planilha): ${skippedInternalDuplicate}
         - Únicos para verificar no banco: ${uniqueLeads.length}`);
 
       if (uniqueLeads.length === 0) {
+        console.warn('[DEBUG] import: Nenhum lead válido para importar.');
         return { 
           count: 0, 
           data: [], 
@@ -668,12 +706,13 @@ export const db = {
       }
 
       const SELECT_CHUNK_SIZE = 1000;
-      const INSERT_CHUNK_SIZE = 100; // Reduzido para 100 para maior segurança
+      const INSERT_CHUNK_SIZE = 50; // Reduzido para maior estabilidade
       const total = uniqueLeads.length;
       const results = [];
       const errors: string[] = [];
 
       // Verificar telefones existentes
+      console.log('[DEBUG] import: Verificando telefones já existentes no banco...');
       const existingPhones = new Set<string>();
       for (let i = 0; i < total; i += SELECT_CHUNK_SIZE) {
         const chunk = uniqueLeads.slice(i, i + SELECT_CHUNK_SIZE);
@@ -691,7 +730,7 @@ export const db = {
             result.data.forEach((l: any) => existingPhones.add(l.telefone));
           }
         } catch (err) {
-          console.error('DB Error (checking existing phones):', err);
+          console.error('[DEBUG] import: Erro ao verificar telefones existentes:', err);
         }
       }
 
@@ -700,12 +739,12 @@ export const db = {
       const skippedByDb = uniqueLeads.length - finalLeadsToInsert.length;
       const toInsertCount = finalLeadsToInsert.length;
       
-      console.log(`DB: Estatísticas de Banco:
+      console.log(`[DEBUG] import: Estatísticas de Banco:
         - Já existem no banco: ${skippedByDb}
         - Novos para inserir: ${toInsertCount}`);
 
       if (toInsertCount === 0) {
-        console.log('DB: Nenhum lead novo para inserir (todos já existem).');
+        console.log('[DEBUG] import: Todos os leads já existem no banco.');
         return { 
           count: 0, 
           data: [], 
@@ -720,12 +759,13 @@ export const db = {
         };
       }
 
-      console.log(`DB: Tentando inserir ${toInsertCount} leads em lotes de ${INSERT_CHUNK_SIZE}...`);
+      console.log(`[DEBUG] import: Iniciando inserção de ${toInsertCount} leads em lotes...`);
 
       // Inserir em lotes
       let processed = 0;
       for (let i = 0; i < toInsertCount; i += INSERT_CHUNK_SIZE) {
         const chunk = finalLeadsToInsert.slice(i, i + INSERT_CHUNK_SIZE);
+        console.log(`[DEBUG] import: Inserindo lote ${Math.floor(i / INSERT_CHUNK_SIZE) + 1} (${chunk.length} leads)...`);
         
         try {
           const result = await withRetry(async () => {
@@ -734,39 +774,42 @@ export const db = {
               .insert(chunk)
               .select(), 180000);
             
-            // Se falhar especificamente por causa da coluna 'cidade'
-            if (insertResult.error && insertResult.error.message?.includes('cidade')) {
-              console.warn('DB: Coluna "cidade" não encontrada, tentando inserir sem ela...');
-              const chunkWithoutCidade = chunk.map(({ cidade, ...rest }) => rest);
-              insertResult = await withTimeout(supabase
-                .from('leads')
-                .insert(chunkWithoutCidade)
-                .select(), 180000);
+            if (insertResult.error) {
+              console.warn(`[DEBUG] import: Erro no lote ${Math.floor(i / INSERT_CHUNK_SIZE) + 1}, tentando fallback individual...`);
+              // Fallback individual dentro do retry para ser mais resiliente
+              const batchResults = [];
+              for (const l of chunk) {
+                try {
+                  let singleResult = await supabase.from('leads').insert([l]).select();
+                  
+                  // Se erro de coluna 'cidade', tentar sem ela
+                  if (singleResult.error && singleResult.error.message?.includes('cidade')) {
+                    const { cidade, ...rest } = l;
+                    singleResult = await supabase.from('leads').insert([rest]).select();
+                  }
+
+                  if (!singleResult.error && singleResult.data) {
+                    batchResults.push(...singleResult.data);
+                  } else if (singleResult.error) {
+                    console.error(`[DEBUG] import: Erro individual (tel: ${l.telefone}):`, singleResult.error);
+                  }
+                } catch (e) {}
+              }
+              return { data: batchResults, error: null };
             }
             
             return insertResult;
-          }, 3) as any;
+          }, 2) as any;
 
           if (result.error) {
-            console.error(`DB Error (inserting leads chunk ${Math.floor(i / INSERT_CHUNK_SIZE) + 1}):`, result.error);
+            console.error(`[DEBUG] import: Erro persistente no lote ${Math.floor(i / INSERT_CHUNK_SIZE) + 1}:`, result.error);
             errors.push(`Lote ${Math.floor(i / INSERT_CHUNK_SIZE) + 1}: ${result.error.message || JSON.stringify(result.error)}`);
-            
-            // Fallback individual para este lote se falhar
-            console.log(`DB: Tentando inserção individual para o lote ${Math.floor(i / INSERT_CHUNK_SIZE) + 1}...`);
-            for (const l of chunk) {
-              try {
-                const { data: singleData, error: singleError } = await supabase.from('leads').insert([l]).select();
-                if (!singleError && singleData) {
-                  results.push(...singleData);
-                }
-              } catch (e) {}
-            }
           } else if (result.data) {
-            console.log(`DB: Lote ${Math.floor(i / INSERT_CHUNK_SIZE) + 1} inserido com sucesso: ${result.data.length} registros.`);
+            console.log(`[DEBUG] import: Lote ${Math.floor(i / INSERT_CHUNK_SIZE) + 1} processado: ${result.data.length} registros salvos.`);
             results.push(...result.data);
           }
         } catch (chunkError: any) {
-          console.error('DB Fatal Error (leads insert chunk):', chunkError);
+          console.error('[DEBUG] import: Erro fatal no lote:', chunkError);
           errors.push(`Erro fatal no lote ${Math.floor(i / INSERT_CHUNK_SIZE) + 1}: ${chunkError.message || 'Erro desconhecido'}`);
         }
 
@@ -776,7 +819,7 @@ export const db = {
         }
       }
 
-      console.log('DB: Importação finalizada. Total inserido:', results.length);
+      console.log('[DEBUG] import: Importação finalizada. Total inserido:', results.length);
       return {
         count: results.length,
         data: results.map(mapTableToLead),
