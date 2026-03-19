@@ -95,47 +95,59 @@ export const db = {
 
   users: {
     getAll: async () => {
+      console.log('DB: Buscando todos os usuários...');
       try {
         const response = await fetch('/api/users');
         if (!response.ok) {
           const error = await response.json();
           throw new Error(error.error || 'Erro ao buscar usuários');
         }
-        return await response.json();
+        const users = await response.json();
+        console.log(`DB: ${users.length} usuários encontrados via API.`);
+        return users;
       } catch (error) {
-        console.error('DB: Erro ao buscar usuários via API:', error);
+        console.error('DB: Erro ao buscar usuários via API, tentando fallback Supabase:', error);
         // Fallback to direct Supabase if API fails
         const result = await withTimeout(supabase
           .from('profiles')
           .select('*')
           .order('nome')) as any;
-        if (result.error) throw result.error;
+        if (result.error) {
+          console.error('DB Error (users.getAll - fallback):', result.error);
+          throw result.error;
+        }
         return result.data.map(mapProfileToUser);
       }
     },
     getById: async (id: string) => {
+      console.log('DB: Buscando usuário por ID:', id);
       try {
         const response = await fetch(`/api/users/${id}`);
         if (!response.ok) {
           const error = await response.json();
           throw new Error(error.error || 'Erro ao buscar usuário');
         }
-        return await response.json();
+        const user = await response.json();
+        console.log('DB: Usuário encontrado via API:', user.id);
+        return user;
       } catch (error) {
-        console.error('DB: Erro ao buscar usuário via API:', error);
+        console.error('DB: Erro ao buscar usuário via API, tentando fallback Supabase:', error);
         // Fallback to direct Supabase if API fails
         const result = await withTimeout(supabase
           .from('profiles')
           .select('*')
           .eq('id', id)
           .single()) as any;
-        if (result.error) throw result.error;
+        if (result.error) {
+          console.error('DB Error (users.getById - fallback):', result.error);
+          throw result.error;
+        }
         return mapProfileToUser(result.data);
       }
     },
     getByAuthId: async (authId: string) => {
+      console.log('DB: Buscando perfil por Auth ID:', authId);
       try {
-        console.log('DB: Buscando perfil por Auth ID:', authId);
         // Aumentado timeout e adicionado retry para maior resiliência
         const result = await withRetry(async () => {
           return await withTimeout(supabase
@@ -160,6 +172,7 @@ export const db = {
             .maybeSingle(), 30000) as any;
             
           if (fallbackResult.data) {
+            console.log('DB: Perfil encontrado via fallback auth_user_id');
             return mapProfileToUser(fallbackResult.data);
           }
           
@@ -173,6 +186,7 @@ export const db = {
       }
     },
     create: async (user: any) => {
+      console.log('DB: Criando novo usuário via API:', user.email);
       try {
         const response = await fetch('/api/admin/create-user', {
           method: 'POST',
@@ -184,6 +198,7 @@ export const db = {
         if (contentType && contentType.includes('application/json')) {
           const data = await response.json();
           if (!response.ok) throw new Error(data.error || 'Erro ao criar usuário');
+          console.log('DB: Usuário criado com sucesso via API:', data.user.id);
           return data.user;
         } else {
           const text = await response.text();
@@ -197,12 +212,12 @@ export const db = {
     },
     update: async (id: string, updates: Partial<User>) => {
       console.log('DB: Atualizando usuário:', id, updates);
-      const { data, error } = await supabase
+      const { data, error } = await withTimeout(supabase
         .from('profiles')
         .update(mapUserToProfile(updates))
         .eq('id', id)
         .select()
-        .single();
+        .single()) as any;
       if (error) {
         console.error('DB Error (users.update):', error);
         throw error;
@@ -210,6 +225,7 @@ export const db = {
       return mapProfileToUser(data);
     },
     resetPassword: async (userId: string, newPassword: string) => {
+      console.log('DB: Resetando senha para usuário:', userId);
       try {
         const response = await fetch('/api/admin/reset-password', {
           method: 'POST',
@@ -221,6 +237,7 @@ export const db = {
         if (contentType && contentType.includes('application/json')) {
           const data = await response.json();
           if (!response.ok) throw new Error(data.error || 'Erro ao resetar senha');
+          console.log('DB: Senha resetada com sucesso via API');
           return data;
         } else {
           throw new Error('O servidor retornou uma resposta inválida (HTML).');
@@ -231,62 +248,90 @@ export const db = {
       }
     },
     delete: async (id: string) => {
-      const { error } = await supabase
+      console.log('DB: Deletando usuário:', id);
+      const { error } = await withTimeout(supabase
         .from('profiles')
         .delete()
-        .eq('id', id);
-      if (error) throw error;
+        .eq('id', id)) as any;
+      if (error) {
+        console.error('DB Error (users.delete):', error);
+        throw error;
+      }
     }
   },
 
   commissions: {
     getAll: async (role?: string, userGroup?: string) => {
-      const { data, error } = await supabase
+      console.log('DB: Buscando todas as tabelas de comissão...', role ? `para papel: ${role}` : '', userGroup ? `e grupo: ${userGroup}` : '');
+      const { data, error } = await withTimeout(supabase
         .from('commission_tables')
         .select('*')
-        .order('banco');
-      if (error) throw error;
+        .order('banco')) as any;
+      if (error) {
+        console.error('DB Error (commissions.getAll):', error);
+        throw error;
+      }
       return data.map(mapTableToCommission);
     },
     create: async (comm: any, userRole?: string, userId?: string) => {
-      const { data, error } = await supabase
+      console.log('DB: Criando tabela de comissão:', comm);
+      const { data, error } = await withTimeout(supabase
         .from('commission_tables')
         .insert([mapCommissionToTable(comm)])
         .select('id, banco, produto, tabela, parcelas, comissao_total_empresa, grupo_master, grupo_ouro, grupo_prata, grupo_plus, status, vigencia')
-        .single();
-      if (error) throw error;
+        .single()) as any;
+      if (error) {
+        console.error('DB Error (commissions.create):', error);
+        throw error;
+      }
       return mapTableToCommission(data);
     },
     update: async (id: string, updates: any, userRole?: string, userId?: string) => {
-      const { data, error } = await supabase
+      console.log('DB: Atualizando tabela de comissão:', id, updates);
+      const { data, error } = await withTimeout(supabase
         .from('commission_tables')
         .update(mapCommissionToTable(updates))
         .eq('id', id)
         .select('id, banco, produto, tabela, parcelas, comissao_total_empresa, grupo_master, grupo_ouro, grupo_prata, grupo_plus, status, vigencia')
-        .single();
-      if (error) throw error;
+        .single()) as any;
+      if (error) {
+        console.error('DB Error (commissions.update):', error);
+        throw error;
+      }
       return mapTableToCommission(data);
     },
     delete: async (id: string, userRole?: string, userId?: string) => {
-      const { error } = await supabase
+      console.log('DB: Deletando tabela de comissão:', id);
+      const { error } = await withTimeout(supabase
         .from('commission_tables')
         .delete()
-        .eq('id', id);
-      if (error) throw error;
+        .eq('id', id)) as any;
+      if (error) {
+        console.error('DB Error (commissions.delete):', error);
+        throw error;
+      }
     },
     deleteMany: async (ids: string[], userRole?: string, userId?: string) => {
-      const { error } = await supabase
+      console.log('DB: Deletando múltiplas tabelas de comissão:', ids.length);
+      const { error } = await withTimeout(supabase
         .from('commission_tables')
         .delete()
-        .in('id', ids);
-      if (error) throw error;
+        .in('id', ids)) as any;
+      if (error) {
+        console.error('DB Error (commissions.deleteMany):', error);
+        throw error;
+      }
     },
     deleteAll: async (userRole?: string, userId?: string) => {
-      const { error } = await supabase
+      console.log('DB: Deletando TODAS as tabelas de comissão');
+      const { error } = await withTimeout(supabase
         .from('commission_tables')
         .delete()
-        .neq('id', '00000000-0000-0000-0000-000000000000');
-      if (error) throw error;
+        .neq('id', '00000000-0000-0000-0000-000000000000')) as any;
+      if (error) {
+        console.error('DB Error (commissions.deleteAll):', error);
+        throw error;
+      }
     },
     import: async (comms: any[], userRole?: string, userId?: string, onProgress?: (p: number) => void) => {
       console.log('DB: Iniciando importação de comissões:', comms.length, 'registros');
@@ -411,27 +456,87 @@ export const db = {
     },
     getTotalCount: async () => {
       try {
-        const { count, error } = await supabase
-          .from('leads')
-          .select('*', { count: 'exact', head: true });
-        if (error) throw error;
-        return count || 0;
+        console.log('DB: Buscando contagem total de leads...');
+        const result = await withRetry(async () => {
+          return await withTimeout(supabase
+            .from('leads')
+            .select('*', { count: 'exact', head: true }), 30000);
+        }, 3) as any;
+
+        if (result.error) {
+          console.error('DB Error (leads.getTotalCount):', result.error);
+          return 0;
+        }
+        return result.count || 0;
       } catch (err) {
-        console.error('DB Error (getTotalCount):', err);
+        console.error('DB Fatal Error (leads.getTotalCount):', err);
         return 0;
       }
     },
     getAvailableCount: async () => {
       try {
-        const { count, error } = await supabase
-          .from('leads')
-          .select('*', { count: 'exact', head: true })
-          .is('capturado_por', null);
-        if (error) throw error;
-        return count || 0;
+        console.log('DB: Buscando contagem de leads disponíveis...');
+        const result = await withRetry(async () => {
+          return await withTimeout(supabase
+            .from('leads')
+            .select('*', { count: 'exact', head: true })
+            .is('capturado_por', null), 30000);
+        }, 3) as any;
+
+        if (result.error) {
+          console.error('DB Error (leads.getAvailableCount):', result.error);
+          return 0;
+        }
+        return result.count || 0;
       } catch (err) {
-        console.error('DB Error (getAvailableCount):', err);
+        console.error('DB Fatal Error (leads.getAvailableCount):', err);
         return 0;
+      }
+    },
+    getById: async (id: string) => {
+      try {
+        console.log(`DB: Buscando lead por ID: ${id}`);
+        const result = await withRetry(async () => {
+          return await withTimeout(supabase
+            .from('leads')
+            .select('*')
+            .eq('id', id)
+            .single(), 30000);
+        }, 3) as any;
+
+        if (result.error) {
+          console.error('DB Error (leads.getById):', result.error);
+          return null;
+        }
+
+        return result.data ? mapTableToLead(result.data) : null;
+      } catch (err) {
+        console.error('DB Fatal Error (leads.getById):', err);
+        return null;
+      }
+    },
+    getByUser: async (userId: string) => {
+      try {
+        console.log(`DB: Buscando leads do usuário: ${userId}`);
+        const result = await withRetry(async () => {
+          return await withTimeout(supabase
+            .from('leads')
+            .select('*')
+            .eq('capturado_por', userId)
+            .order('capturado_em', { ascending: false }), 60000);
+        }, 3) as any;
+
+        if (result.error) {
+          console.error('DB Error (leads.getByUser):', result.error);
+          return [];
+        }
+
+        const data = result.data || [];
+        console.log(`DB: ${data.length} leads encontrados para o usuário.`);
+        return data.map(mapTableToLead);
+      } catch (err) {
+        console.error('DB Fatal Error (leads.getByUser):', err);
+        return [];
       }
     },
     getAvailableForUser: async (userId: string, limit = 500) => {
@@ -847,20 +952,89 @@ export const db = {
         }
       };
     },
+    update: async (id: string, updates: any) => {
+      try {
+        console.log(`DB: Atualizando lead ${id}:`, updates);
+        const mapped = mapLeadToTable(updates);
+        const result = await withRetry(async () => {
+          return await withTimeout(supabase
+            .from('leads')
+            .update(mapped)
+            .eq('id', id)
+            .select()
+            .single(), 30000);
+        }, 3) as any;
+
+        if (result.error) {
+          console.error('DB Error (leads.update):', result.error);
+          throw result.error;
+        }
+
+        return mapTableToLead(result.data);
+      } catch (err) {
+        console.error('DB Fatal Error (leads.update):', err);
+        throw err;
+      }
+    },
     delete: async (id: string) => {
-      const { error } = await supabase
-        .from('leads')
-        .delete()
-        .eq('id', id);
-      if (error) throw error;
+      try {
+        console.log(`DB: Deletando lead: ${id}`);
+        const result = await withRetry(async () => {
+          return await withTimeout(supabase
+            .from('leads')
+            .delete()
+            .eq('id', id), 30000);
+        }, 3) as any;
+
+        if (result.error) {
+          console.error('DB Error (leads.delete):', result.error);
+          throw result.error;
+        }
+        console.log('DB: Lead deletado com sucesso.');
+      } catch (err) {
+        console.error('DB Fatal Error (leads.delete):', err);
+        throw err;
+      }
+    },
+    deleteMany: async (ids: string[]) => {
+      try {
+        console.log(`DB: Deletando múltiplos leads: ${ids.length} registros`);
+        const result = await withRetry(async () => {
+          return await withTimeout(supabase
+            .from('leads')
+            .delete()
+            .in('id', ids), 60000);
+        }, 3) as any;
+
+        if (result.error) {
+          console.error('DB Error (leads.deleteMany):', result.error);
+          throw result.error;
+        }
+        console.log('DB: Leads deletados com sucesso.');
+      } catch (err) {
+        console.error('DB Fatal Error (leads.deleteMany):', err);
+        throw err;
+      }
     },
     deleteAllAvailable: async () => {
-      // Delete all leads that are NOT captured yet, regardless of status string
-      const { error } = await supabase
-        .from('leads')
-        .delete()
-        .is('capturado_por', null);
-      if (error) throw error;
+      try {
+        console.log('DB: Deletando todos os leads disponíveis...');
+        const result = await withRetry(async () => {
+          return await withTimeout(supabase
+            .from('leads')
+            .delete()
+            .is('capturado_por', null), 60000);
+        }, 3) as any;
+
+        if (result.error) {
+          console.error('DB Error (leads.deleteAllAvailable):', result.error);
+          throw result.error;
+        }
+        console.log('DB: Todos os leads disponíveis foram deletados.');
+      } catch (err) {
+        console.error('DB Fatal Error (leads.deleteAllAvailable):', err);
+        throw err;
+      }
     }
   },
 
@@ -914,9 +1088,15 @@ export const db = {
         .subscribe();
     },
     create: async (sale: any, user: User) => {
-      console.log('[DEBUG] sales.create: Iniciando criação de venda para usuário:', user.id);
-      console.log('[DEBUG] sales.create: Dados recebidos:', sale);
+      console.log('[DEBUG] sales.create: Iniciando criação de venda');
+      console.log('[DEBUG] sales.create: Usuário:', { id: user.id, name: user.name, role: user.role, group: user.grupo_comissao });
+      console.log('[DEBUG] sales.create: Dados da venda recebidos:', sale);
       
+      if (!user.id) {
+        console.error('[DEBUG] sales.create: ID do usuário ausente');
+        throw new Error('ID do usuário ausente. Por favor, faça login novamente.');
+      }
+
       // 1. Create the sale
       const mappedSale = mapSaleToTable({ 
         ...sale, 
@@ -934,8 +1114,13 @@ export const db = {
         .single();
       
       if (saleError) {
-        console.error('[DEBUG] sales.create: Erro ao inserir venda:', saleError);
-        throw saleError;
+        console.error('[DEBUG] sales.create: Erro ao inserir venda no Supabase:', saleError);
+        throw new Error(`Erro ao inserir venda: ${saleError.message || 'Erro desconhecido'}`);
+      }
+      
+      if (!saleData) {
+        console.error('[DEBUG] sales.create: Nenhuma dado retornado após inserção da venda');
+        throw new Error('Nenhum dado retornado após inserção da venda');
       }
       
       console.log('[DEBUG] sales.create: Venda inserida com sucesso:', saleData.id);
@@ -956,6 +1141,7 @@ export const db = {
       const { error: finError } = await supabase.from('financial_entries').insert([financialEntry]);
       if (finError) {
         console.error('[DEBUG] sales.create: Erro ao criar entrada financeira:', finError);
+        // Não lançamos erro aqui para não invalidar a venda, mas logamos
       }
       
       // 3. Update user's accumulated balance (fetch latest first to avoid race conditions)
@@ -978,11 +1164,9 @@ export const db = {
           console.log('[DEBUG] sales.create: Saldo atualizado com sucesso');
         } else if (profileError) {
           console.error('[DEBUG] sales.create: Erro ao buscar perfil para atualizar saldo:', profileError);
-          // Se a coluna saldo_acumulado não existir, não falhamos a criação da venda
         }
       } catch (updateError) {
         console.error('[DEBUG] sales.create: Erro crítico ao atualizar saldo:', updateError);
-        // Não falhamos a criação da venda se apenas o saldo falhar
       }
 
       return mapTableToSale(saleData);
@@ -1084,30 +1268,42 @@ export const db = {
 
   financial: {
     getAll: async (vendedorId?: string) => {
+      console.log('DB: Buscando lançamentos financeiros...', vendedorId ? `para vendedor: ${vendedorId}` : 'todos');
       let query = supabase.from('financial_entries').select('*');
       if (vendedorId) query = query.eq('vendedor_id', vendedorId);
-      const { data, error } = await query.order('created_at', { ascending: false });
-      if (error) throw error;
-      return data;
+      const { data, error } = await withTimeout(query.order('created_at', { ascending: false })) as any;
+      if (error) {
+        console.error('DB Error (financial.getAll):', error);
+        throw error;
+      }
+      return data.map(mapTableToFinancial);
     },
     create: async (entry: Partial<FinancialEntry>) => {
-      const { data, error } = await supabase
+      console.log('DB: Criando lançamento financeiro:', entry);
+      const { data, error } = await withTimeout(supabase
         .from('financial_entries')
-        .insert([entry])
+        .insert([mapFinancialToTable(entry)])
         .select()
-        .single();
-      if (error) throw error;
-      return data;
+        .single()) as any;
+      if (error) {
+        console.error('DB Error (financial.create):', error);
+        throw error;
+      }
+      return mapTableToFinancial(data);
     },
     updateStatus: async (id: string, status: string) => {
-      const { data, error } = await supabase
+      console.log('DB: Atualizando status financeiro:', id, status);
+      const { data, error } = await withTimeout(supabase
         .from('financial_entries')
         .update({ status })
         .eq('id', id)
         .select()
-        .single();
-      if (error) throw error;
-      return data;
+        .single()) as any;
+      if (error) {
+        console.error('DB Error (financial.updateStatus):', error);
+        throw error;
+      }
+      return mapTableToFinancial(data);
     }
   },
 
@@ -1130,13 +1326,28 @@ export const db = {
       return data;
     },
     create: async (req: any) => {
-      const { data, error } = await supabase
-        .from('access_requests')
-        .insert([req])
-        .select()
-        .single();
-      if (error) throw error;
-      return data;
+      console.log('[DEBUG] db.access_requests.create - Iniciando com dados:', req);
+      try {
+        const mappedData = mapAccessRequestToTable(req);
+        console.log('[DEBUG] db.access_requests.create - Dados mapeados para Supabase:', mappedData);
+        
+        const { data, error } = await supabase
+          .from('access_requests')
+          .insert([mappedData])
+          .select()
+          .single();
+          
+        if (error) {
+          console.error('[DEBUG] db.access_requests.create - Erro do Supabase:', error);
+          throw error;
+        }
+        
+        console.log('[DEBUG] db.access_requests.create - Sucesso:', data);
+        return data;
+      } catch (err) {
+        console.error('[DEBUG] db.access_requests.create - Exceção capturada:', err);
+        throw err;
+      }
     },
     updateStatus: async (id: string, status: string, observation?: string, adminId?: string) => {
       const { data, error } = await supabase
@@ -1152,74 +1363,58 @@ export const db = {
 
   bancos: {
     getAll: async () => {
-      const { data, error } = await supabase
+      console.log('DB: Buscando bancos...');
+      const { data, error } = await withTimeout(supabase
         .from('banks')
         .select('*')
-        .order('nome_banco');
+        .order('nome_banco')) as any;
       
       if (error) {
-        console.error('Error fetching banks:', error);
+        console.error('DB Error (bancos.getAll):', error);
         throw error;
       }
       
-      return data.map(b => ({
-        id: b.id,
-        nome: b.nome_banco,
-        tipo: b.tipo_produto,
-        percentual: b.percentual_maximo,
-        status: b.status
-      }));
+      return data.map(mapTableToBank);
     },
     create: async (bank: any) => {
-      const { data, error } = await supabase
+      console.log('DB: Criando banco:', bank);
+      const { data, error } = await withTimeout(supabase
         .from('banks')
-        .insert([{
-          nome_banco: bank.nome,
-          tipo_produto: bank.tipo || 'Crédito',
-          percentual_maximo: bank.percentual || 100,
-          status: bank.status || 'Ativo'
-        }])
+        .insert([mapBankToTable(bank)])
         .select()
-        .single();
+        .single()) as any;
       
-      if (error) throw error;
-      return {
-        id: data.id,
-        nome: data.nome_banco,
-        tipo: data.tipo_produto,
-        percentual: data.percentual_maximo,
-        status: data.status
-      };
+      if (error) {
+        console.error('DB Error (bancos.create):', error);
+        throw error;
+      }
+      return mapTableToBank(data);
     },
     update: async (id: string, updates: any) => {
-      const mapped: any = {};
-      if (updates.nome) mapped.nome_banco = updates.nome;
-      if (updates.tipo) mapped.tipo_produto = updates.tipo;
-      if (updates.percentual) mapped.percentual_maximo = updates.percentual;
-      if (updates.status) mapped.status = updates.status;
-
-      const { data, error } = await supabase
+      console.log('DB: Atualizando banco:', id, updates);
+      const { data, error } = await withTimeout(supabase
         .from('banks')
-        .update(mapped)
+        .update(mapBankToTable(updates))
         .eq('id', id)
         .select()
-        .single();
+        .single()) as any;
       
-      if (error) throw error;
-      return {
-        id: data.id,
-        nome: data.nome_banco,
-        tipo: data.tipo_produto,
-        percentual: data.percentual_maximo,
-        status: data.status
-      };
+      if (error) {
+        console.error('DB Error (bancos.update):', error);
+        throw error;
+      }
+      return mapTableToBank(data);
     },
     delete: async (id: string) => {
-      const { error } = await supabase
+      console.log('DB: Deletando banco:', id);
+      const { error } = await withTimeout(supabase
         .from('banks')
         .delete()
-        .eq('id', id);
-      if (error) throw error;
+        .eq('id', id)) as any;
+      if (error) {
+        console.error('DB Error (bancos.delete):', error);
+        throw error;
+      }
     }
   },
 
@@ -1253,7 +1448,7 @@ export const db = {
     },
     create: async (group: any) => {
       console.log('DB: Criando grupo de comissão:', group);
-      const { data, error } = await supabase
+      const { data, error } = await withTimeout(supabase
         .from('commission_groups')
         .insert([{
           name: group.name,
@@ -1262,7 +1457,7 @@ export const db = {
           status: group.status || 'Ativo'
         }])
         .select()
-        .single();
+        .single()) as any;
       
       if (error) {
         console.error('DB Error (commissionGroups.create):', error);
@@ -1279,12 +1474,18 @@ export const db = {
     },
     update: async (id: string, updates: any) => {
       console.log('DB: Atualizando grupo de comissão:', id, updates);
-      const { data, error } = await supabase
+      const mapped: any = {};
+      if (updates.name) mapped.name = updates.name;
+      if (updates.type) mapped.type = updates.type;
+      if (updates.banco_id) mapped.banco_id = updates.banco_id;
+      if (updates.status) mapped.status = updates.status;
+
+      const { data, error } = await withTimeout(supabase
         .from('commission_groups')
-        .update(updates)
+        .update(mapped)
         .eq('id', id)
         .select()
-        .single();
+        .single()) as any;
       
       if (error) {
         console.error('DB Error (commissionGroups.update):', error);
@@ -1301,10 +1502,10 @@ export const db = {
     },
     delete: async (id: string) => {
       console.log('DB: Deletando grupo de comissão:', id);
-      const { error } = await supabase
+      const { error } = await withTimeout(supabase
         .from('commission_groups')
         .delete()
-        .eq('id', id);
+        .eq('id', id)) as any;
       if (error) {
         console.error('DB Error (commissionGroups.delete):', error);
         throw error;
@@ -1314,47 +1515,85 @@ export const db = {
 
   credentials: {
     getAll: async () => {
-      const { data, error } = await supabase
+      console.log('DB: Buscando todas as credenciais');
+      const { data, error } = await withTimeout(supabase
         .from('platform_credentials')
         .select('*')
-        .order('banco_nome');
-      if (error) throw error;
-      return data;
+        .order('banco_nome')) as any;
+      
+      if (error) {
+        console.error('DB: Erro ao buscar credenciais:', error);
+        throw error;
+      }
+      
+      return (data || []).map(mapTableToCredential);
     },
     getByUser: async (userId: string) => {
-      const { data, error } = await supabase
+      console.log(`DB: Buscando credenciais para o usuário: ${userId}`);
+      const { data, error } = await withTimeout(supabase
         .from('platform_credentials')
         .select('*')
         .eq('usuario_id', userId)
-        .order('banco_nome');
-      if (error) throw error;
-      return data;
+        .order('banco_nome')) as any;
+      
+      if (error) {
+        console.error(`DB: Erro ao buscar credenciais para usuário ${userId}:`, error);
+        throw error;
+      }
+      
+      return (data || []).map(mapTableToCredential);
     },
     create: async (cred: any) => {
-      const { data, error } = await supabase
+      console.log('DB: Criando nova credencial:', cred);
+      const mappedData = mapCredentialToTable(cred);
+      console.log('DB: Dados mapeados para inserção:', mappedData);
+
+      const { data, error } = await withTimeout(supabase
         .from('platform_credentials')
-        .insert([cred])
+        .insert([mappedData])
         .select()
-        .single();
-      if (error) throw error;
-      return data;
+        .single()) as any;
+      
+      if (error) {
+        console.error('DB: Erro ao criar credencial:', error);
+        throw error;
+      }
+      
+      console.log('DB: Credencial criada com sucesso:', data);
+      return mapTableToCredential(data);
     },
     update: async (id: string, updates: any) => {
-      const { data, error } = await supabase
+      console.log(`DB: Atualizando credencial ${id}:`, updates);
+      const mappedUpdates = mapCredentialToTable(updates);
+      console.log('DB: Atualizações mapeadas:', mappedUpdates);
+
+      const { data, error } = await withTimeout(supabase
         .from('platform_credentials')
-        .update(updates)
+        .update(mappedUpdates)
         .eq('id', id)
         .select()
-        .single();
-      if (error) throw error;
-      return data;
+        .single()) as any;
+      
+      if (error) {
+        console.error(`DB: Erro ao atualizar credencial ${id}:`, error);
+        throw error;
+      }
+      
+      console.log('DB: Credencial atualizada com sucesso:', data);
+      return mapTableToCredential(data);
     },
     delete: async (id: string) => {
-      const { error } = await supabase
+      console.log(`DB: Deletando credencial ${id}`);
+      const { error } = await withTimeout(supabase
         .from('platform_credentials')
         .delete()
-        .eq('id', id);
-      if (error) throw error;
+        .eq('id', id)) as any;
+      
+      if (error) {
+        console.error(`DB: Erro ao deletar credencial ${id}:`, error);
+        throw error;
+      }
+      console.log(`DB: Credencial ${id} deletada com sucesso`);
     }
   },
 
@@ -1790,6 +2029,70 @@ function formatDateToISO(dateStr: string | null | undefined): string {
   return dateStr;
 }
 
+function mapAccessRequestToTable(req: any): any {
+  return {
+    usuario_id: req.usuario_id || '00000000-0000-0000-0000-000000000000',
+    name: req.name || '',
+    email: req.email || '',
+    bank: req.bank || '',
+    banco_nome: req.banco_nome || '',
+    sellerName: req.sellerName || '',
+    cpf: req.cpf || '',
+    rg: req.rg || '',
+    phone: req.phone || '',
+    birthDate: req.birthDate || '',
+    userEmail: req.userEmail || req.email || '',
+    address: req.address || '',
+    cep: req.cep || '',
+    street: req.street || '',
+    number: req.number || '',
+    complement: req.complement || '',
+    neighborhood: req.neighborhood || '',
+    city: req.city || '',
+    state: req.state || '',
+    requestedAccessType: req.requestedAccessType || '',
+    pixKey: req.pixKey || '',
+    status: req.status || 'Pendente',
+    observation: req.observation || '',
+    created_at: new Date().toISOString()
+  };
+}
+
+function mapCredentialToTable(c: any) {
+  return {
+    usuario_id: c.usuario_id,
+    banco_nome: c.banco_nome || c.bank,
+    login: c.login || c.username,
+    senha: c.senha || c.password,
+    link_acesso: c.link_acesso || c.link,
+    status: c.status || 'Ativo',
+    criado_por_admin: c.criado_por_admin,
+    observation: c.observation
+  };
+}
+
+function mapTableToCredential(t: any): PlatformCredential {
+  return {
+    id: t.id,
+    usuario_id: t.usuario_id,
+    banco_nome: t.banco_nome,
+    login: t.login,
+    senha: t.senha,
+    link_acesso: t.link_acesso,
+    status: t.status,
+    criado_por_admin: t.criado_por_admin,
+    data_criacao: t.data_criacao || t.created_at,
+    data_atualizacao: t.data_atualizacao || t.updated_at,
+    observation: t.observation,
+    // Legacy fields for UI compatibility
+    bank: t.banco_nome,
+    link: t.link_acesso,
+    username: t.login,
+    password: t.senha,
+    updatedAt: t.data_atualizacao || t.updated_at
+  };
+}
+
 function mapTableToSale(t: any): Sale {
   return {
     id: t.id,
@@ -1915,5 +2218,58 @@ function mapAcademyToTable(a: any): any {
   if (a.status) t.status = a.status;
   if (a.links_relacionados !== undefined) t.links_relacionados = a.links_relacionados;
   if (a.ordem !== undefined) t.ordem = a.ordem;
+  return t;
+}
+
+function mapTableToFinancial(t: any): FinancialEntry {
+  return {
+    id: t.id,
+    sale_id: t.sale_id,
+    vendedor_id: t.vendedor_id,
+    vendedor_nome: t.vendedor_nome,
+    tipo: t.tipo,
+    valor: t.valor,
+    descricao: t.descricao,
+    pix_key: t.pix_key,
+    status: t.status,
+    data_vencimento: t.data_vencimento,
+    created_at: t.created_at,
+    updated_at: t.updated_at
+  };
+}
+
+function mapFinancialToTable(f: any): any {
+  const t: any = {};
+  if (f.sale_id) t.sale_id = f.sale_id;
+  if (f.vendedor_id) t.vendedor_id = f.vendedor_id;
+  if (f.vendedor_nome) t.vendedor_nome = f.vendedor_nome;
+  if (f.tipo) t.tipo = f.tipo;
+  if (f.valor !== undefined) t.valor = parseNumber(f.valor);
+  if (f.descricao) t.descricao = f.descricao;
+  if (f.pix_key) t.pix_key = f.pix_key;
+  if (f.status) t.status = f.status;
+  if (f.data_vencimento) t.data_vencimento = f.data_vencimento;
+  return t;
+}
+
+function mapTableToBank(t: any): Bank {
+  return {
+    id: t.id,
+    nome_banco: t.nome_banco,
+    tipo_produto: t.tipo_produto,
+    percentual_maximo: t.percentual_maximo,
+    status: t.status,
+    criado_em: t.created_at
+  };
+}
+
+function mapBankToTable(b: any): any {
+  const t: any = {};
+  if (b.nome_banco || b.nome) t.nome_banco = b.nome_banco || b.nome;
+  if (b.tipo_produto || b.tipo) t.tipo_produto = b.tipo_produto || b.tipo;
+  if (b.percentual_maximo !== undefined || b.percentual !== undefined) {
+    t.percentual_maximo = parseNumber(b.percentual_maximo !== undefined ? b.percentual_maximo : b.percentual);
+  }
+  if (b.status) t.status = b.status;
   return t;
 }

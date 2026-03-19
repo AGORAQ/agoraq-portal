@@ -6,12 +6,14 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { UserPlus, ArrowLeft, CheckCircle, Search } from 'lucide-react';
 import Logo from '@/components/Logo';
 import { db } from '@/services/db';
+import { useNotification } from '@/context/NotificationContext';
 
 export default function RequestAccess() {
   const navigate = useNavigate();
-  const submitted = false; // We will use a different approach for submission state if needed, or just keep it simple. Actually the original code used state.
+  const { notify } = useNotification();
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [isLoadingCep, setIsLoadingCep] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const [formData, setFormData] = useState({
     name: '',
@@ -63,19 +65,33 @@ export default function RequestAccess() {
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    console.log('[DEBUG] RequestAccess: handleSubmit iniciado');
+    setIsSubmitting(true);
     
-    // Construct full address string for backward compatibility if needed
-    const fullAddress = `${formData.street}, ${formData.number} - ${formData.neighborhood}, ${formData.city} - ${formData.state}, ${formData.cep}`;
+    try {
+      // Construct full address string for backward compatibility if needed
+      const fullAddress = `${formData.street}, ${formData.number} - ${formData.neighborhood}, ${formData.city} - ${formData.state}, ${formData.cep}`;
 
-    db.access_requests.create({
-      ...formData,
-      address: fullAddress,
-      status: 'Aguardando Documentos' // Default status
-    });
-
-    setIsSubmitted(true);
+      console.log('[DEBUG] RequestAccess: Dados do formulário:', formData);
+      
+      const result = await db.access_requests.create({
+        ...formData,
+        address: fullAddress,
+        status: 'Aguardando Documentos' // Default status
+      });
+      
+      console.log('[DEBUG] RequestAccess: Resultado da criação:', result);
+      setIsSubmitted(true);
+      notify('success', 'Solicitação enviada com sucesso!');
+    } catch (error: any) {
+      console.error('[DEBUG] RequestAccess: Erro ao enviar solicitação:', error);
+      const errorMessage = error.message || 'Erro ao enviar solicitação. Tente novamente.';
+      notify('error', errorMessage);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {

@@ -28,19 +28,27 @@ export default function Credentials() {
   const [isSaving, setIsSaving] = useState(false);
 
   const refreshData = async () => {
-    if (isAdmin) {
-      const [allCreds, allUsers] = await Promise.all([
-        db.credentials.getAll(),
-        db.users.getAll()
-      ]);
-      setCredentials(allCreds);
-      setUsers(allUsers.filter(u => u.role === 'vendedor'));
-    } else if (user?.id) {
-      const userCreds = await db.credentials.getByUser(user.id);
-      setCredentials(userCreds);
+    console.log('Credentials: Atualizando dados...');
+    try {
+      if (isAdmin) {
+        const [allCreds, allUsers] = await Promise.all([
+          db.credentials.getAll(),
+          db.users.getAll()
+        ]);
+        setCredentials(allCreds);
+        setUsers(allUsers.filter(u => u.role === 'vendedor'));
+        console.log(`Credentials: ${allCreds.length} credenciais carregadas (admin)`);
+      } else if (user?.id) {
+        const userCreds = await db.credentials.getByUser(user.id);
+        setCredentials(userCreds);
+        console.log(`Credentials: ${userCreds.length} credenciais carregadas (vendedor)`);
+      }
+      const allBanks = await db.bancos.getAll();
+      setBanks(allBanks);
+    } catch (error) {
+      console.error('Credentials: Erro ao carregar dados:', error);
+      notify('error', 'Erro ao carregar dados das credenciais');
     }
-    const allBanks = await db.bancos.getAll();
-    setBanks(allBanks);
   };
 
   useEffect(() => {
@@ -48,8 +56,8 @@ export default function Credentials() {
   }, []);
 
   const filteredCredentials = credentials.filter(cred => 
-    (cred.banco_nome || cred.bank || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (cred.login || cred.username || '').toLowerCase().includes(searchTerm.toLowerCase())
+    (cred.banco_nome || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (cred.login || '').toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   const togglePassword = (id: string) => {
@@ -67,28 +75,33 @@ export default function Credentials() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    console.log('Credentials: Iniciando submissão do formulário', { editingId, formData });
+
     if (!formData.banco_nome || !formData.login || !formData.link_acesso || !formData.usuario_id) {
+      console.warn('Credentials: Tentativa de salvar com campos obrigatórios ausentes');
       notify('error', 'Preencha os campos obrigatórios (Banco, Link, Usuário e Vendedor).');
       return;
     }
 
-    const credData: Omit<PlatformCredential, 'id' | 'data_criacao' | 'data_atualizacao'> = {
-      usuario_id: formData.usuario_id!,
-      banco_nome: formData.banco_nome!,
-      link_acesso: formData.link_acesso!,
-      login: formData.login!,
+    const credData: Partial<PlatformCredential> = {
+      usuario_id: formData.usuario_id,
+      banco_nome: formData.banco_nome,
+      link_acesso: formData.link_acesso,
+      login: formData.login,
       senha: formData.senha || '',
       status: formData.status as 'Ativo' | 'Inativo' || 'Ativo',
-      criado_por_admin: user?.id || '1',
+      criado_por_admin: user?.id || '',
       observation: formData.observation || ''
     };
 
     setIsSaving(true);
     try {
       if (editingId) {
-        await db.credentials.update(editingId, credData as any);
+        console.log(`Credentials: Atualizando credencial ${editingId}`);
+        await db.credentials.update(editingId, credData);
         notify('success', 'Credencial atualizada com sucesso!');
       } else {
+        console.log('Credentials: Criando nova credencial');
         await db.credentials.create(credData);
         notify('success', 'Credencial cadastrada com sucesso!');
       }
@@ -98,7 +111,7 @@ export default function Credentials() {
       setFormData({ status: 'Ativo' });
       setEditingId(null);
     } catch (error: any) {
-      console.error('Erro ao salvar credencial:', error);
+      console.error('Credentials: Erro ao salvar credencial:', error);
       notify('error', 'Erro ao salvar credencial: ' + (error.message || 'Erro desconhecido'));
     } finally {
       setIsSaving(false);
@@ -106,12 +119,15 @@ export default function Credentials() {
   };
 
   const handleEdit = (cred: PlatformCredential) => {
+    console.log('Credentials: Editando credencial', cred);
     setFormData({
-      ...cred,
-      banco_nome: cred.banco_nome || cred.bank,
-      link_acesso: cred.link_acesso || cred.link,
-      login: cred.login || cred.username,
-      senha: cred.senha || cred.password
+      usuario_id: cred.usuario_id,
+      banco_nome: cred.banco_nome,
+      link_acesso: cred.link_acesso,
+      login: cred.login,
+      senha: cred.senha,
+      status: cred.status,
+      observation: cred.observation
     });
     setEditingId(cred.id);
     setIsFormOpen(true);
@@ -257,37 +273,37 @@ export default function Credentials() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredCredentials.map((cred) => {
-                    const seller = users.find(u => u.id === cred.usuario_id);
-                    return (
-                      <tr key={cred.id} className="border-b hover:bg-slate-50/50">
-                        <td className="px-4 py-3 font-medium">{cred.banco_nome || cred.bank}</td>
-                        <td className="px-4 py-3">
-                          <div className="font-medium text-slate-900">{seller?.name || 'Desconhecido'}</div>
-                          <div className="text-xs text-slate-500">{seller?.email}</div>
-                        </td>
-                        <td className="px-4 py-3 font-mono">{cred.login || cred.username}</td>
-                        <td className="px-4 py-3">
-                          <Badge variant={cred.status === 'Ativo' ? 'success' : 'secondary'}>
-                            {cred.status}
-                          </Badge>
-                        </td>
-                        <td className="px-4 py-3 text-slate-500 max-w-[200px] truncate">
-                          {cred.observation || '-'}
-                        </td>
-                        <td className="px-4 py-3 text-right">
-                          <div className="flex justify-end gap-2">
-                            <Button variant="ghost" size="icon" onClick={() => handleEdit(cred)}>
-                              <Edit className="h-4 w-4" />
-                            </Button>
-                            <Button variant="ghost" size="icon" className="text-red-500" onClick={() => handleDelete(cred.id)}>
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
+                      {filteredCredentials.map((cred) => {
+                        const seller = users.find(u => u.id === cred.usuario_id);
+                        return (
+                          <tr key={cred.id} className="border-b hover:bg-slate-50/50">
+                            <td className="px-4 py-3 font-medium">{cred.banco_nome}</td>
+                            <td className="px-4 py-3">
+                              <div className="font-medium text-slate-900">{seller?.name || 'Desconhecido'}</div>
+                              <div className="text-xs text-slate-500">{seller?.email}</div>
+                            </td>
+                            <td className="px-4 py-3 font-mono">{cred.login}</td>
+                            <td className="px-4 py-3">
+                              <Badge variant={cred.status === 'Ativo' ? 'success' : 'secondary'}>
+                                {cred.status}
+                              </Badge>
+                            </td>
+                            <td className="px-4 py-3 text-slate-500 max-w-[200px] truncate">
+                              {cred.observation || '-'}
+                            </td>
+                            <td className="px-4 py-3 text-right">
+                              <div className="flex justify-end gap-2">
+                                <Button variant="ghost" size="icon" onClick={() => handleEdit(cred)}>
+                                  <Edit className="h-4 w-4" />
+                                </Button>
+                                <Button variant="ghost" size="icon" className="text-red-500" onClick={() => handleDelete(cred.id)}>
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
                 </tbody>
               </table>
             </div>
@@ -298,8 +314,8 @@ export default function Credentials() {
                   <div className="p-4 space-y-4">
                     <div className="flex justify-between items-start">
                       <div>
-                        <h3 className="font-bold text-lg text-slate-900">{cred.banco_nome || cred.bank}</h3>
-                        <p className="text-xs text-slate-500">Atualizado: {new Date(cred.data_atualizacao || cred.updatedAt || '').toLocaleDateString()}</p>
+                        <h3 className="font-bold text-lg text-slate-900">{cred.banco_nome}</h3>
+                        <p className="text-xs text-slate-500">Atualizado: {new Date(cred.data_atualizacao || '').toLocaleDateString()}</p>
                       </div>
                       <Badge variant={cred.status === 'Ativo' ? 'success' : 'secondary'}>
                         {cred.status}
@@ -311,9 +327,9 @@ export default function Credentials() {
                         <label className="text-xs font-medium text-slate-500 uppercase">Usuário</label>
                         <div className="flex items-center gap-2">
                           <code className="flex-1 bg-slate-50 px-2 py-1 rounded text-sm border border-slate-100 font-mono text-slate-700 truncate">
-                            {cred.login || cred.username}
+                            {cred.login}
                           </code>
-                          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => copyToClipboard(cred.login || cred.username || '')} title="Copiar Usuário">
+                          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => copyToClipboard(cred.login || '')} title="Copiar Usuário">
                             <Copy className="h-4 w-4" />
                           </Button>
                         </div>
@@ -323,12 +339,12 @@ export default function Credentials() {
                         <label className="text-xs font-medium text-slate-500 uppercase">Senha</label>
                         <div className="flex items-center gap-2">
                           <code className="flex-1 bg-slate-50 px-2 py-1 rounded text-sm border border-slate-100 font-mono text-slate-700 truncate">
-                            {showPassword === cred.id ? (cred.senha || cred.password) : '••••••••'}
+                            {showPassword === cred.id ? cred.senha : '••••••••'}
                           </code>
                           <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => togglePassword(cred.id)} title={showPassword === cred.id ? "Ocultar" : "Mostrar"}>
                             {showPassword === cred.id ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                           </Button>
-                          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => copyToClipboard(cred.senha || cred.password || '')} title="Copiar Senha">
+                          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => copyToClipboard(cred.senha || '')} title="Copiar Senha">
                             <Copy className="h-4 w-4" />
                           </Button>
                         </div>
@@ -342,7 +358,7 @@ export default function Credentials() {
                     )}
 
                     <div className="pt-2">
-                      <Button className="w-full bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200" onClick={() => window.open(cred.link_acesso || cred.link, '_blank')}>
+                      <Button className="w-full bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200" onClick={() => window.open(cred.link_acesso, '_blank')}>
                         <ExternalLink className="h-4 w-4 mr-2" />
                         Abrir Link
                       </Button>

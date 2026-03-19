@@ -209,21 +209,39 @@ export default function SalesData() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user) return;
+    console.log('[DEBUG] SalesData: handleSubmit disparado');
+    
+    if (!user) {
+      console.warn('[DEBUG] SalesData: Usuário não encontrado no contexto de autenticação');
+      notify('error', 'Sessão expirada. Por favor, faça login novamente.');
+      return;
+    }
 
     if (!validateCPF(formData.cpf)) {
+      console.warn('[DEBUG] SalesData: CPF inválido:', formData.cpf);
       notify('error', 'CPF inválido. Por favor, verifique os dados.');
       return;
     }
     
     setIsSaving(true);
+    console.log('[DEBUG] SalesData: Iniciando submissão', { 
+      formData, 
+      userId: user.id, 
+      userName: user.name, 
+      userRole: user.role,
+      userGroup: user.grupo_comissao
+    });
+    
     try {
       const saleData = {
         ...formData,
         value: parseFloat(formData.value) || 0,
       };
 
+      console.log('[DEBUG] SalesData: Chamando db.sales.create com:', saleData);
       const newSale = await db.sales.create(saleData, user);
+      console.log('[DEBUG] SalesData: Venda criada com sucesso:', newSale);
+      
       await refreshData();
       setIsFormOpen(false);
 
@@ -371,17 +389,32 @@ export default function SalesData() {
 
   const handlePixRequest = async (e: React.FormEvent) => {
     e.preventDefault();
-    const newRequest: Omit<PaymentRequest, 'id' | 'status' | 'data_solicitacao'> = {
-      usuario_id: user?.id || '',
-      valor: totalCommission,
-      chave_pix: pixKey,
-      banco_id: '',
-      grupo_id: ''
-    };
-    await db.payment_requests.create(newRequest);
-    await refreshData();
-    setIsPixModalOpen(false);
-    notify('success', 'Solicitação de PIX enviada com sucesso!');
+    if (!user || !pixKey || totalCommission <= 0) {
+      notify('error', 'Por favor, preencha a chave PIX e certifique-se de ter saldo.');
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      const newRequest: Omit<PaymentRequest, 'id' | 'status' | 'data_solicitacao'> = {
+        usuario_id: user.id,
+        valor: totalCommission,
+        chave_pix: pixKey,
+        banco_id: '',
+        grupo_id: ''
+      };
+      
+      console.log('[DEBUG] SalesData: Solicitando PIX:', newRequest);
+      await db.payment_requests.create(newRequest);
+      await refreshData();
+      setIsPixModalOpen(false);
+      notify('success', 'Solicitação de PIX enviada com sucesso!');
+    } catch (error: any) {
+      console.error('[DEBUG] SalesData: Erro ao solicitar PIX:', error);
+      notify('error', 'Erro ao solicitar PIX. Tente novamente.');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const pendingPixCount = pixRequests.filter(r => r.status === 'Pendente').length;
