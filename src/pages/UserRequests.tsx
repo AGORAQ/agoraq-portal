@@ -18,6 +18,7 @@ export default function UserRequests() {
   const [requests, setRequests] = useState<AccessRequest[]>([]);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [isResetFormOpen, setIsResetFormOpen] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [isLoadingCep, setIsLoadingCep] = useState(false);
@@ -120,112 +121,129 @@ export default function UserRequests() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmitting) return;
     
     if (!formData.name || !formData.email || !formData.bank || !formData.sellerName || !formData.cpf) {
       notify('error', 'Preencha os campos obrigatórios.');
       return;
     }
 
-    // Check for pending requests
-    const pendingRequest = requests.find(r => 
-      r.bank === formData.bank && 
-      r.cpf === formData.cpf && 
-      r.status !== 'Finalizado' && 
-      r.status !== 'Recusado' &&
-      r.status !== 'Aprovado' &&
-      r.status !== 'Rejeitado'
-    );
+    setIsSubmitting(true);
+    try {
+      // Check for pending requests
+      const pendingRequest = requests.find(r => 
+        r.bank === formData.bank && 
+        r.cpf === formData.cpf && 
+        r.status !== 'Finalizado' && 
+        r.status !== 'Recusado' &&
+        r.status !== 'Aprovado' &&
+        r.status !== 'Rejeitado'
+      );
 
-    if (pendingRequest) {
-      notify('error', 'Já existe uma solicitação pendente para este banco e CPF.');
-      return;
+      if (pendingRequest) {
+        notify('error', 'Já existe uma solicitação pendente para este banco e CPF.');
+        setIsSubmitting(false);
+        return;
+      }
+
+      // Construct full address string
+      const fullAddress = `${formData.street}, ${formData.number} - ${formData.neighborhood}, ${formData.city} - ${formData.state}, ${formData.cep}`;
+
+      await db.access_requests.create({
+        usuario_id: user?.id || '',
+        name: formData.name!,
+        email: formData.email!,
+        bank: formData.bank!,
+        banco_nome: formData.bank!,
+        sellerName: formData.sellerName!,
+        cpf: formData.cpf!,
+        rg: formData.rg || '',
+        phone: formData.phone || '',
+        birthDate: formData.birthDate || '',
+        userEmail: formData.userEmail || '',
+        address: fullAddress,
+        
+        // Save individual address fields
+        cep: formData.cep,
+        street: formData.street,
+        number: formData.number,
+        complement: formData.complement,
+        neighborhood: formData.neighborhood,
+        city: formData.city,
+        state: formData.state,
+
+        requestedAccessType: formData.requestedAccessType,
+
+        pixKey: formData.pixKey || '',
+        tipo_solicitacao: 'novo_usuario'
+      });
+
+      await refreshRequests();
+      setIsFormOpen(false);
+      setFormData({ 
+        status: 'Aguardando Documentos',
+        cep: '', street: '', number: '', complement: '', neighborhood: '', city: '', state: '', requestedAccessType: ''
+      });
+
+      notify('success', `Solicitação enviada com sucesso!\n\nUm e-mail de notificação foi enviado para: agoraq@agoraqoficial.com.br`);
+    } catch (error: any) {
+      console.error('Erro ao enviar solicitação:', error);
+      notify('error', 'Erro ao enviar solicitação. Tente novamente.');
+    } finally {
+      setIsSubmitting(false);
     }
-
-    // Construct full address string
-    const fullAddress = `${formData.street}, ${formData.number} - ${formData.neighborhood}, ${formData.city} - ${formData.state}, ${formData.cep}`;
-
-    await db.access_requests.create({
-      usuario_id: user?.id || '',
-      name: formData.name!,
-      email: formData.email!,
-      bank: formData.bank!,
-      banco_nome: formData.bank!,
-      sellerName: formData.sellerName!,
-      cpf: formData.cpf!,
-      rg: formData.rg || '',
-      phone: formData.phone || '',
-      birthDate: formData.birthDate || '',
-      userEmail: formData.userEmail || '',
-      address: fullAddress,
-      
-      // Save individual address fields
-      cep: formData.cep,
-      street: formData.street,
-      number: formData.number,
-      complement: formData.complement,
-      neighborhood: formData.neighborhood,
-      city: formData.city,
-      state: formData.state,
-
-      requestedAccessType: formData.requestedAccessType,
-
-      pixKey: formData.pixKey || '',
-      tipo_solicitacao: 'novo_usuario'
-    });
-
-    await refreshRequests();
-    setIsFormOpen(false);
-    setFormData({ 
-      status: 'Aguardando Documentos',
-      cep: '', street: '', number: '', complement: '', neighborhood: '', city: '', state: '', requestedAccessType: ''
-    });
-
-    notify('success', `Solicitação enviada com sucesso!\n\nUm e-mail de notificação foi enviado para: agoraq@agoraqoficial.com.br`);
   };
 
   const handleResetSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmitting) return;
 
     if (!resetFormData.bank || !resetFormData.reason) {
       notify('error', 'Preencha todos os campos.');
       return;
     }
 
-    // Check if user has credentials for this bank (Simulated check)
-    // In a real app, we would check db.credentials.getAll() filtered by user
-    
-    // Check for pending requests
-    const pendingRequest = requests.find(r => 
-      r.bank === resetFormData.bank && 
-      r.userEmail === user?.email && // Assuming userEmail is the seller's email
-      r.status !== 'Finalizado' && 
-      r.status !== 'Recusado' &&
-      r.status !== 'Aprovado' &&
-      r.status !== 'Rejeitado'
-    );
+    setIsSubmitting(true);
+    try {
+      // Check for pending requests
+      const pendingRequest = requests.find(r => 
+        r.bank === resetFormData.bank && 
+        r.userEmail === user?.email && // Assuming userEmail is the seller's email
+        r.status !== 'Finalizado' && 
+        r.status !== 'Recusado' &&
+        r.status !== 'Aprovado' &&
+        r.status !== 'Rejeitado'
+      );
 
-    if (pendingRequest) {
-      notify('error', 'Já existe uma solicitação pendente para este banco.');
-      return;
+      if (pendingRequest) {
+        notify('error', 'Já existe uma solicitação pendente para este banco.');
+        setIsSubmitting(false);
+        return;
+      }
+
+      await db.access_requests.create({
+        usuario_id: user?.id || '',
+        name: user?.name || 'Vendedor',
+        email: user?.email || '',
+        bank: resetFormData.bank,
+        banco_nome: resetFormData.bank,
+        sellerName: user?.name || '',
+        cpf: '', // Not needed for reset? Or fetch from user profile
+        tipo_solicitacao: 'reset_senha',
+        motivo_reset: resetFormData.reason,
+        status: 'Aguardando Criação/Liberação'
+      } as any); // Type assertion for partial data
+
+      await refreshRequests();
+      setIsResetFormOpen(false);
+      setResetFormData({ bank: '', reason: '' });
+      notify('success', 'Solicitação de reset de senha enviada com sucesso!');
+    } catch (error: any) {
+      console.error('Erro ao resetar senha:', error);
+      notify('error', 'Erro ao enviar solicitação. Tente novamente.');
+    } finally {
+      setIsSubmitting(false);
     }
-
-    await db.access_requests.create({
-      usuario_id: user?.id || '',
-      name: user?.name || 'Vendedor',
-      email: user?.email || '',
-      bank: resetFormData.bank,
-      banco_nome: resetFormData.bank,
-      sellerName: user?.name || '',
-      cpf: '', // Not needed for reset? Or fetch from user profile
-      tipo_solicitacao: 'reset_senha',
-      motivo_reset: resetFormData.reason,
-      status: 'Aguardando Criação/Liberação'
-    } as any); // Type assertion for partial data
-
-    await refreshRequests();
-    setIsResetFormOpen(false);
-    setResetFormData({ bank: '', reason: '' });
-    notify('success', 'Solicitação de reset de senha enviada com sucesso!');
   };
 
   const updateStatus = async (id: string, newStatus: AccessRequest['status']) => {
@@ -398,8 +416,8 @@ export default function UserRequests() {
                 </div>
                 <div className="flex justify-end gap-2 pt-4">
                   <Button type="button" variant="outline" onClick={() => setIsResetFormOpen(false)}>Cancelar</Button>
-                  <Button type="submit" className="bg-blue-900 hover:bg-blue-800">
-                    Enviar Solicitação
+                  <Button type="submit" disabled={isSubmitting} className="bg-blue-900 hover:bg-blue-800">
+                    {isSubmitting ? 'Enviando...' : 'Enviar Solicitação'}
                   </Button>
                 </div>
               </form>
@@ -551,9 +569,9 @@ export default function UserRequests() {
 
               <div className="flex justify-end gap-2 pt-4">
                 <Button type="button" variant="outline" onClick={() => setIsFormOpen(false)}>Cancelar</Button>
-                <Button type="submit" className="bg-blue-900 hover:bg-blue-800">
+                <Button type="submit" disabled={isSubmitting} className="bg-blue-900 hover:bg-blue-800">
                   <Mail className="w-4 h-4 mr-2" />
-                  Solicitar Acesso
+                  {isSubmitting ? 'Enviando...' : 'Solicitar Acesso'}
                 </Button>
               </div>
             </form>

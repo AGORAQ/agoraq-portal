@@ -1331,21 +1331,34 @@ export const db = {
         const mappedData = mapAccessRequestToTable(req);
         console.log('[DEBUG] db.access_requests.create - Dados mapeados para Supabase:', mappedData);
         
-        const { data, error } = await supabase
-          .from('access_requests')
-          .insert([mappedData])
-          .select()
-          .single();
+        // Add a trace to see where this is being called from
+        console.trace('[DEBUG] db.access_requests.create trace');
+
+        const result = await withRetry(async () => {
+          console.log('[DEBUG] db.access_requests.create - Executando insert no Supabase...');
+          return await withTimeout(
+            supabase
+              .from('access_requests')
+              .insert([mappedData])
+              .select()
+              .single(),
+            30000 // 30 seconds timeout
+          );
+        }, 2) as any;
           
-        if (error) {
-          console.error('[DEBUG] db.access_requests.create - Erro do Supabase:', error);
-          throw error;
+        if (result.error) {
+          console.error('[DEBUG] db.access_requests.create - Erro retornado pelo Supabase:', result.error);
+          throw result.error;
         }
         
-        console.log('[DEBUG] db.access_requests.create - Sucesso:', data);
-        return data;
-      } catch (err) {
-        console.error('[DEBUG] db.access_requests.create - Exceção capturada:', err);
+        console.log('[DEBUG] db.access_requests.create - Sucesso:', result.data);
+        return result.data;
+      } catch (err: any) {
+        console.error('[DEBUG] db.access_requests.create - Exceção fatal capturada:', err);
+        // Log full error object for debugging
+        if (err && typeof err === 'object') {
+          console.error('[DEBUG] db.access_requests.create - Detalhes do erro:', JSON.stringify(err, null, 2));
+        }
         throw err;
       }
     },

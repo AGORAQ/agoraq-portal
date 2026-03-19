@@ -67,6 +67,12 @@ export default function RequestAccess() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    if (isSubmitting) {
+      console.log('[DEBUG] RequestAccess: handleSubmit ignorado (já está enviando)');
+      return;
+    }
+    
     console.log('[DEBUG] RequestAccess: handleSubmit iniciado');
     setIsSubmitting(true);
     
@@ -75,6 +81,7 @@ export default function RequestAccess() {
       const fullAddress = `${formData.street}, ${formData.number} - ${formData.neighborhood}, ${formData.city} - ${formData.state}, ${formData.cep}`;
 
       console.log('[DEBUG] RequestAccess: Dados do formulário:', formData);
+      console.log('[DEBUG] RequestAccess: Chamando db.access_requests.create');
       
       const result = await db.access_requests.create({
         ...formData,
@@ -90,6 +97,7 @@ export default function RequestAccess() {
       const errorMessage = error.message || 'Erro ao enviar solicitação. Tente novamente.';
       notify('error', errorMessage);
     } finally {
+      console.log('[DEBUG] RequestAccess: handleSubmit finalizado (setIsSubmitting(false))');
       setIsSubmitting(false);
     }
   };
@@ -260,9 +268,22 @@ export default function RequestAccess() {
                 </div>
               </div>
             </div>
-            <Button type="submit" className="w-full bg-blue-900 hover:bg-blue-800 text-lg py-6 mt-6">
-              <UserPlus className="w-5 h-5 mr-2" />
-              Enviar Solicitação
+            <Button 
+              type="submit" 
+              disabled={isSubmitting} 
+              className="w-full bg-blue-900 hover:bg-blue-800 text-lg py-6 mt-6"
+            >
+              {isSubmitting ? (
+                <>
+                  <span className="animate-spin mr-2">⌛</span>
+                  Enviando...
+                </>
+              ) : (
+                <>
+                  <UserPlus className="w-5 h-5 mr-2" />
+                  Enviar Solicitação
+                </>
+              )}
             </Button>
           </form>
         </CardContent>
