@@ -32,20 +32,18 @@ export default function Login() {
 
   React.useEffect(() => {
     const checkFirstRun = async () => {
-      console.log('[DEBUG] Iniciando checagem de first-run via RPC...');
+      console.log('[DEBUG] Iniciando checagem de first-run via API...');
       try {
-        // Chamada direta via RPC do Supabase conforme solicitado
-        const { data, error } = await supabase.rpc('check_first_run');
-        
-        if (error) {
-          console.error('[DEBUG] Erro na RPC check_first_run:', error);
-          setIsFirstRun(false);
-          return;
+        // Chamada via Netlify Function conforme solicitado para evitar RPC inexistente
+        const response = await fetch('/api/admin/check-first-run');
+        if (!response.ok) {
+          throw new Error('Falha ao verificar estado do sistema');
         }
+        const data = await response.json();
+        
+        console.log('[DEBUG] Resultado da checagem de first-run:', data);
 
-        console.log('[DEBUG] Resultado da RPC check_first_run:', data);
-
-        if (data?.firstRun === true) {
+        if (data?.isFirstRun === true) {
           console.log('[DEBUG] Sistema em estado de configuração inicial.');
           setIsFirstRun(true);
         } else {
@@ -54,7 +52,7 @@ export default function Login() {
         }
       } catch (e: any) {
         console.error('[DEBUG] Exceção na checagem de first-run:', e);
-        // Regra 4: Fallback para login normal
+        // Fallback para login normal
         setIsFirstRun(false);
       }
     };

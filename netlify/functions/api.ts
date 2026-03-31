@@ -38,7 +38,7 @@ export const handler: Handler = async (event, context) => {
     // Create user
     if (path === '/admin/create-user' && method === 'POST') {
       if (!supabaseAdmin) return { statusCode: 500, headers, body: JSON.stringify({ error: 'Admin not configured' }) };
-      const { email, password, name, role, status, grupo_comissao } = JSON.parse(event.body || '{}');
+      const { email, password, name, role, status, grupo_comissao, can_capture_leads } = JSON.parse(event.body || '{}');
       
       const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
         email,
@@ -47,18 +47,46 @@ export const handler: Handler = async (event, context) => {
         user_metadata: { name, role }
       });
 
-      if (authError) return { statusCode: 400, headers, body: JSON.stringify({ error: authError.message }) };
+      if (authError) {
+        // If user already exists, try to update their profile
+        if (authError.message.includes('already registered') || authError.message.includes('already exists')) {
+          const { data: existingProfile } = await supabaseAdmin
+            .from('profiles')
+            .select('id')
+            .eq('email', email)
+            .single();
+          
+          if (existingProfile) {
+            const { error: updateError } = await supabaseAdmin
+              .from('profiles')
+              .update({
+                nome: name || 'Usuário',
+                perfil: role || 'vendedor',
+                grupo_comissao: grupo_comissao || 'OURO',
+                ativo: status === 'Ativo',
+                can_capture_leads: can_capture_leads !== false
+              })
+              .eq('id', existingProfile.id);
+            
+            if (updateError) throw updateError;
+            return { statusCode: 200, headers, body: JSON.stringify({ success: true, message: 'Perfil atualizado' }) };
+          }
+        }
+        return { statusCode: 400, headers, body: JSON.stringify({ error: authError.message }) };
+      }
 
       const userId = authData.user.id;
       const { error: profileError } = await supabaseAdmin.from('profiles').upsert({
         id: userId,
-        nome: name,
-        email: email,
-        perfil: role,
-        grupo_comissao: grupo_comissao,
+        auth_user_id: userId,
+        nome: name || 'Usuário',
+        email: email.trim().toLowerCase(),
+        perfil: role || 'vendedor',
+        grupo_comissao: grupo_comissao || 'OURO',
         ativo: status === 'Ativo',
+        can_capture_leads: can_capture_leads !== false,
         daily_goal: 0
-      });
+      }, { onConflict: 'email' });
 
       if (profileError) {
         console.error('Error creating profile:', profileError);
@@ -73,6 +101,47 @@ export const handler: Handler = async (event, context) => {
       }
 
       return { statusCode: 200, headers, body: JSON.stringify({ success: true, user: authData.user }) };
+    }
+
+    // Get users
+    if (path === '/users' && method === 'GET') {
+      if (!supabaseAdmin) return { statusCode: 500, headers, body: JSON.stringify({ error: 'Admin not configured' }) };
+      const { data, error } = await supabaseAdmin.from('profiles').select('*').order('nome');
+      if (error) throw error;
+      
+      const mappedUsers = data.map(p => ({
+        id: p.id,
+        name: p.nome,
+        email: p.email,
+        role: p.perfil,
+        grupo_comissao: p.grupo_comissao,
+        status: p.ativo ? 'Ativo' : 'Inativo',
+        daily_goal: p.daily_goal,
+        pix_key: p.pix_key
+      }));
+
+      return { statusCode: 200, headers, body: JSON.stringify(mappedUsers) };
+    }
+
+    // Get user by ID
+    if (path.startsWith('/users/') && method === 'GET') {
+      if (!supabaseAdmin) return { statusCode: 500, headers, body: JSON.stringify({ error: 'Admin not configured' }) };
+      const id = path.split('/')[2];
+      const { data, error } = await supabaseAdmin.from('profiles').select('*').eq('id', id).single();
+      if (error) throw error;
+      
+      const user = {
+        id: data.id,
+        name: data.nome,
+        email: data.email,
+        role: data.perfil,
+        grupo_comissao: data.grupo_comissao,
+        status: data.ativo ? 'Ativo' : 'Inativo',
+        daily_goal: data.daily_goal,
+        pix_key: data.pix_key
+      };
+
+      return { statusCode: 200, headers, body: JSON.stringify(user) };
     }
 
     // Reset password

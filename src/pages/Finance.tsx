@@ -13,7 +13,9 @@ import {
   XCircle,
   AlertCircle,
   DollarSign,
-  Send
+  Send,
+  RefreshCw,
+  Save
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useNotification } from '@/context/NotificationContext';
@@ -28,6 +30,7 @@ export default function Finance() {
   const [pixKey, setPixKey] = useState(user?.pix_key || '');
   const [amount, setAmount] = useState('');
   const [isRequesting, setIsRequesting] = useState(false);
+  const [isUpdatingPix, setIsUpdatingPix] = useState(false);
 
   const minWithdrawal = 50;
   const availableBalance = (user?.saldo_acumulado || 0) - (user?.saldo_pago || 0);
@@ -56,13 +59,23 @@ export default function Finance() {
 
   const handleUpdatePix = async () => {
     if (!pixKey) return;
-    await db.users.update(user!.id, { pix_key: pixKey });
-    updateUser({ ...user!, pix_key: pixKey });
-    notify('success', 'Chave PIX atualizada com sucesso!');
+    setIsUpdatingPix(true);
+    try {
+      await db.users.update(user!.id, { pix_key: pixKey });
+      updateUser({ ...user!, pix_key: pixKey });
+      notify('success', 'Chave PIX atualizada com sucesso!');
+    } catch (error: any) {
+      console.error('Erro ao atualizar PIX:', error);
+      notify('error', 'Erro ao atualizar chave PIX: ' + (error.message || 'Erro desconhecido'));
+    } finally {
+      setIsUpdatingPix(false);
+    }
   };
 
   const handleRequestPayment = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isRequesting) return;
+
     const val = parseFloat(amount);
 
     if (!pixKey) {
@@ -80,22 +93,29 @@ export default function Finance() {
       return;
     }
 
-    await db.payment_requests.create({
-      usuario_id: user!.id,
-      valor: val,
-      chave_pix: pixKey,
-    });
+    setIsRequesting(true);
+    try {
+      await db.payment_requests.create({
+        usuario_id: user!.id,
+        valor: val,
+        chave_pix: pixKey,
+      });
 
-    setAmount('');
-    setIsRequesting(false);
-    
-    // Refresh list
-    const all = await db.payment_requests.getAll();
-    setRequests(all.filter(r => r.usuario_id === user!.id).sort((a, b) => 
-      new Date(b.data_solicitacao).getTime() - new Date(a.data_solicitacao).getTime()
-    ));
+      setAmount('');
+      
+      // Refresh list
+      const all = await db.payment_requests.getAll();
+      setRequests(all.filter(r => r.usuario_id === user!.id).sort((a, b) => 
+        new Date(b.data_solicitacao).getTime() - new Date(a.data_solicitacao).getTime()
+      ));
 
-    notify('success', 'Solicitação enviada com sucesso! Aguarde a aprovação do administrador.');
+      notify('success', 'Solicitação enviada com sucesso! Aguarde a aprovação do administrador.');
+    } catch (error: any) {
+      console.error('Erro ao solicitar pagamento:', error);
+      notify('error', 'Erro ao solicitar pagamento: ' + (error.message || 'Erro desconhecido'));
+    } finally {
+      setIsRequesting(false);
+    }
   };
 
   const getStatusBadge = (status: string) => {
@@ -179,8 +199,13 @@ export default function Finance() {
                   className="bg-slate-800 border-slate-700 text-white"
                 />
               </div>
-              <Button className="w-full bg-emerald-600 hover:bg-emerald-700 text-white border-none" onClick={handleUpdatePix}>
-                Salvar Chave PIX
+              <Button 
+                className="w-full bg-emerald-600 hover:bg-emerald-700 text-white border-none" 
+                onClick={handleUpdatePix}
+                disabled={isUpdatingPix}
+              >
+                {isUpdatingPix ? <RefreshCw className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />}
+                {isUpdatingPix ? 'Salvando...' : 'Salvar Chave PIX'}
               </Button>
             </CardContent>
           </Card>
@@ -212,10 +237,10 @@ export default function Finance() {
                 <Button 
                   type="submit" 
                   className="w-full bg-emerald-600 hover:bg-emerald-700 text-white border-none py-6 text-lg font-bold"
-                  disabled={availableBalance < minWithdrawal}
+                  disabled={isRequesting || availableBalance < minWithdrawal}
                 >
-                  <Send className="w-5 h-5 mr-2" />
-                  Solicitar Pagamento
+                  {isRequesting ? <RefreshCw className="w-5 h-5 mr-2 animate-spin" /> : <Send className="w-5 h-5 mr-2" />}
+                  {isRequesting ? 'Enviando...' : 'Solicitar Pagamento'}
                 </Button>
                 {availableBalance < minWithdrawal && (
                   <p className="text-xs text-red-400 text-center">Saldo insuficiente para o saque mínimo.</p>

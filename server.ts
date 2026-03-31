@@ -320,6 +320,14 @@ async function startServer() {
   app.use(cors());
   app.use(express.json());
 
+  // Netlify Functions compatibility middleware
+  app.use((req, res, next) => {
+    if (req.url.startsWith('/.netlify/functions/api')) {
+      req.url = req.url.replace('/.netlify/functions/api', '/api');
+    }
+    next();
+  });
+
   // Test route
   app.get('/api/test-alive', (req, res) => {
     res.send('Server is alive and responding');

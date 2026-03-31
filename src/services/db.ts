@@ -65,7 +65,21 @@ const parseParcelas = (val: any): number => {
 
 // Database Service - Supabase Driven
 export const db = {
-  API_URL: import.meta.env.VITE_SUPABASE_URL || 'Supabase',
+  // Use Netlify Functions for admin actions
+  API_URL: '/api',
+  
+  health: {
+    check: async () => {
+      try {
+        const { error } = await supabase.from('profiles').select('id').limit(1);
+        if (error) return { error: error.message };
+        return { status: 'ok' };
+      } catch (e: any) {
+        return { error: e.message };
+      }
+    }
+  },
+
   status: {
     check: async () => {
       try {
@@ -76,74 +90,49 @@ export const db = {
       }
     }
   },
-
-  health: {
-    check: async () => {
-      try {
-        // Aumentado para 60 segundos e com 3 tentativas
-        const result = await withRetry(async () => {
-          return await withTimeout(supabase.from('profiles').select('id').limit(1), 60000);
-        }, 3) as any;
-        
-        if (result.error) return { ok: false, error: result.error.message };
-        return { ok: true };
-      } catch (e: any) {
-        return { ok: false, error: e.message };
-      }
-    }
-  },
-
+  
   users: {
-    getAll: async () => {
-      console.log('DB: Buscando todos os usuários...');
-      try {
-        const response = await fetch('/api/users');
-        if (!response.ok) {
-          const error = await response.json();
-          throw new Error(error.error || 'Erro ao buscar usuários');
+    getAll: async (): Promise<User[]> => {
+      console.log('db.users.getAll: Fetching from Supabase...');
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .order('nome');
+      
+      if (error) {
+        console.error('Error fetching users from Supabase:', error);
+        // Fallback to API if Supabase fails
+        try {
+          const response = await fetch(`${db.API_URL}/users`);
+          if (!response.ok) return [];
+          return response.json();
+        } catch (e) {
+          return [];
         }
-        const users = await response.json();
-        console.log(`DB: ${users.length} usuários encontrados via API.`);
-        return users;
-      } catch (error) {
-        console.error('DB: Erro ao buscar usuários via API, tentando fallback Supabase:', error);
-        // Fallback to direct Supabase if API fails
-        const result = await withTimeout(supabase
-          .from('profiles')
-          .select('*')
-          .order('nome')) as any;
-        if (result.error) {
-          console.error('DB Error (users.getAll - fallback):', result.error);
-          throw result.error;
-        }
-        return result.data.map(mapProfileToUser);
       }
+      
+      return data.map(mapProfileToUser);
     },
-    getById: async (id: string) => {
-      console.log('DB: Buscando usuário por ID:', id);
-      try {
-        const response = await fetch(`/api/users/${id}`);
-        if (!response.ok) {
-          const error = await response.json();
-          throw new Error(error.error || 'Erro ao buscar usuário');
+    getById: async (id: string): Promise<User | null> => {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', id)
+        .single();
+      
+      if (error) {
+        console.error('Error fetching user from Supabase:', error);
+        // Fallback to API
+        try {
+          const response = await fetch(`${db.API_URL}/users/${id}`);
+          if (!response.ok) return null;
+          return response.json();
+        } catch (e) {
+          return null;
         }
-        const user = await response.json();
-        console.log('DB: Usuário encontrado via API:', user.id);
-        return user;
-      } catch (error) {
-        console.error('DB: Erro ao buscar usuário via API, tentando fallback Supabase:', error);
-        // Fallback to direct Supabase if API fails
-        const result = await withTimeout(supabase
-          .from('profiles')
-          .select('*')
-          .eq('id', id)
-          .single()) as any;
-        if (result.error) {
-          console.error('DB Error (users.getById - fallback):', result.error);
-          throw result.error;
-        }
-        return mapProfileToUser(result.data);
       }
+      
+      return mapProfileToUser(data);
     },
     getByAuthId: async (authId: string) => {
       console.log('DB: Buscando perfil por Auth ID:', authId);
@@ -176,19 +165,19 @@ export const db = {
             return mapProfileToUser(fallbackResult.data);
           }
           
-          throw new Error('Perfil não encontrado para o ID fornecido');
+          return null; // Return null instead of throwing to avoid breaking the app
         }
         
         return mapProfileToUser(result.data);
       } catch (e: any) {
         console.error('Error in getByAuthId:', e);
-        throw e;
+        return null;
       }
     },
     create: async (user: any) => {
       console.log('DB: Criando novo usuário via API:', user.email);
       try {
-        const response = await fetch('/api/admin/create-user', {
+        const response = await fetch(`${db.API_URL}/admin/create-user`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(user)
@@ -212,22 +201,32 @@ export const db = {
     },
     update: async (id: string, updates: Partial<User>) => {
       console.log('DB: Atualizando usuário:', id, updates);
-      const { data, error } = await withTimeout(supabase
-        .from('profiles')
-        .update(mapUserToProfile(updates))
-        .eq('id', id)
-        .select()
-        .single()) as any;
-      if (error) {
-        console.error('DB Error (users.update):', error);
-        throw error;
+      try {
+        const mapped = mapUserToProfile(updates);
+        const result = await withRetry(async () => {
+          return await withTimeout(supabase
+            .from('profiles')
+            .update(mapped)
+            .eq('id', id)
+            .select()
+            .single(), 60000);
+        }, 3) as any;
+
+        if (result.error) {
+          console.error('DB Error (users.update):', result.error);
+          throw result.error;
+        }
+        
+        return mapProfileToUser(result.data);
+      } catch (e: any) {
+        console.error('Fatal Error in users.update:', e);
+        throw e;
       }
-      return mapProfileToUser(data);
     },
     resetPassword: async (userId: string, newPassword: string) => {
       console.log('DB: Resetando senha para usuário:', userId);
       try {
-        const response = await fetch('/api/admin/reset-password', {
+        const response = await fetch(`${db.API_URL}/admin/reset-password`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ userId, newPassword })
@@ -257,80 +256,168 @@ export const db = {
         console.error('DB Error (users.delete):', error);
         throw error;
       }
+    },
+    incrementLeads: async (id: string): Promise<boolean> => {
+      const today = new Date().toISOString().split('T')[0];
+      
+      // Get current count
+      const { data: profile, error: getError } = await supabase
+        .from('profiles')
+        .select('daily_lead_count, last_lead_date')
+        .eq('id', id)
+        .single();
+      
+      if (getError) return false;
+      
+      let count = profile.daily_lead_count || 0;
+      if (profile.last_lead_date !== today) {
+        count = 0;
+      }
+      
+      if (count >= 100) return false;
+      
+      const { error: updateError } = await supabase
+        .from('profiles')
+        .update({
+          daily_lead_count: count + 1,
+          last_lead_date: today
+        })
+        .eq('id', id);
+      
+      return !updateError;
     }
   },
 
   commissions: {
     getAll: async (role?: string, userGroup?: string) => {
       console.log('DB: Buscando todas as tabelas de comissão...', role ? `para papel: ${role}` : '', userGroup ? `e grupo: ${userGroup}` : '');
-      const { data, error } = await withTimeout(supabase
-        .from('commission_tables')
-        .select('*')
-        .order('banco')) as any;
-      if (error) {
-        console.error('DB Error (commissions.getAll):', error);
-        throw error;
+      const result = await withRetry(async () => {
+        return await withTimeout(supabase
+          .from('commission_tables')
+          .select('*')
+          .order('banco'), 30000);
+      }, 3) as any;
+      
+      if (result.error) {
+        console.error('DB Error (commissions.getAll):', result.error);
+        throw result.error;
       }
-      return data.map(mapTableToCommission);
+      
+      return result.data.map(mapTableToCommission);
     },
     create: async (comm: any, userRole?: string, userId?: string) => {
       console.log('DB: Criando tabela de comissão:', comm);
-      const { data, error } = await withTimeout(supabase
-        .from('commission_tables')
-        .insert([mapCommissionToTable(comm)])
-        .select('id, banco, produto, tabela, parcelas, comissao_total_empresa, grupo_master, grupo_ouro, grupo_prata, grupo_plus, status, vigencia')
-        .single()) as any;
-      if (error) {
-        console.error('DB Error (commissions.create):', error);
-        throw error;
+      try {
+        const mapped = mapCommissionToTable(comm);
+        const result = await withRetry(async () => {
+          return await withTimeout(supabase
+            .from('commission_tables')
+            .insert([mapped])
+            .select('id, banco, produto, tabela, parcelas, comissao_total_empresa, grupo_master, grupo_ouro, grupo_prata, grupo_plus, status, vigencia')
+            .single(), 60000);
+        }, 3) as any;
+
+        if (result.error) {
+          console.error('DB Error (commissions.create):', result.error);
+          throw result.error;
+        }
+        
+        console.log('DB: Tabela de comissão criada com sucesso:', result.data.id);
+        return mapTableToCommission(result.data);
+      } catch (e: any) {
+        console.error('Fatal Error in commissions.create:', e);
+        throw e;
       }
-      return mapTableToCommission(data);
     },
     update: async (id: string, updates: any, userRole?: string, userId?: string) => {
       console.log('DB: Atualizando tabela de comissão:', id, updates);
-      const { data, error } = await withTimeout(supabase
-        .from('commission_tables')
-        .update(mapCommissionToTable(updates))
-        .eq('id', id)
-        .select('id, banco, produto, tabela, parcelas, comissao_total_empresa, grupo_master, grupo_ouro, grupo_prata, grupo_plus, status, vigencia')
-        .single()) as any;
-      if (error) {
-        console.error('DB Error (commissions.update):', error);
-        throw error;
+      try {
+        const mapped = mapCommissionToTable(updates);
+        const result = await withRetry(async () => {
+          return await withTimeout(supabase
+            .from('commission_tables')
+            .update(mapped)
+            .eq('id', id)
+            .select('id, banco, produto, tabela, parcelas, comissao_total_empresa, grupo_master, grupo_ouro, grupo_prata, grupo_plus, status, vigencia')
+            .single(), 60000);
+        }, 3) as any;
+
+        if (result.error) {
+          console.error('DB Error (commissions.update):', result.error);
+          throw result.error;
+        }
+        
+        console.log('DB: Tabela de comissão atualizada com sucesso:', id);
+        return mapTableToCommission(result.data);
+      } catch (e: any) {
+        console.error('Fatal Error in commissions.update:', e);
+        throw e;
       }
-      return mapTableToCommission(data);
     },
     delete: async (id: string, userRole?: string, userId?: string) => {
       console.log('DB: Deletando tabela de comissão:', id);
-      const { error } = await withTimeout(supabase
-        .from('commission_tables')
-        .delete()
-        .eq('id', id)) as any;
-      if (error) {
-        console.error('DB Error (commissions.delete):', error);
-        throw error;
+      try {
+        const result = await withRetry(async () => {
+          return await withTimeout(supabase
+            .from('commission_tables')
+            .delete()
+            .eq('id', id), 30000);
+        }, 3) as any;
+
+        if (result.error) {
+          console.error('DB Error (commissions.delete):', result.error);
+          throw result.error;
+        }
+        
+        console.log('DB: Tabela de comissão deletada com sucesso:', id);
+        return true;
+      } catch (e: any) {
+        console.error('Fatal Error in commissions.delete:', e);
+        throw e;
       }
     },
     deleteMany: async (ids: string[], userRole?: string, userId?: string) => {
       console.log('DB: Deletando múltiplas tabelas de comissão:', ids.length);
-      const { error } = await withTimeout(supabase
-        .from('commission_tables')
-        .delete()
-        .in('id', ids)) as any;
-      if (error) {
-        console.error('DB Error (commissions.deleteMany):', error);
-        throw error;
+      try {
+        const result = await withRetry(async () => {
+          return await withTimeout(supabase
+            .from('commission_tables')
+            .delete()
+            .in('id', ids), 60000);
+        }, 3) as any;
+
+        if (result.error) {
+          console.error('DB Error (commissions.deleteMany):', result.error);
+          throw result.error;
+        }
+        
+        console.log('DB: Múltiplas tabelas de comissão deletadas com sucesso');
+        return true;
+      } catch (e: any) {
+        console.error('Fatal Error in commissions.deleteMany:', e);
+        throw e;
       }
     },
     deleteAll: async (userRole?: string, userId?: string) => {
       console.log('DB: Deletando TODAS as tabelas de comissão');
-      const { error } = await withTimeout(supabase
-        .from('commission_tables')
-        .delete()
-        .neq('id', '00000000-0000-0000-0000-000000000000')) as any;
-      if (error) {
-        console.error('DB Error (commissions.deleteAll):', error);
-        throw error;
+      try {
+        const result = await withRetry(async () => {
+          return await withTimeout(supabase
+            .from('commission_tables')
+            .delete()
+            .neq('id', '00000000-0000-0000-0000-000000000000'), 90000);
+        }, 3) as any;
+
+        if (result.error) {
+          console.error('DB Error (commissions.deleteAll):', result.error);
+          throw result.error;
+        }
+        
+        console.log('DB: TODAS as tabelas de comissão deletadas com sucesso');
+        return true;
+      } catch (e: any) {
+        console.error('Fatal Error in commissions.deleteAll:', e);
+        throw e;
       }
     },
     import: async (comms: any[], userRole?: string, userId?: string, onProgress?: (p: number) => void) => {
@@ -724,37 +811,50 @@ export const db = {
       return result.data?.length || 0;
     },
     create: async (lead: any) => {
-      // Check for duplicate phone number
-      let cleanPhone = String(lead.phone || '').replace(/[^\d]/g, '');
-      
-      // Normalize with 55 if missing
-      if (cleanPhone.length === 10 || cleanPhone.length === 11) {
-        cleanPhone = '55' + cleanPhone;
-      }
-      
-      if (cleanPhone) {
-        const { data: existing } = await supabase
-          .from('leads')
-          .select('id')
-          .eq('telefone', cleanPhone)
-          .maybeSingle();
+      console.log('DB: Criando lead:', lead);
+      try {
+        // Check for duplicate phone number
+        let cleanPhone = String(lead.phone || '').replace(/[^\d]/g, '');
         
-        if (existing) {
-          throw new Error('Já existe um lead cadastrado com este número de telefone.');
+        // Normalize with 55 if missing
+        if (cleanPhone.length === 10 || cleanPhone.length === 11) {
+          cleanPhone = '55' + cleanPhone;
         }
+        
+        if (cleanPhone) {
+          const existingResult = await withTimeout(supabase
+            .from('leads')
+            .select('id')
+            .eq('telefone', cleanPhone)
+            .maybeSingle(), 30000) as any;
+          
+          if (existingResult.data) {
+            throw new Error('Já existe um lead cadastrado com este número de telefone.');
+          }
+        }
+
+        const mapped = mapLeadToTable(lead);
+        mapped.telefone = cleanPhone;
+
+        const result = await withRetry(async () => {
+          return await withTimeout(supabase
+            .from('leads')
+            .insert([mapped])
+            .select()
+            .single(), 60000);
+        }, 3) as any;
+
+        if (result.error) {
+          console.error('DB Error (leads.create):', result.error);
+          throw result.error;
+        }
+        
+        console.log('DB: Lead criado com sucesso:', result.data.id);
+        return mapTableToLead(result.data);
+      } catch (e: any) {
+        console.error('Fatal Error in leads.create:', e);
+        throw e;
       }
-
-      const mapped = mapLeadToTable(lead);
-      // Ensure the mapped object has the normalized phone
-      mapped.telefone = cleanPhone;
-
-      const { data, error } = await supabase
-        .from('leads')
-        .insert([mapped])
-        .select()
-        .single();
-      if (error) throw error;
-      return mapTableToLead(data);
     },
     import: async (leads: any[], onProgress?: (progress: number) => void) => {
       console.log('[DEBUG] import: Iniciando importação de leads:', leads.length, 'registros');
@@ -1123,75 +1223,88 @@ export const db = {
         throw new Error('Falha ao mapear identificação do vendedor.');
       }
       
-      const { data: saleData, error: saleError } = await supabase
-        .from('sales')
-        .insert([mappedSale])
-        .select('*')
-        .single();
-      
-      if (saleError) {
-        console.error('[DEBUG] sales.create: Erro ao inserir venda no Supabase:', saleError);
-        console.error('[DEBUG] sales.create: Detalhes do erro:', {
-          code: saleError.code,
-          message: saleError.message,
-          details: saleError.details,
-          hint: saleError.hint
-        });
-        throw new Error(`Erro ao inserir venda: ${saleError.message || 'Erro desconhecido'}`);
-      }
-      
-      if (!saleData) {
-        console.error('[DEBUG] sales.create: Nenhuma dado retornado após inserção da venda');
-        throw new Error('Nenhum dado retornado após inserção da venda');
-      }
-      
-      console.log('[DEBUG] sales.create: Venda inserida com sucesso:', saleData.id);
-
-      // 2. Create corresponding financial entry (Credit for the seller)
-      const financialEntry = {
-        vendedor_id: user.id,
-        vendedor_nome: user.name,
-        sale_id: saleData.id,
-        tipo: 'Crédito',
-        valor: sale.commission || 0,
-        status: 'Pendente',
-        descricao: `Comissão Venda: ${sale.client || 'Cliente'} - Proposta: ${sale.proposal || 'S/N'}`,
-        data_vencimento: new Date().toISOString().split('T')[0]
-      };
-
-      console.log('[DEBUG] sales.create: Criando entrada financeira:', financialEntry);
-      const { error: finError } = await supabase.from('financial_entries').insert([financialEntry]);
-      if (finError) {
-        console.error('[DEBUG] sales.create: Erro ao criar entrada financeira:', finError);
-        // Não lançamos erro aqui para não invalidar a venda, mas logamos
-      }
-      
-      // 3. Update user's accumulated balance (fetch latest first to avoid race conditions)
-      console.log('[DEBUG] sales.create: Atualizando saldo do usuário...');
       try {
-        const { data: profile, error: profileError } = await supabase
-          .from('profiles')
-          .select('saldo_acumulado')
-          .eq('id', user.id)
-          .single();
+        const result = await withRetry(async () => {
+          return await withTimeout(supabase
+            .from('sales')
+            .insert([mappedSale])
+            .select('*')
+            .single(), 60000);
+        }, 3) as any;
         
-        if (!profileError && profile) {
-          const currentBalance = profile.saldo_acumulado || 0;
-          const newCommission = sale.commission || 0;
-          console.log(`[DEBUG] sales.create: Saldo atual: ${currentBalance}, Nova comissão: ${newCommission}, Novo saldo: ${currentBalance + newCommission}`);
-          
-          await db.users.update(user.id, { 
-            saldo_acumulado: currentBalance + newCommission 
+        if (result.error) {
+          console.error('[DEBUG] sales.create: Erro ao inserir venda no Supabase:', result.error);
+          console.error('[DEBUG] sales.create: Detalhes do erro:', {
+            code: result.error.code,
+            message: result.error.message,
+            details: result.error.details,
+            hint: result.error.hint
           });
-          console.log('[DEBUG] sales.create: Saldo atualizado com sucesso');
-        } else if (profileError) {
-          console.error('[DEBUG] sales.create: Erro ao buscar perfil para atualizar saldo:', profileError);
+          throw new Error(`Erro ao inserir venda: ${result.error.message || 'Erro desconhecido'}`);
         }
-      } catch (updateError) {
-        console.error('[DEBUG] sales.create: Erro crítico ao atualizar saldo:', updateError);
-      }
+        
+        if (!result.data) {
+          console.error('[DEBUG] sales.create: Nenhuma dado retornado após inserção da venda');
+          throw new Error('Nenhum dado retornado após inserção da venda');
+        }
+        
+        console.log('[DEBUG] sales.create: Venda inserida com sucesso:', result.data.id);
+        const saleData = result.data;
+        
+        // 2. Create corresponding financial entry (Credit for the seller)
+        const financialEntry = {
+          vendedor_id: user.id,
+          vendedor_nome: user.name,
+          sale_id: saleData.id,
+          tipo: 'Crédito' as const,
+          valor: saleData.valor_comissao || 0,
+          descricao: `Comissão da venda: ${saleData.cliente || 'Cliente'}`,
+          status: 'Pendente' as const,
+          data_vencimento: new Date().toISOString()
+        };
+        
+        console.log('[DEBUG] sales.create: Criando entrada financeira:', financialEntry);
+        await db.financial.create(financialEntry);
+        
+        // 3. Update user's accumulated balance (fetch latest first to avoid race conditions)
+        console.log('[DEBUG] sales.create: Atualizando saldo do usuário...');
+        try {
+          const { data: profile, error: profileError } = await withRetry(async () => {
+            return await withTimeout(supabase
+              .from('profiles')
+              .select('saldo_acumulado')
+              .eq('id', user.id)
+              .single(), 30000);
+          }, 3) as any;
 
-      return mapTableToSale(saleData);
+          if (profileError) {
+            console.error('[DEBUG] sales.create: Erro ao buscar perfil para atualizar saldo:', profileError);
+          } else {
+            const currentBalance = profile?.saldo_acumulado || 0;
+            const newBalance = currentBalance + (saleData.comissao_vendedor || 0);
+            
+            const { error: updateError } = await withRetry(async () => {
+              return await withTimeout(supabase
+                .from('profiles')
+                .update({ saldo_acumulado: newBalance })
+                .eq('id', user.id), 30000);
+            }, 3) as any;
+
+            if (updateError) {
+              console.error('[DEBUG] sales.create: Erro ao atualizar saldo acumulado:', updateError);
+            } else {
+              console.log('[DEBUG] sales.create: Saldo acumulado atualizado com sucesso:', newBalance);
+            }
+          }
+        } catch (balanceErr) {
+          console.error('[DEBUG] sales.create: Exceção ao atualizar saldo:', balanceErr);
+        }
+
+        return mapTableToSale(saleData);
+      } catch (e: any) {
+        console.error('[DEBUG] sales.create: Exceção fatal:', e);
+        throw e;
+      }
     },
     update: async (id: string, updates: any) => {
       console.log('DB: Atualizando venda:', id, updates);
@@ -1413,42 +1526,77 @@ export const db = {
     },
     create: async (bank: any) => {
       console.log('DB: Criando banco:', bank);
-      const { data, error } = await withTimeout(supabase
-        .from('banks')
-        .insert([mapBankToTable(bank)])
-        .select()
-        .single()) as any;
-      
-      if (error) {
-        console.error('DB Error (bancos.create):', error);
-        throw error;
+      try {
+        const mapped = mapBankToTable(bank);
+        const result = await withRetry(async () => {
+          return await withTimeout(supabase
+            .from('banks')
+            .insert([mapped])
+            .select()
+            .single(), 60000);
+        }, 3) as any;
+
+        if (result.error) {
+          console.error('DB Error (bancos.create):', result.error);
+          throw result.error;
+        }
+        
+        console.log('DB: Banco criado com sucesso:', result.data.id);
+        return mapTableToBank(result.data);
+      } catch (e: any) {
+        console.error('Fatal Error in banks.create:', e);
+        throw e;
       }
-      return mapTableToBank(data);
     },
     update: async (id: string, updates: any) => {
       console.log('DB: Atualizando banco:', id, updates);
-      const { data, error } = await withTimeout(supabase
-        .from('banks')
-        .update(mapBankToTable(updates))
-        .eq('id', id)
-        .select()
-        .single()) as any;
-      
-      if (error) {
-        console.error('DB Error (bancos.update):', error);
-        throw error;
+      try {
+        const mapped: any = {};
+        if (updates.nome_banco !== undefined || updates.nome !== undefined) 
+          mapped.nome_banco = updates.nome_banco || updates.nome;
+        if (updates.tipo_produto !== undefined || updates.tipo !== undefined) 
+          mapped.tipo_produto = updates.tipo_produto || updates.tipo;
+        if (updates.percentual_maximo !== undefined || updates.percentual !== undefined) 
+          mapped.percentual_maximo = parseNumber(updates.percentual_maximo !== undefined ? updates.percentual_maximo : updates.percentual);
+        if (updates.status !== undefined) mapped.status = updates.status;
+
+        const result = await withRetry(async () => {
+          return await withTimeout(supabase
+            .from('banks')
+            .update(mapped)
+            .eq('id', id)
+            .select()
+            .single(), 60000);
+        }, 3) as any;
+
+        if (result.error) {
+          console.error('DB Error (bancos.update):', result.error);
+          throw result.error;
+        }
+        
+        return mapTableToBank(result.data);
+      } catch (e: any) {
+        console.error('Fatal Error in banks.update:', e);
+        throw e;
       }
-      return mapTableToBank(data);
     },
     delete: async (id: string) => {
       console.log('DB: Deletando banco:', id);
-      const { error } = await withTimeout(supabase
-        .from('banks')
-        .delete()
-        .eq('id', id)) as any;
-      if (error) {
-        console.error('DB Error (bancos.delete):', error);
-        throw error;
+      try {
+        const result = await withRetry(async () => {
+          return await withTimeout(supabase
+            .from('banks')
+            .delete()
+            .eq('id', id), 60000);
+        }, 3) as any;
+
+        if (result.error) {
+          console.error('DB Error (bancos.delete):', result.error);
+          throw result.error;
+        }
+      } catch (e: any) {
+        console.error('Fatal Error in banks.delete:', e);
+        throw e;
       }
     }
   },
@@ -1483,57 +1631,70 @@ export const db = {
     },
     create: async (group: any) => {
       console.log('DB: Criando grupo de comissão:', group);
-      const { data, error } = await withTimeout(supabase
-        .from('commission_groups')
-        .insert([{
-          name: group.name,
-          type: group.type,
-          banco_id: group.banco_id,
-          status: group.status || 'Ativo'
-        }])
-        .select()
-        .single()) as any;
-      
-      if (error) {
-        console.error('DB Error (commissionGroups.create):', error);
-        throw error;
+      const payload = mapCommissionGroupToTable(group);
+      try {
+        const result = await withRetry(async () => {
+          return await withTimeout(supabase
+            .from('commission_groups')
+            .insert([payload])
+            .select()
+            .single(), 60000);
+        }, 3) as any;
+        
+        if (result.error) {
+          console.error('DB Error (commissionGroups.create):', result.error);
+          throw result.error;
+        }
+        
+        return {
+          id: result.data.id,
+          name: result.data.name,
+          type: result.data.type,
+          banco_id: result.data.banco_id,
+          status: result.data.status,
+          createdAt: result.data.created_at
+        };
+      } catch (e: any) {
+        console.error('Fatal Error in commissionGroups.create:', e);
+        throw e;
       }
-      return {
-        id: data.id,
-        name: data.name,
-        type: data.type,
-        banco_id: data.banco_id,
-        status: data.status,
-        createdAt: data.created_at
-      };
     },
     update: async (id: string, updates: any) => {
       console.log('DB: Atualizando grupo de comissão:', id, updates);
-      const mapped: any = {};
-      if (updates.name) mapped.name = updates.name;
-      if (updates.type) mapped.type = updates.type;
-      if (updates.banco_id) mapped.banco_id = updates.banco_id;
-      if (updates.status) mapped.status = updates.status;
+      try {
+        const mapped: any = {};
+        if (updates.name !== undefined) mapped.name = updates.name;
+        if (updates.type !== undefined) mapped.type = updates.type;
+        if (updates.banco_id !== undefined || updates.bankId !== undefined) 
+          mapped.banco_id = updates.banco_id || updates.bankId;
+        if (updates.status !== undefined) mapped.status = updates.status;
 
-      const { data, error } = await withTimeout(supabase
-        .from('commission_groups')
-        .update(mapped)
-        .eq('id', id)
-        .select()
-        .single()) as any;
-      
-      if (error) {
-        console.error('DB Error (commissionGroups.update):', error);
-        throw error;
+        const result = await withRetry(async () => {
+          return await withTimeout(supabase
+            .from('commission_groups')
+            .update(mapped)
+            .eq('id', id)
+            .select()
+            .single(), 60000);
+        }, 3) as any;
+
+        if (result.error) {
+          console.error('DB Error (commissionGroups.update):', result.error);
+          throw result.error;
+        }
+        
+        return {
+          id: result.data.id,
+          name: result.data.name,
+          type: result.data.type,
+          banco_id: result.data.banco_id,
+          status: result.data.status,
+          createdAt: result.data.created_at
+        };
+      } catch (e: any) {
+        console.error('Fatal Error in commissionGroups.update:', e);
+        throw e;
       }
-      return {
-        id: data.id,
-        name: data.name,
-        type: data.type,
-        banco_id: data.banco_id,
-        status: data.status,
-        createdAt: data.created_at
-      };
     },
     delete: async (id: string) => {
       console.log('DB: Deletando grupo de comissão:', id);
@@ -1551,89 +1712,117 @@ export const db = {
   credentials: {
     getAll: async () => {
       console.log('DB: Buscando todas as credenciais');
-      const { data, error } = await withTimeout(supabase
-        .from('platform_credentials')
-        .select('*')
-        .order('banco_nome')) as any;
+      const result = await withRetry(async () => {
+        return await withTimeout(supabase
+          .from('platform_credentials')
+          .select('*')
+          .order('banco_nome'), 30000);
+      }, 3) as any;
       
-      if (error) {
-        console.error('DB: Erro ao buscar credenciais:', error);
-        throw error;
+      if (result.error) {
+        console.error('DB: Erro ao buscar credenciais:', result.error);
+        throw result.error;
       }
       
-      return (data || []).map(mapTableToCredential);
+      return (result.data || []).map(mapTableToCredential);
     },
     getByUser: async (userId: string) => {
       console.log(`DB: Buscando credenciais para o usuário: ${userId}`);
-      const { data, error } = await withTimeout(supabase
-        .from('platform_credentials')
-        .select('*')
-        .eq('usuario_id', userId)
-        .order('banco_nome')) as any;
+      const result = await withRetry(async () => {
+        return await withTimeout(supabase
+          .from('platform_credentials')
+          .select('*')
+          .eq('usuario_id', userId)
+          .order('banco_nome'), 30000);
+      }, 3) as any;
       
-      if (error) {
-        console.error(`DB: Erro ao buscar credenciais para usuário ${userId}:`, error);
-        throw error;
+      if (result.error) {
+        console.error(`DB: Erro ao buscar credenciais para usuário ${userId}:`, result.error);
+        throw result.error;
       }
       
-      return (data || []).map(mapTableToCredential);
+      return (result.data || []).map(mapTableToCredential);
     },
     create: async (cred: any) => {
       console.log('DB: Criando nova credencial:', cred);
-      const mappedData = mapCredentialToTable(cred);
-      console.log('DB: Dados mapeados para inserção:', mappedData);
+      try {
+        const mappedData = mapCredentialToTable(cred);
+        console.log('DB: Dados mapeados para inserção:', mappedData);
 
-      const { data, error } = await withTimeout(supabase
-        .from('platform_credentials')
-        .insert([mappedData])
-        .select()
-        .single()) as any;
-      
-      if (error) {
-        console.error('DB: Erro ao criar credencial:', error);
-        throw error;
+        const result = await withRetry(async () => {
+          return await withTimeout(supabase
+            .from('platform_credentials')
+            .insert([mappedData])
+            .select()
+            .single(), 60000);
+        }, 3) as any;
+
+        if (result.error) {
+          console.error('DB: Erro ao criar credencial:', result.error);
+          throw result.error;
+        }
+        
+        console.log('DB: Credencial criada com sucesso:', result.data.id);
+        return mapTableToCredential(result.data);
+      } catch (e: any) {
+        console.error('Fatal Error in credentials.create:', e);
+        throw e;
       }
-      
-      console.log('DB: Credencial criada com sucesso:', data);
-      return mapTableToCredential(data);
     },
     update: async (id: string, updates: any) => {
       console.log(`DB: Atualizando credencial ${id}:`, updates);
-      const mappedUpdates = mapCredentialToTable(updates);
-      console.log('DB: Atualizações mapeadas:', mappedUpdates);
+      try {
+        const mappedUpdates = mapCredentialToTable(updates);
+        console.log('DB: Atualizações mapeadas:', mappedUpdates);
 
-      const { data, error } = await withTimeout(supabase
-        .from('platform_credentials')
-        .update(mappedUpdates)
-        .eq('id', id)
-        .select()
-        .single()) as any;
-      
-      if (error) {
-        console.error(`DB: Erro ao atualizar credencial ${id}:`, error);
-        throw error;
+        const result = await withRetry(async () => {
+          return await withTimeout(supabase
+            .from('platform_credentials')
+            .update(mappedUpdates)
+            .eq('id', id)
+            .select()
+            .single(), 60000);
+        }, 3) as any;
+
+        if (result.error) {
+          console.error(`DB: Erro ao atualizar credencial ${id}:`, result.error);
+          throw result.error;
+        }
+        
+        console.log('DB: Credencial atualizada com sucesso:', id);
+        return mapTableToCredential(result.data);
+      } catch (e: any) {
+        console.error('Fatal Error in credentials.update:', e);
+        throw e;
       }
-      
-      console.log('DB: Credencial atualizada com sucesso:', data);
-      return mapTableToCredential(data);
     },
     delete: async (id: string) => {
       console.log(`DB: Deletando credencial ${id}`);
-      const { error } = await withTimeout(supabase
-        .from('platform_credentials')
-        .delete()
-        .eq('id', id)) as any;
-      
-      if (error) {
-        console.error(`DB: Erro ao deletar credencial ${id}:`, error);
-        throw error;
+      try {
+        const result = await withRetry(async () => {
+          return await withTimeout(supabase
+            .from('platform_credentials')
+            .delete()
+            .eq('id', id), 30000);
+        }, 3) as any;
+
+        if (result.error) {
+          console.error(`DB: Erro ao deletar credencial ${id}:`, result.error);
+          throw result.error;
+        }
+        
+        console.log(`DB: Credencial ${id} deletada com sucesso`);
+        return true;
+      } catch (e: any) {
+        console.error('Fatal Error in credentials.delete:', e);
+        throw e;
       }
-      console.log(`DB: Credencial ${id} deletada com sucesso`);
     }
   },
 
   payment_requests: {
     getAll: async (user?: User) => {
+      console.log('DB: Buscando solicitações de pagamento...');
       let query = supabase
         .from('financial_entries')
         .select('*')
@@ -1642,10 +1831,12 @@ export const db = {
       if (user && user.role !== 'admin') {
         if (user.role === 'supervisor') {
           // Supervisor sees entries for their group members
-          const groupUsersResult = await withTimeout(supabase
-            .from('profiles')
-            .select('id')
-            .eq('grupo_comissao', user.grupo_comissao)) as any;
+          const groupUsersResult = await withRetry(async () => {
+            return await withTimeout(supabase
+              .from('profiles')
+              .select('id')
+              .eq('grupo_comissao', user.grupo_comissao), 30000);
+          }, 3) as any;
           
           const userIds = groupUsersResult.data?.map((u: any) => u.id) || [];
           query = query.in('vendedor_id', userIds);
@@ -1654,8 +1845,15 @@ export const db = {
         }
       }
 
-      const result = await withTimeout(query) as any;
-      if (result.error) throw result.error;
+      const result = await withRetry(async () => {
+        return await withTimeout(query, 60000);
+      }, 3) as any;
+
+      if (result.error) {
+        console.error('DB Error (payment_requests.getAll):', result.error);
+        throw result.error;
+      }
+      
       return (result.data || []).map((d: any) => ({
         ...d,
         usuario_id: d.usuario_id || d.vendedor_id,
@@ -1676,33 +1874,64 @@ export const db = {
         .subscribe();
     },
     create: async (req: any) => {
-      const { data, error } = await supabase
-        .from('financial_entries')
-        .insert([{
+      console.log('DB: Criando solicitação de pagamento:', req);
+      try {
+        const mappedReq = mapFinancialToTable({
           ...req,
           vendedor_id: req.usuario_id || req.vendedor_id,
           tipo: req.tipo || 'Débito',
           pix_key: req.chave_pix || req.pix_key
-        }])
-        .select()
-        .single();
-      if (error) throw error;
-      return data;
+        });
+        console.log('DB: Solicitação mapeada:', mappedReq);
+
+        const result = await withRetry(async () => {
+          return await withTimeout(supabase
+            .from('financial_entries')
+            .insert([mappedReq])
+            .select()
+            .single(), 60000);
+        }, 3) as any;
+
+        if (result.error) {
+          console.error('DB Error (payment_requests.create):', result.error);
+          throw result.error;
+        }
+        
+        console.log('DB: Solicitação de pagamento criada com sucesso:', result.data.id);
+        return result.data;
+      } catch (e: any) {
+        console.error('Fatal Error in payment_requests.create:', e);
+        throw e;
+      }
     },
     update: async (id: string, updates: any) => {
-      const { usuario_id, chave_pix, ...rest } = updates;
-      const mappedUpdates: any = { ...rest };
-      if (usuario_id) mappedUpdates.vendedor_id = usuario_id;
-      if (chave_pix) mappedUpdates.pix_key = chave_pix;
+      console.log('DB: Atualizando solicitação de pagamento:', id, updates);
+      try {
+        const { usuario_id, chave_pix, ...rest } = updates;
+        const mappedUpdates: any = { ...rest };
+        if (usuario_id) mappedUpdates.vendedor_id = usuario_id;
+        if (chave_pix) mappedUpdates.pix_key = chave_pix;
 
-      const { data, error } = await supabase
-        .from('financial_entries')
-        .update(mappedUpdates)
-        .eq('id', id)
-        .select()
-        .single();
-      if (error) throw error;
-      return data;
+        const result = await withRetry(async () => {
+          return await withTimeout(supabase
+            .from('financial_entries')
+            .update(mappedUpdates)
+            .eq('id', id)
+            .select()
+            .single(), 60000);
+        }, 3) as any;
+
+        if (result.error) {
+          console.error('DB Error (payment_requests.update):', result.error);
+          throw result.error;
+        }
+        
+        console.log('DB: Solicitação de pagamento atualizada com sucesso:', id);
+        return result.data;
+      } catch (e: any) {
+        console.error('Fatal Error in payment_requests.update:', e);
+        throw e;
+      }
     }
   },
   // Aliases for compatibility
@@ -1712,96 +1941,206 @@ export const db = {
 
   announcements: {
     getAll: async () => {
+      console.log('DB: Buscando anúncios...');
       try {
-        const { data, error } = await supabase
-          .from('announcements')
-          .select('*')
-          .order('created_at', { ascending: false }); // Use created_at which is more standard
-        if (error) {
-          // Try without order if date/created_at fails
-          const { data: data2, error: error2 } = await supabase
+        const result = await withRetry(async () => {
+          return await withTimeout(supabase
             .from('announcements')
-            .select('*');
-          if (error2) return [];
-          return data2;
+            .select('*')
+            .order('created_at', { ascending: false }), 30000);
+        }, 3) as any;
+
+        if (result.error) {
+          console.warn('DB Warning (announcements.getAll - order failed):', result.error);
+          // Try without order if created_at fails
+          const result2 = await withRetry(async () => {
+            return await withTimeout(supabase
+              .from('announcements')
+              .select('*'), 30000);
+          }, 3) as any;
+          
+          if (result2.error) return [];
+          return result2.data;
         }
-        return data;
+        return result.data;
       } catch (e) {
         console.error('Error fetching announcements:', e);
         return [];
       }
     },
     create: async (ann: any) => {
-      const { data, error } = await supabase
-        .from('announcements')
-        .insert([ann])
-        .select()
-        .single();
-      if (error) throw error;
-      return data;
+      console.log('DB: Criando anúncio:', ann);
+      const payload = mapAnnouncementToTable(ann);
+      try {
+        const result = await withRetry(async () => {
+          return await withTimeout(supabase
+            .from('announcements')
+            .insert([payload])
+            .select()
+            .single(), 60000);
+        }, 3) as any;
+
+        if (result.error) {
+          console.error('DB Error (announcements.create):', result.error);
+          throw result.error;
+        }
+        
+        console.log('DB: Anúncio criado com sucesso:', result.data.id);
+        return result.data;
+      } catch (e: any) {
+        console.error('Fatal Error in announcements.create:', e);
+        throw e;
+      }
     },
     update: async (id: string, updates: any) => {
-      const { data, error } = await supabase
-        .from('announcements')
-        .update(updates)
-        .eq('id', id)
-        .select()
-        .single();
-      if (error) throw error;
-      return data;
+      console.log('DB: Atualizando anúncio:', id, updates);
+      try {
+        const mapped: any = {};
+        if (updates.titulo !== undefined || updates.title !== undefined) 
+          mapped.titulo = updates.titulo || updates.title;
+        if (updates.conteudo !== undefined || updates.content !== undefined) 
+          mapped.conteudo = updates.conteudo || updates.content;
+        if (updates.categoria !== undefined || updates.category !== undefined) 
+          mapped.categoria = updates.categoria || updates.category;
+        if (updates.prioridade !== undefined || updates.priority !== undefined) 
+          mapped.prioridade = updates.prioridade || updates.priority;
+        if (updates.data_expiracao !== undefined || updates.expiryDate !== undefined) 
+          mapped.data_expiracao = formatDateToISO(updates.data_expiracao || updates.expiryDate);
+        if (updates.status !== undefined) mapped.status = updates.status;
+
+        const result = await withRetry(async () => {
+          return await withTimeout(supabase
+            .from('announcements')
+            .update(mapped)
+            .eq('id', id)
+            .select()
+            .single(), 60000);
+        }, 3) as any;
+
+        if (result.error) {
+          console.error('DB Error (announcements.update):', result.error);
+          throw result.error;
+        }
+        
+        console.log('DB: Anúncio atualizado com sucesso:', id);
+        return result.data;
+      } catch (e: any) {
+        console.error('Fatal Error in announcements.update:', e);
+        throw e;
+      }
     },
     delete: async (id: string) => {
-      const { error } = await supabase
-        .from('announcements')
-        .delete()
-        .eq('id', id);
-      if (error) throw error;
+      console.log('DB: Deletando anúncio:', id);
+      try {
+        const result = await withRetry(async () => {
+          return await withTimeout(supabase
+            .from('announcements')
+            .delete()
+            .eq('id', id), 30000);
+        }, 3) as any;
+
+        if (result.error) {
+          console.error('DB Error (announcements.delete):', result.error);
+          throw result.error;
+        }
+        
+        console.log('DB: Anúncio deletado com sucesso:', id);
+        return true;
+      } catch (e: any) {
+        console.error('Fatal Error in announcements.delete:', e);
+        throw e;
+      }
     }
   },
 
   academy: {
     getAll: async () => {
-      const { data, error } = await supabase
-        .from('academy_content')
-        .select('*')
-        .order('ordem', { ascending: true })
-        .order('titulo');
-      if (error) throw error;
-      return (data || []).map(mapTableToAcademy);
+      console.log('DB: Buscando conteúdos academy...');
+      const result = await withRetry(async () => {
+        return await withTimeout(supabase
+          .from('academy_content')
+          .select('*')
+          .order('ordem', { ascending: true })
+          .order('titulo'), 30000);
+      }, 3) as any;
+      
+      if (result.error) {
+        console.error('DB Error (academy.getAll):', result.error);
+        throw result.error;
+      }
+      
+      return (result.data || []).map(mapTableToAcademy);
     },
     create: async (content: any) => {
       console.log('DB: Criando conteúdo academy:', content);
-      const { data, error } = await supabase
-        .from('academy_content')
-        .insert([mapAcademyToTable(content)])
-        .select()
-        .single();
-      if (error) {
-        console.error('DB Error (academy.create):', error);
-        throw error;
+      try {
+        const mapped = mapAcademyToTable(content);
+        const result = await withRetry(async () => {
+          return await withTimeout(supabase
+            .from('academy_content')
+            .insert([mapped])
+            .select()
+            .single(), 60000);
+        }, 3) as any;
+
+        if (result.error) {
+          console.error('DB Error (academy.create):', result.error);
+          throw result.error;
+        }
+        
+        console.log('DB: Conteúdo academy criado com sucesso:', result.data.id);
+        return mapTableToAcademy(result.data);
+      } catch (e: any) {
+        console.error('Fatal Error in academy.create:', e);
+        throw e;
       }
-      return mapTableToAcademy(data);
     },
     update: async (id: string, updates: any) => {
       console.log('DB: Atualizando conteúdo academy:', id, updates);
-      const { data, error } = await supabase
-        .from('academy_content')
-        .update(mapAcademyToTable(updates))
-        .eq('id', id)
-        .select()
-        .single();
-      if (error) {
-        console.error('DB Error (academy.update):', error);
-        throw error;
+      try {
+        const mapped = mapAcademyToTable(updates);
+        const result = await withRetry(async () => {
+          return await withTimeout(supabase
+            .from('academy_content')
+            .update(mapped)
+            .eq('id', id)
+            .select()
+            .single(), 60000);
+        }, 3) as any;
+
+        if (result.error) {
+          console.error('DB Error (academy.update):', result.error);
+          throw result.error;
+        }
+        
+        console.log('DB: Conteúdo academy atualizado com sucesso:', id);
+        return mapTableToAcademy(result.data);
+      } catch (e: any) {
+        console.error('Fatal Error in academy.update:', e);
+        throw e;
       }
-      return mapTableToAcademy(data);
     },
     delete: async (id: string) => {
-      const { error } = await supabase
-        .from('academy_content')
-        .delete()
-        .eq('id', id);
-      if (error) throw error;
+      console.log('DB: Deletando conteúdo academy:', id);
+      try {
+        const result = await withRetry(async () => {
+          return await withTimeout(supabase
+            .from('academy_content')
+            .delete()
+            .eq('id', id), 30000);
+        }, 3) as any;
+
+        if (result.error) {
+          console.error('DB Error (academy.delete):', result.error);
+          throw result.error;
+        }
+        
+        console.log('DB: Conteúdo academy deletado com sucesso:', id);
+        return true;
+      } catch (e: any) {
+        console.error('Fatal Error in academy.delete:', e);
+        throw e;
+      }
     },
     trackView: async (conteudo_id: string, usuario_id: string) => {
       const { data, error } = await supabase
@@ -1837,84 +2176,177 @@ export const db = {
 
   campaigns: {
     getAll: async () => {
-      const { data, error } = await supabase
-        .from('campaigns')
-        .select('*')
-        .order('created_at', { ascending: false });
-      if (error) throw error;
-      return data;
+      console.log('DB: Buscando campanhas...');
+      const result = await withRetry(async () => {
+        return await withTimeout(supabase
+          .from('campaigns')
+          .select('*')
+          .order('created_at', { ascending: false }), 30000);
+      }, 3) as any;
+      
+      if (result.error) {
+        console.error('DB Error (campaigns.getAll):', result.error);
+        throw result.error;
+      }
+      
+      return result.data || [];
     },
     create: async (campaign: any) => {
-      const { data, error } = await supabase
-        .from('campaigns')
-        .insert([campaign])
-        .select()
-        .single();
-      if (error) throw error;
-      return data;
+      console.log('DB: Criando campanha:', campaign);
+      const payload = mapCampaignToTable(campaign);
+      try {
+        const result = await withRetry(async () => {
+          return await withTimeout(supabase
+            .from('campaigns')
+            .insert([payload])
+            .select()
+            .single(), 60000);
+        }, 3) as any;
+
+        if (result.error) {
+          console.error('DB Error (campaigns.create):', result.error);
+          throw result.error;
+        }
+        
+        console.log('DB: Campanha criada com sucesso:', result.data.id);
+        return result.data;
+      } catch (e: any) {
+        console.error('Fatal Error in campaigns.create:', e);
+        throw e;
+      }
+    },
+    update: async (id: string, updates: any) => {
+      console.log('DB: Atualizando campanha:', id, updates);
+      try {
+        const mapped: any = {};
+        if (updates.name !== undefined) mapped.name = updates.name;
+        if (updates.description !== undefined) mapped.description = updates.description;
+        if (updates.type !== undefined) mapped.type = updates.type;
+        if (updates.status !== undefined) mapped.status = updates.status;
+        if (updates.start_date !== undefined || updates.startDate !== undefined) 
+          mapped.start_date = formatDateToISO(updates.start_date || updates.startDate);
+        if (updates.end_date !== undefined || updates.endDate !== undefined) 
+          mapped.end_date = formatDateToISO(updates.end_date || updates.endDate);
+        if (updates.budget !== undefined) mapped.budget = Number(updates.budget);
+
+        const result = await withRetry(async () => {
+          return await withTimeout(supabase
+            .from('campaigns')
+            .update(mapped)
+            .eq('id', id)
+            .select()
+            .single(), 60000);
+        }, 3) as any;
+
+        if (result.error) {
+          console.error('DB Error (campaigns.update):', result.error);
+          throw result.error;
+        }
+        
+        console.log('DB: Campanha atualizada com sucesso:', id);
+        return result.data;
+      } catch (e: any) {
+        console.error('Fatal Error in campaigns.update:', e);
+        throw e;
+      }
     },
     delete: async (id: string) => {
-      const { error } = await supabase
-        .from('campaigns')
-        .delete()
-        .eq('id', id);
-      if (error) throw error;
+      console.log('DB: Deletando campanha:', id);
+      try {
+        const result = await withRetry(async () => {
+          return await withTimeout(supabase
+            .from('campaigns')
+            .delete()
+            .eq('id', id), 30000);
+        }, 3) as any;
+
+        if (result.error) {
+          console.error('DB Error (campaigns.delete):', result.error);
+          throw result.error;
+        }
+        
+        console.log('DB: Campanha deletada com sucesso:', id);
+        return true;
+      } catch (e: any) {
+        console.error('Fatal Error in campaigns.delete:', e);
+        throw e;
+      }
     }
   },
 
   settings: {
     get: async () => {
-      const { data, error } = await supabase
-        .from('app_settings')
-        .select('value')
-        .eq('key', 'global_settings')
-        .maybeSingle();
+      console.log('DB: Buscando configurações globais...');
+      const result = await withRetry(async () => {
+        return await withTimeout(supabase
+          .from('app_settings')
+          .select('value')
+          .eq('key', 'global_settings')
+          .maybeSingle(), 30000);
+      }, 3) as any;
       
-      if (error) {
-        console.error('Error fetching settings:', error);
+      if (result.error) {
+        console.error('Error fetching settings:', result.error);
         return { canvaLink: 'https://www.canva.com/' };
       }
       
       return {
         canvaLink: 'https://www.canva.com/',
         aiSystemPrompt: "Você é um assistente útil e experiente da empresa AgoraQ, especializado em ajudar vendedores de crédito consignado. Você responde dúvidas sobre comissões, uso do CRM, captura de leads e roteiros operacionais. Seja conciso, profissional e motivador.",
-        ...(data?.value || {})
+        ...(result.data?.value || {})
       };
     },
     update: async (newSettings: any) => {
       console.log('DB: Atualizando configurações:', newSettings);
-      const current = await db.settings.get();
-      const updated = { ...current, ...newSettings };
-      
-      const { data, error } = await supabase
-        .from('app_settings')
-        .upsert({ 
-          key: 'global_settings', 
-          value: updated,
-          updated_at: new Date().toISOString()
-        }, { onConflict: 'key' })
-        .select()
-        .single();
+      try {
+        const current = await db.settings.get();
+        const updated = { ...current, ...newSettings };
         
-      if (error) {
-        console.error('DB Error (settings.update):', error);
-        throw error;
+        const result = await withRetry(async () => {
+          return await withTimeout(supabase
+            .from('app_settings')
+            .upsert({ 
+              key: 'global_settings', 
+              value: updated,
+              updated_at: new Date().toISOString()
+            }, { onConflict: 'key' })
+            .select()
+            .single(), 60000);
+        }, 3) as any;
+          
+        if (result.error) {
+          console.error('DB Error (settings.update):', result.error);
+          throw result.error;
+        }
+        return result.data.value;
+      } catch (e: any) {
+        console.error('Fatal Error in settings.update:', e);
+        throw e;
       }
-      return data.value;
     }
   },
 
   logs: {
     add: async (log: any) => {
-      const mappedLog = {
-        file_name: log.fileName,
-        user_name: log.user,
-        lines_processed: log.linesProcessed,
-        errors_found: log.errorsFound,
-        errors: log.errors
-      };
-      const { error } = await supabase.from('import_logs').insert([mappedLog]);
-      if (error) console.error('Log error:', error);
+      console.log('DB: Adicionando log de importação:', log.fileName);
+      try {
+        const mappedLog = {
+          file_name: log.fileName,
+          user_name: log.user,
+          lines_processed: log.linesProcessed,
+          errors_found: log.errorsFound,
+          errors: log.errors
+        };
+        const result = await withRetry(async () => {
+          return await withTimeout(supabase.from('import_logs').insert([mappedLog]), 30000);
+        }, 3) as any;
+
+        if (result.error) {
+          console.error('Log error:', result.error);
+        }
+      } catch (e: any) {
+        console.error('Fatal Error in logs.add:', e);
+      }
     }
   },
 
@@ -1935,18 +2367,18 @@ export const db = {
 export function mapProfileToUser(p: any): User {
   return {
     id: p.id,
-    name: p.nome,
-    email: p.email,
-    role: p.perfil,
-    status: p.ativo ? 'Ativo' : 'Inativo',
-    lastAccess: p.created_at,
-    grupo_comissao: p.grupo_comissao,
-    meta_diaria: p.meta_diaria,
+    name: p.nome || p.name || 'Usuário',
+    email: p.email || '',
+    role: p.perfil || p.role || 'vendedor',
+    status: p.ativo === false ? 'Inativo' : 'Ativo',
+    lastAccess: p.created_at || p.last_access || new Date().toISOString(),
+    grupo_comissao: p.grupo_comissao || 'OURO',
+    pix_key: p.pix_key || '',
     saldo_acumulado: p.saldo_acumulado || 0,
-    // Legacy fields for compatibility
-    daily_goal: p.meta_diaria,
-    monthly_goal: p.monthly_goal,
-    daily_lead_count: p.daily_lead_count,
+    saldo_pago: p.saldo_pago || 0,
+    meta_diaria: p.daily_goal || p.meta_diaria || 0,
+    daily_goal: p.daily_goal || p.meta_diaria || 0,
+    daily_lead_count: p.daily_lead_count || 0,
     last_lead_date: p.last_lead_date,
     can_capture_leads: p.can_capture_leads ?? true
   };
@@ -1955,16 +2387,16 @@ export function mapProfileToUser(p: any): User {
 function mapUserToProfile(u: any): any {
   const p: any = {};
   if (u.id) p.id = u.id;
-  if (u.auth_user_id) p.id = u.auth_user_id; // Handle both cases
   if (u.name) p.nome = u.name;
   if (u.email) p.email = u.email;
   if (u.role) p.perfil = u.role;
   if (u.status) p.ativo = u.status === 'Ativo';
   if (u.grupo_comissao) p.grupo_comissao = u.grupo_comissao;
-  if (u.meta_diaria !== undefined) p.meta_diaria = u.meta_diaria;
+  if (u.pix_key !== undefined) p.pix_key = u.pix_key;
   if (u.saldo_acumulado !== undefined) p.saldo_acumulado = u.saldo_acumulado;
-  // Legacy fields
-  if (u.daily_goal !== undefined) p.meta_diaria = u.daily_goal;
+  if (u.saldo_pago !== undefined) p.saldo_pago = u.saldo_pago;
+  if (u.meta_diaria !== undefined) p.daily_goal = u.meta_diaria;
+  if (u.daily_goal !== undefined) p.daily_goal = u.daily_goal;
   if (u.daily_lead_count !== undefined) p.daily_lead_count = u.daily_lead_count;
   if (u.last_lead_date !== undefined) p.last_lead_date = u.last_lead_date;
   if (u.can_capture_leads !== undefined) p.can_capture_leads = u.can_capture_leads;
@@ -2069,14 +2501,10 @@ function mapAccessRequestToTable(req: any): any {
     usuario_id: req.usuario_id || '00000000-0000-0000-0000-000000000000',
     name: req.name || '',
     email: req.email || '',
-    bank: req.bank || '',
-    banco_nome: req.banco_nome || '',
-    sellerName: req.sellerName || '',
+    phone: req.phone || '',
     cpf: req.cpf || '',
     rg: req.rg || '',
-    phone: req.phone || '',
-    birthDate: req.birthDate || '',
-    userEmail: req.userEmail || req.email || '',
+    birth_date: formatDateToISO(req.birthDate || req.birth_date),
     address: req.address || '',
     cep: req.cep || '',
     street: req.street || '',
@@ -2085,25 +2513,106 @@ function mapAccessRequestToTable(req: any): any {
     neighborhood: req.neighborhood || '',
     city: req.city || '',
     state: req.state || '',
-    requestedAccessType: req.requestedAccessType || '',
-    pixKey: req.pixKey || '',
-    status: req.status || 'Pendente',
+    requested_access_type: req.requestedAccessType || req.requested_access_type || '',
+    seller_name: req.sellerName || req.seller_name || '',
     observation: req.observation || '',
+    status: req.status || 'Pendente',
     created_at: new Date().toISOString()
   };
 }
 
-function mapCredentialToTable(c: any) {
+function mapAnnouncementToTable(ann: any): any {
   return {
+    title: ann.title || '',
+    message: ann.message || '',
+    type: ann.type || 'Aviso',
+    link: ann.link || '',
+    date: ann.date || new Date().toISOString().split('T')[0],
+    active: ann.active !== false
+  };
+}
+
+function mapAcademyToTable(a: any): any {
+  return {
+    titulo: a.titulo || a.title || '',
+    categoria: a.categoria || a.category || 'Geral',
+    descricao: a.descricao || a.description || '',
+    arquivo_url: a.arquivo_url || a.video_url || a.videoUrl || '',
+    tipo_arquivo: a.tipo_arquivo || a.type || 'Vídeo',
+    visibilidade: a.visibilidade || 'todos',
+    grupo_id: a.grupo_id || null,
+    versao: a.versao || '1.0',
+    criado_por: a.criado_por || a.usuario_id || null,
+    status: a.status || (a.active !== false ? 'Ativo' : 'Inativo'),
+    links_relacionados: a.links_relacionados || '',
+    ordem: a.ordem || 0
+  };
+}
+
+function mapTableToAcademy(t: any): AcademyContent {
+  const content: AcademyContent = {
+    id: t.id,
+    titulo: t.titulo,
+    categoria: t.categoria,
+    descricao: t.descricao,
+    arquivo_url: t.arquivo_url,
+    tipo_arquivo: t.tipo_arquivo,
+    visibilidade: t.visibilidade,
+    grupo_id: t.grupo_id,
+    versao: t.versao,
+    criado_por: t.criado_por,
+    criado_em: t.created_at,
+    atualizado_em: t.updated_at,
+    status: t.status,
+    links_relacionados: t.links_relacionados,
+    ordem: t.ordem || 0
+  };
+  
+  // Add legacy fields for UI compatibility (using any to bypass type check)
+  const legacyContent = content as any;
+  legacyContent.title = t.titulo;
+  legacyContent.description = t.descricao;
+  legacyContent.type = t.tipo_arquivo;
+  legacyContent.category = t.categoria;
+  legacyContent.video_url = t.arquivo_url;
+  legacyContent.active = t.status === 'Ativo';
+  
+  return content;
+}
+
+function mapCampaignToTable(c: any): any {
+  return {
+    name: c.name || '',
+    description: c.description || '',
+    type: c.type || 'Geral',
+    status: c.status || 'Ativo',
+    start_date: formatDateToISO(c.start_date || c.startDate),
+    end_date: formatDateToISO(c.end_date || c.endDate),
+    budget: Number(c.budget) || 0,
+    criado_por: c.criado_por || c.usuario_id || null
+  };
+}
+
+function mapCommissionGroupToTable(g: any): any {
+  return {
+    banco_id: g.banco_id || g.bankId,
+    name: g.name || '',
+    type: g.type || 'FGTS',
+    status: g.status || 'Ativo'
+  };
+}
+
+function mapCredentialToTable(c: any) {
+  const t: any = {
     usuario_id: c.usuario_id,
     banco_nome: c.banco_nome || c.bank,
     login: c.login || c.username,
     senha: c.senha || c.password,
     link_acesso: c.link_acesso || c.link,
     status: c.status || 'Ativo',
-    criado_por_admin: c.criado_por_admin,
-    observation: c.observation
+    criado_por_admin: c.criado_por_admin
   };
+  return t;
 }
 
 function mapTableToCredential(t: any): PlatformCredential {
@@ -2134,26 +2643,27 @@ function mapTableToSale(t: any): Sale {
     vendedor_id: t.vendedor || t.vendedor_id,
     vendedor_nome: t.vendedor_nome || t.profiles?.nome || 'Desconhecido',
     lead_id: t.lead_id,
-    date: formatDateToISO(t.data || t.created_at),
-    client: t.cliente || t.leads?.nome || 'Cliente',
-    cpf: t.cpf || t.leads?.cpf,
-    phone: t.phone,
-    proposal: t.proposal,
-    bank: t.banco,
+    date: formatDateToISO(t.data_venda || t.data || t.created_at),
+    client: t.cliente_nome || t.cliente || t.leads?.nome || 'Cliente',
+    cpf: t.cliente_cpf || t.cpf || t.leads?.cpf,
+    phone: t.cliente_telefone || t.phone,
+    proposal: t.proposta || t.proposal,
+    bank: t.banco_nome || t.banco,
     produto: t.produto,
-    tabela: t.tabela,
+    operacao: t.operacao,
+    tabela: t.tabela_nome || t.tabela,
     parcelas: t.parcelas,
     valor_venda: t.valor_venda,
-    valor_comissao: t.valor_comissao,
-    percentual_empresa: t.percentual_empresa,
+    valor_comissao: t.comissao_vendedor || t.valor_comissao,
+    percentual_empresa: t.comissao_empresa || t.percentual_empresa,
     percentual_vendedor: t.percentual_vendedor,
     grupo_vendedor: t.grupo_vendedor,
     status: t.status,
     // Legacy mapping
     value: t.valor_venda,
-    commission: t.valor_comissao,
-    companyCommission: t.percentual_empresa,
-    bankCommission: t.percentual_empresa,
+    commission: t.comissao_vendedor || t.valor_comissao,
+    companyCommission: t.comissao_empresa || t.percentual_empresa,
+    bankCommission: t.comissao_banco || t.percentual_empresa,
     seller: t.vendedor_nome || t.profiles?.nome || 'Desconhecido'
   };
 }
@@ -2180,8 +2690,7 @@ function mapSaleToTable(s: any): any {
   // Vendedor mapping
   const sellerId = s.vendedor_id || s.vendedor || s.usuario_id;
   if (sellerId) {
-    t.vendedor = sellerId; // Match DB column name (foreign key)
-    t.vendedor_id = sellerId; // Match common naming convention just in case
+    t.vendedor = sellerId;
   }
   
   if (s.vendedor_nome || s.seller) {
@@ -2189,75 +2698,32 @@ function mapSaleToTable(s: any): any {
   }
 
   // Core fields
-  if (s.banco !== undefined || s.bank !== undefined) t.banco = s.banco || s.bank;
-  if (s.produto !== undefined || s.product !== undefined) t.produto = s.produto || s.product;
-  if (s.tabela !== undefined || s.operacao !== undefined) t.tabela = s.tabela || s.operacao;
-  if (s.cliente !== undefined || s.client !== undefined) t.cliente = s.cliente || s.client;
-  if (s.cpf !== undefined) t.cpf = s.cpf;
-  if (s.phone !== undefined) t.phone = s.phone;
-  if (s.proposal !== undefined) t.proposal = s.proposal;
-  if (s.data !== undefined || s.date !== undefined) t.data = s.data || s.date;
+  t.banco_nome = s.bank || s.banco_nome || s.banco;
+  t.produto = s.produto || s.product;
+  t.operacao = s.operacao || s.tabela;
+  t.tabela_nome = s.table_name || s.tabela_nome || s.tabela;
+  t.cliente_nome = s.client || s.cliente_nome || s.cliente;
+  t.cliente_cpf = s.cpf || s.cliente_cpf;
+  t.cliente_telefone = s.phone || s.cliente_telefone;
+  t.proposta = s.proposal || s.proposta;
+  t.data_venda = formatDateToISO(s.date || s.data_venda || s.data);
   
   // Numeric fields
-  if (s.valor_venda !== undefined || s.value !== undefined) {
-    t.valor_venda = parseNumber(s.valor_venda !== undefined ? s.valor_venda : s.value);
-  }
-  if (s.valor_comissao !== undefined || s.commission !== undefined) {
-    t.valor_comissao = parseNumber(s.valor_comissao !== undefined ? s.valor_comissao : s.commission);
-  }
-  if (s.percentual_empresa !== undefined || s.companyCommission !== undefined || s.bankCommission !== undefined) {
-    t.percentual_empresa = parseNumber(s.percentual_empresa !== undefined ? s.percentual_empresa : (s.companyCommission !== undefined ? s.companyCommission : (s.bankCommission !== undefined ? s.bankCommission : 0)));
-  }
-  if (s.percentual_vendedor !== undefined) {
-    t.percentual_vendedor = parseNumber(s.percentual_vendedor);
-  }
+  t.valor_venda = parseNumber(s.valor_venda !== undefined ? s.valor_venda : s.value);
+  t.comissao_vendedor = parseNumber(s.commission !== undefined ? s.commission : (s.valor_comissao !== undefined ? s.valor_comissao : 0));
+  t.comissao_empresa = parseNumber(s.companyCommission !== undefined ? s.companyCommission : (s.percentual_empresa !== undefined ? s.percentual_empresa : 0));
+  t.comissao_banco = parseNumber(s.bankCommission !== undefined ? s.bankCommission : 0);
   
   // Optional fields
-  if (s.parcelas !== undefined) t.parcelas = parseInt(s.parcelas) || 0;
-  if (s.grupo_vendedor !== undefined) t.grupo_vendedor = s.grupo_vendedor;
-  if (s.status !== undefined) t.status = s.status;
-  if (s.lead_id !== undefined) t.lead_id = s.lead_id;
-  if (s.metadata !== undefined) t.metadata = s.metadata;
+  t.parcelas = parseInt(s.parcelas) || 0;
+  t.status = s.status || 'Pendente';
+  t.lead_id = s.lead_id;
+  t.metadata = s.metadata || {};
 
   return t;
 }
 
-function mapTableToAcademy(t: any): AcademyContent {
-  return {
-    id: t.id,
-    titulo: t.titulo,
-    categoria: t.categoria,
-    descricao: t.descricao,
-    arquivo_url: t.arquivo_url,
-    tipo_arquivo: t.tipo_arquivo,
-    visibilidade: t.visibilidade,
-    grupo_id: t.grupo_id,
-    versao: t.versao,
-    criado_por: t.criado_por,
-    criado_em: t.created_at,
-    atualizado_em: t.updated_at,
-    status: t.status,
-    links_relacionados: t.links_relacionados,
-    ordem: t.ordem || 0
-  };
-}
 
-function mapAcademyToTable(a: any): any {
-  const t: any = {};
-  if (a.titulo) t.titulo = a.titulo;
-  if (a.categoria) t.categoria = a.categoria;
-  if (a.descricao !== undefined) t.descricao = a.descricao;
-  if (a.arquivo_url) t.arquivo_url = a.arquivo_url;
-  if (a.tipo_arquivo) t.tipo_arquivo = a.tipo_arquivo;
-  if (a.visibilidade) t.visibilidade = a.visibilidade;
-  if (a.grupo_id !== undefined) t.grupo_id = a.grupo_id;
-  if (a.versao) t.versao = a.versao;
-  if (a.criado_por) t.criado_por = a.criado_por;
-  if (a.status) t.status = a.status;
-  if (a.links_relacionados !== undefined) t.links_relacionados = a.links_relacionados;
-  if (a.ordem !== undefined) t.ordem = a.ordem;
-  return t;
-}
 
 function mapTableToFinancial(t: any): FinancialEntry {
   return {
@@ -2277,17 +2743,17 @@ function mapTableToFinancial(t: any): FinancialEntry {
 }
 
 function mapFinancialToTable(f: any): any {
-  const t: any = {};
-  if (f.sale_id) t.sale_id = f.sale_id;
-  if (f.vendedor_id) t.vendedor_id = f.vendedor_id;
-  if (f.vendedor_nome) t.vendedor_nome = f.vendedor_nome;
-  if (f.tipo) t.tipo = f.tipo;
-  if (f.valor !== undefined) t.valor = parseNumber(f.valor);
-  if (f.descricao) t.descricao = f.descricao;
-  if (f.pix_key) t.pix_key = f.pix_key;
-  if (f.status) t.status = f.status;
-  if (f.data_vencimento) t.data_vencimento = f.data_vencimento;
-  return t;
+  return {
+    vendedor_id: f.vendedor_id || f.usuario_id || null,
+    vendedor_nome: f.vendedor_nome || f.userName || '',
+    sale_id: f.sale_id || f.venda_id || null,
+    tipo: f.tipo || 'Crédito',
+    valor: parseNumber(f.valor || f.amount || 0),
+    descricao: f.descricao || f.description || '',
+    pix_key: f.pix_key || f.chave_pix || '',
+    status: f.status || 'Pendente',
+    data_vencimento: formatDateToISO(f.data_vencimento || f.dueDate)
+  };
 }
 
 function mapTableToBank(t: any): Bank {
