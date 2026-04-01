@@ -35,7 +35,7 @@ export default function AdminAlerts() {
     const fetchAlerts = async () => {
       const newAlerts: AlertItem[] = [];
 
-      // User Requests
+      // User Requests (System)
       const allRequests = await db.access_requests.getAll();
       const requests = allRequests.filter(r => r.status === 'Aguardando Documentos' || r.status === 'Pendente');
       requests.forEach(req => {
@@ -45,8 +45,23 @@ export default function AdminAlerts() {
           title: 'Nova solicitação de usuário',
           sellerName: req.name,
           date: req.createdAt,
-          link: '/admin', // Navigate to admin panel where requests are usually managed
+          link: '/admin', // Navigate to admin panel where requests are managed
           viewed: false // We check against viewedIds later
+        });
+      });
+
+      // Bank Access Requests
+      const allBankRequests = await db.bank_access_requests.getAll();
+      const bankRequests = allBankRequests.filter(r => r.status === 'aguardando_criacao' || r.status === 'pendente');
+      bankRequests.forEach(req => {
+        newAlerts.push({
+          id: `bank_req_${req.id}`,
+          type: 'seller_request',
+          title: `Solicitação de Banco: ${req.bank_name}`,
+          sellerName: req.full_name,
+          date: req.created_at,
+          link: '/solicitar-usuario',
+          viewed: false
         });
       });
 

@@ -40,10 +40,10 @@ import {
 import { useAuth } from '@/context/AuthContext';
 import { db } from '@/services/db';
 import { parseFile } from '@/lib/importer';
-import { User, CommissionGroup, AccessRequest, Bank, CommissionTable } from '@/types';
+import { User, CommissionGroup, AccessRequest, Bank, CommissionTable, BankAccessRequest } from '@/types';
 import * as XLSX from 'xlsx';
 import { runImportTests } from '@/tests/importTests';
-import { Loader2, Database, UserPlus } from 'lucide-react';
+import { Loader2, Database, UserPlus, History, ClipboardList } from 'lucide-react';
 import { useNotification } from '@/context/NotificationContext';
 
 export default function AdminPanel() {
@@ -114,6 +114,7 @@ export default function AdminPanel() {
 
   // Access Requests State
   const [accessRequests, setAccessRequests] = useState<AccessRequest[]>([]);
+  const [bankAccessRequests, setBankAccessRequests] = useState<BankAccessRequest[]>([]);
 
   // Integrations State
   const [apiKey, setApiKey] = useState('sk_live_51M...');
@@ -163,17 +164,19 @@ export default function AdminPanel() {
     setIsLoading(true);
     try {
       console.log('AdminPanel: Carregando dados...');
-      const [allUsers, allRequests, allGroups, allBanks] = await Promise.all([
+      const [allUsers, allRequests, allGroups, allBanks, allBankRequests] = await Promise.all([
         db.users.getAll().catch(err => { console.error('Erro ao buscar usuários:', err); return []; }),
         db.access_requests.getAll().catch(err => { console.error('Erro ao buscar solicitações:', err); return []; }),
         db.commissionGroups.getAll().catch(err => { console.error('Erro ao buscar grupos:', err); return []; }),
-        db.bancos.getAll().catch(err => { console.error('Erro ao buscar bancos:', err); return []; })
+        db.bancos.getAll().catch(err => { console.error('Erro ao buscar bancos:', err); return []; }),
+        db.bank_access_requests.getAll().catch(err => { console.error('Erro ao buscar solicitações de banco:', err); return []; })
       ]);
       
       setUsers(allUsers);
       setAccessRequests(allRequests);
       setCommissionGroups(allGroups);
       setBanks(allBanks);
+      setBankAccessRequests(allBankRequests);
       console.log('AdminPanel: Dados carregados com sucesso. Usuários:', allUsers.length);
     } catch (error: any) {
       console.error('AdminPanel: Erro fatal ao carregar dados:', error);
@@ -526,7 +529,7 @@ export default function AdminPanel() {
                     id="requests" 
                     icon={FileText} 
                     label="Solicitações de Acesso" 
-                    badge={accessRequests.filter(r => r.status === 'Pendente').length} 
+                    badge={accessRequests.filter(r => r.status === 'Pendente').length + bankAccessRequests.filter(r => r.status === 'aguardando_criacao').length} 
                     active={activeTab === 'requests'} 
                     onClick={() => setActiveTab('requests')} 
                   />
@@ -1362,7 +1365,19 @@ export default function AdminPanel() {
 
       {activeTab === 'requests' && (
         <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4">
-          <h2 className="text-xl font-bold text-slate-900">Solicitações de Acesso</h2>
+          <div className="flex justify-between items-center">
+            <h2 className="text-xl font-bold text-slate-900">Solicitações de Acesso</h2>
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={() => navigate('/solicitar-usuario')}
+              className="text-blue-700 border-blue-200 hover:bg-blue-50"
+            >
+              <Eye className="w-4 h-4 mr-2" />
+              Ver Painel Completo
+            </Button>
+          </div>
+
           <Card className="bg-blue-50 border-blue-200">
             <CardContent className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-4 gap-4">
               <div>
@@ -1391,80 +1406,151 @@ export default function AdminPanel() {
             </CardContent>
           </Card>
 
+          {/* Bank Access Requests Section */}
+          <Card className="border-blue-200 shadow-sm">
+            <CardHeader className="bg-slate-50/50 border-b">
+              <CardTitle className="text-lg flex items-center gap-2">
+                <ClipboardList className="w-5 h-5 text-blue-600" />
+                Solicitações de Usuários Bancos
+              </CardTitle>
+              <CardDescription>Solicitações enviadas pelos vendedores para acesso às plataformas bancárias.</CardDescription>
+            </CardHeader>
+            <CardContent className="p-0">
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm text-left">
+                  <thead className="text-xs text-slate-500 uppercase bg-slate-50/80 border-b">
+                    <tr>
+                      <th className="px-4 py-3">Data</th>
+                      <th className="px-4 py-3">Vendedor</th>
+                      <th className="px-4 py-3">Banco</th>
+                      <th className="px-4 py-3">Tipo</th>
+                      <th className="px-4 py-3">Status</th>
+                      <th className="px-4 py-3 text-right">Ações</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {bankAccessRequests.filter(r => r.status === 'aguardando_criacao').map((req) => (
+                      <tr key={req.id} className="border-b hover:bg-slate-50/50">
+                        <td className="px-4 py-3 text-slate-600">
+                          {new Date(req.created_at).toLocaleDateString('pt-BR')}
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="font-medium text-slate-900">{req.seller_name}</div>
+                          <div className="text-xs text-slate-500">{req.seller_email}</div>
+                        </td>
+                        <td className="px-4 py-3 font-medium text-blue-700">{req.bank_name}</td>
+                        <td className="px-4 py-3">
+                          <Badge variant="outline" className="bg-slate-50">
+                            {req.request_type === 'reset_senha' ? 'Reset Senha' : 'Novo Usuário'}
+                          </Badge>
+                        </td>
+                        <td className="px-4 py-3">
+                          <Badge variant="warning">Aguardando Criação</Badge>
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          <Button 
+                            size="sm" 
+                            className="bg-blue-900 hover:bg-blue-800"
+                            onClick={() => navigate('/solicitar-usuario')}
+                          >
+                            Gerenciar
+                            <ArrowRight className="w-4 h-4 ml-1" />
+                          </Button>
+                        </td>
+                      </tr>
+                    ))}
+                    {bankAccessRequests.filter(r => r.status === 'aguardando_criacao').length === 0 && (
+                      <tr>
+                        <td colSpan={6} className="px-4 py-8 text-center text-slate-500">
+                          Nenhuma solicitação de banco pendente.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* System Access Requests Section */}
           <Card>
             <CardHeader>
-              <CardTitle>Solicitações de Cadastro (Novos Vendedores)</CardTitle>
+              <CardTitle className="text-lg flex items-center gap-2">
+                <UserPlus className="w-5 h-5 text-slate-600" />
+                Solicitações de Cadastro (Novos Vendedores)
+              </CardTitle>
+              <CardDescription>Pessoas que usaram o link público para solicitar acesso ao portal.</CardDescription>
             </CardHeader>
-          <CardContent>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm text-left">
-                <thead className="text-xs text-slate-500 uppercase bg-slate-50 border-b">
-                  <tr>
-                    <th className="px-4 py-3">Data</th>
-                    <th className="px-4 py-3">Nome</th>
-                    <th className="px-4 py-3">Contato</th>
-                    <th className="px-4 py-3">Local</th>
-                    <th className="px-4 py-3">Status</th>
-                    <th className="px-4 py-3 text-right">Ações</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {accessRequests.map((req) => (
-                    <tr key={req.id} className="border-b hover:bg-slate-50/50">
-                      <td className="px-4 py-3">{req.date}</td>
-                      <td className="px-4 py-3 font-medium">{req.name}</td>
-                      <td className="px-4 py-3">
-                        <div>{req.email}</div>
-                        <div className="text-xs text-slate-500">{req.phone}</div>
-                      </td>
-                      <td className="px-4 py-3">
-                        {req.city}/{req.state}
-                      </td>
-                      <td className="px-4 py-3">
-                        <Badge variant={
-                          req.status === 'Aprovado' ? 'success' : 
-                          req.status === 'Pendente' ? 'warning' : 'destructive'
-                        }>
-                          {req.status}
-                        </Badge>
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        {req.status === 'Pendente' && (
-                          <div className="flex justify-end gap-2">
-                            <Button 
-                              size="sm" 
-                              className="bg-green-600 hover:bg-green-700 text-white"
-                              onClick={() => handleApproveRequest(req)}
-                            >
-                              <CheckCircle className="w-4 h-4 mr-1" />
-                              Aprovar
-                            </Button>
-                            <Button 
-                              size="sm" 
-                              variant="outline" 
-                              className="text-red-600 border-red-200 hover:bg-red-50"
-                              onClick={() => handleRejectRequest(req.id)}
-                            >
-                              <XCircle className="w-4 h-4 mr-1" />
-                              Rejeitar
-                            </Button>
-                          </div>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                  {accessRequests.length === 0 && (
+            <CardContent className="p-0">
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm text-left">
+                  <thead className="text-xs text-slate-500 uppercase bg-slate-50 border-b">
                     <tr>
-                      <td colSpan={6} className="px-4 py-8 text-center text-slate-500">
-                        Nenhuma solicitação pendente.
-                      </td>
+                      <th className="px-4 py-3">Data</th>
+                      <th className="px-4 py-3">Nome</th>
+                      <th className="px-4 py-3">Contato</th>
+                      <th className="px-4 py-3">Local</th>
+                      <th className="px-4 py-3">Status</th>
+                      <th className="px-4 py-3 text-right">Ações</th>
                     </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </CardContent>
-        </Card>
+                  </thead>
+                  <tbody>
+                    {accessRequests.map((req) => (
+                      <tr key={req.id} className="border-b hover:bg-slate-50/50">
+                        <td className="px-4 py-3">{req.date}</td>
+                        <td className="px-4 py-3 font-medium">{req.name}</td>
+                        <td className="px-4 py-3">
+                          <div>{req.email}</div>
+                          <div className="text-xs text-slate-500">{req.phone}</div>
+                        </td>
+                        <td className="px-4 py-3">
+                          {req.city}/{req.state}
+                        </td>
+                        <td className="px-4 py-3">
+                          <Badge variant={
+                            req.status === 'Aprovado' ? 'success' : 
+                            req.status === 'Pendente' ? 'warning' : 'destructive'
+                          }>
+                            {req.status}
+                          </Badge>
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          {req.status === 'Pendente' && (
+                            <div className="flex justify-end gap-2">
+                              <Button 
+                                size="sm" 
+                                className="bg-green-600 hover:bg-green-700 text-white"
+                                onClick={() => handleApproveRequest(req)}
+                              >
+                                <CheckCircle className="w-4 h-4 mr-1" />
+                                Aprovar
+                              </Button>
+                              <Button 
+                                size="sm" 
+                                variant="outline" 
+                                className="text-red-600 border-red-200 hover:bg-red-50"
+                                onClick={() => handleRejectRequest(req.id)}
+                              >
+                                <XCircle className="w-4 h-4 mr-1" />
+                                Rejeitar
+                              </Button>
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                    {accessRequests.length === 0 && (
+                      <tr>
+                        <td colSpan={6} className="px-4 py-8 text-center text-slate-500">
+                          Nenhuma solicitação de cadastro pendente.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </CardContent>
+          </Card>
         </div>
       )}
 

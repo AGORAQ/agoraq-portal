@@ -1,5 +1,5 @@
 import { supabase } from '@/lib/supabase';
-import { User, CommissionTable, AccessRequest, PlatformCredential, Sale, Bank, PaymentRequest, Announcement, ExcelImportLog, CommissionGroup, AcademyContent, AcademyView, Lead, FinancialEntry } from '@/types';
+import { User, CommissionTable, AccessRequest, PlatformCredential, Sale, Bank, PaymentRequest, Announcement, ExcelImportLog, CommissionGroup, AcademyContent, AcademyView, Lead, FinancialEntry, BankAccessRequest } from '@/types';
 
 // Helper for timeouts
 const withTimeout = <T>(promise: Promise<T> | PromiseLike<T>, timeoutMs: number = 120000): Promise<T> => {
@@ -1509,6 +1509,128 @@ export const db = {
     }
   },
 
+  bank_access_requests: {
+    getAll: async () => {
+      console.log('DB: Buscando todas as solicitações bancárias');
+      const result = await withRetry(async () => {
+        return await withTimeout(supabase
+          .from('bank_access_requests')
+          .select('*')
+          .order('created_at', { ascending: false }), 30000);
+      }, 3) as any;
+      
+      if (result.error) {
+        console.error('DB Error (bank_access_requests.getAll):', result.error);
+        throw result.error;
+      }
+      
+      return (result.data || []).map(mapTableToBankAccessRequest);
+    },
+    getByUser: async (userId: string) => {
+      console.log(`DB: Buscando solicitações bancárias para o usuário: ${userId}`);
+      const result = await withRetry(async () => {
+        return await withTimeout(supabase
+          .from('bank_access_requests')
+          .select('*')
+          .eq('seller_id', userId)
+          .order('created_at', { ascending: false }), 30000);
+      }, 3) as any;
+      
+      if (result.error) {
+        console.error(`DB Error (bank_access_requests.getByUser):`, result.error);
+        throw result.error;
+      }
+      
+      return (result.data || []).map(mapTableToBankAccessRequest);
+    },
+    create: async (req: any) => {
+      console.log('DB: Criando nova solicitação bancária:', req);
+      try {
+        const mappedData = mapBankAccessRequestToTable(req);
+        console.log('DB: Dados mapeados para Supabase:', mappedData);
+
+        const result = await withRetry(async () => {
+          return await withTimeout(supabase
+            .from('bank_access_requests')
+            .insert([mappedData])
+            .select()
+            .single(), 60000);
+        }, 3) as any;
+
+        if (result.error) {
+          console.error('DB Error (bank_access_requests.create):', result.error);
+          throw result.error;
+        }
+        
+        console.log('DB: Solicitação bancária criada com sucesso:', result.data.id);
+        return mapTableToBankAccessRequest(result.data);
+      } catch (e: any) {
+        console.error('Fatal Error in bank_access_requests.create:', e);
+        throw e;
+      }
+    },
+    update: async (id: string, updates: any) => {
+      console.log(`DB: Atualizando solicitação bancária ${id}:`, updates);
+      try {
+        const mappedUpdates = mapBankAccessRequestToTable(updates);
+        // Remove fields that shouldn't be updated by seller if needed, 
+        // but here we assume the caller knows what they are doing.
+        // For admin updates, we might want to include finalized_at if status is final.
+        if (updates.status === 'finalizado' || updates.status === 'finalizada') {
+          mappedUpdates.finalized_at = new Date().toISOString();
+        }
+
+        const result = await withRetry(async () => {
+          return await withTimeout(supabase
+            .from('bank_access_requests')
+            .update(mappedUpdates)
+            .eq('id', id)
+            .select()
+            .single(), 60000);
+        }, 3) as any;
+
+        if (result.error) {
+          console.error(`DB Error (bank_access_requests.update):`, result.error);
+          throw result.error;
+        }
+        
+        console.log('DB: Solicitação bancária atualizada com sucesso:', id);
+        return mapTableToBankAccessRequest(result.data);
+      } catch (e: any) {
+        console.error('Fatal Error in bank_access_requests.update:', e);
+        throw e;
+      }
+    },
+    updateStatus: async (id: string, status: string, notes?: string) => {
+      console.log(`DB: Atualizando status da solicitação bancária ${id} para ${status}`);
+      const updates: any = { 
+        status, 
+        admin_notes: notes,
+        updated_at: new Date().toISOString()
+      };
+      
+      if (status === 'finalizado' || status === 'finalizada') {
+        updates.finalized_at = new Date().toISOString();
+      }
+
+      const result = await withRetry(async () => {
+        return await withTimeout(supabase
+          .from('bank_access_requests')
+          .update(updates)
+          .eq('id', id)
+          .select()
+          .single(), 30000);
+      }, 3) as any;
+
+      if (result.error) {
+        console.error('DB Error (bank_access_requests.updateStatus):', result.error);
+        throw result.error;
+      }
+      
+      return mapTableToBankAccessRequest(result.data);
+    }
+  },
+
   bancos: {
     getAll: async () => {
       console.log('DB: Buscando bancos...');
@@ -2494,6 +2616,63 @@ function formatDateToISO(dateStr: string | null | undefined): string {
     if (!isNaN(d.getTime())) return d.toISOString().split('T')[0];
   } catch (e) {}
   return dateStr;
+}
+
+function mapBankAccessRequestToTable(req: any): any {
+  return {
+    seller_id: req.seller_id || req.usuario_id || '',
+    seller_name: req.seller_name || req.sellerName || '',
+    seller_email: req.seller_email || req.email || '',
+    bank_name: req.bank_name || req.bank || req.banco_nome || '',
+    request_type: req.request_type || req.tipo_solicitacao || 'novo_usuario',
+    full_name: req.full_name || req.name || '',
+    cpf: req.cpf || '',
+    rg: req.rg || '',
+    phone: req.phone || '',
+    birth_date: formatDateToISO(req.birth_date || req.birthDate),
+    access_type: req.access_type || req.requestedAccessType || '',
+    cep: req.cep || '',
+    street: req.street || '',
+    number: req.number || '',
+    complement: req.complement || '',
+    district: req.district || req.neighborhood || '',
+    city: req.city || '',
+    state: req.state || '',
+    pix_key: req.pix_key || req.pixKey || '',
+    status: req.status || 'aguardando_criacao',
+    admin_notes: req.admin_notes || req.observation || req.observacao_admin || '',
+    updated_at: new Date().toISOString()
+  };
+}
+
+function mapTableToBankAccessRequest(t: any): BankAccessRequest {
+  return {
+    id: t.id,
+    created_at: t.created_at,
+    updated_at: t.updated_at,
+    seller_id: t.seller_id,
+    seller_name: t.seller_name,
+    seller_email: t.seller_email,
+    bank_name: t.bank_name,
+    request_type: t.request_type,
+    full_name: t.full_name,
+    cpf: t.cpf,
+    rg: t.rg,
+    phone: t.phone,
+    birth_date: t.birth_date,
+    access_type: t.access_type,
+    cep: t.cep,
+    street: t.street,
+    number: t.number,
+    complement: t.complement,
+    district: t.district,
+    city: t.city,
+    state: t.state,
+    pix_key: t.pix_key,
+    status: t.status,
+    admin_notes: t.admin_notes,
+    finalized_at: t.finalized_at
+  };
 }
 
 function mapAccessRequestToTable(req: any): any {

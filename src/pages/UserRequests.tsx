@@ -7,7 +7,7 @@ import { Search, Plus, Filter, X, Save, History, Trash2, AlertCircle, Mail, Refr
 import { useAuth } from '@/context/AuthContext';
 import { useNotification } from '@/context/NotificationContext';
 import { db } from '@/services/db';
-import { AccessRequest, CommissionGroup } from '@/types';
+import { BankAccessRequest, CommissionGroup } from '@/types';
 import { BANK_OPTIONS } from '@/constants';
 
 export default function UserRequests() {
@@ -15,7 +15,7 @@ export default function UserRequests() {
   const { notify } = useNotification();
   const isAdmin = user?.role === 'admin';
 
-  const [requests, setRequests] = useState<AccessRequest[]>([]);
+  const [requests, setRequests] = useState<BankAccessRequest[]>([]);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [isResetFormOpen, setIsResetFormOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -34,17 +34,17 @@ export default function UserRequests() {
   const [othersGroups, setOthersGroups] = useState<CommissionGroup[]>([]);
 
   // Form State
-  const [formData, setFormData] = useState<Partial<AccessRequest>>({
-    status: 'Aguardando Documentos',
+  const [formData, setFormData] = useState<Partial<BankAccessRequest>>({
+    status: 'aguardando_criacao',
     // Initialize address fields
     cep: '',
     street: '',
     number: '',
     complement: '',
-    neighborhood: '',
+    district: '',
     city: '',
     state: '',
-    requestedAccessType: ''
+    access_type: ''
   });
   
   const [resetFormData, setResetFormData] = useState({
@@ -52,7 +52,7 @@ export default function UserRequests() {
     reason: ''
   });
 
-  const [selectedRequest, setSelectedRequest] = useState<AccessRequest | null>(null);
+  const [selectedRequest, setSelectedRequest] = useState<BankAccessRequest | null>(null);
   const [adminObservation, setAdminObservation] = useState('');
   
   // Approval Modal State
@@ -65,19 +65,23 @@ export default function UserRequests() {
   });
 
   const refreshRequests = async () => {
-    if (isAdmin) {
-      const all = await db.access_requests.getAll();
-      setRequests(all);
-    } else if (user?.id) {
-      const userRequests = await db.access_requests.getByUser(user.id);
-      setRequests(userRequests);
+    try {
+      if (isAdmin) {
+        const all = await db.bank_access_requests.getAll();
+        setRequests(all);
+      } else if (user?.id) {
+        const userRequests = await db.bank_access_requests.getByUser(user.id);
+        setRequests(userRequests);
+      }
+      const allGroups = await db.commissionGroups.getAll();
+      setFgtsGroups(allGroups);
+      setCltGroups(allGroups);
+      setOthersGroups(allGroups);
+      const allBanks = await db.bancos.getAll();
+      setAvailableBanks(allBanks.map(b => b.nome));
+    } catch (error) {
+      console.error('Error refreshing requests:', error);
     }
-    const allGroups = await db.commissionGroups.getAll();
-    setFgtsGroups(allGroups);
-    setCltGroups(allGroups);
-    setOthersGroups(allGroups);
-    const allBanks = await db.bancos.getAll();
-    setAvailableBanks(allBanks.map(b => b.nome));
   };
 
   useEffect(() => {
@@ -88,7 +92,7 @@ export default function UserRequests() {
     req.status !== 'Finalizado' && req.status !== 'Recusado' && req.status !== 'Aprovado' && req.status !== 'Rejeitado'
   ).length;
 
-  const handleInputChange = (field: keyof AccessRequest, value: string) => {
+  const handleInputChange = (field: keyof BankAccessRequest, value: string) => {
     setFormData(prev => ({ ...prev, [field]: value }));
   };
 
@@ -105,7 +109,7 @@ export default function UserRequests() {
         setFormData(prev => ({
           ...prev,
           street: data.logradouro,
-          neighborhood: data.bairro,
+          district: data.bairro,
           city: data.localidade,
           state: data.uf
         }));
@@ -123,7 +127,7 @@ export default function UserRequests() {
     e.preventDefault();
     if (isSubmitting) return;
     
-    if (!formData.name || !formData.email || !formData.bank || !formData.sellerName || !formData.cpf) {
+    if (!formData.full_name || !formData.seller_email || !formData.bank_name || !formData.seller_name || !formData.cpf) {
       notify('error', 'Preencha os campos obrigatórios.');
       return;
     }
@@ -132,12 +136,9 @@ export default function UserRequests() {
     try {
       // Check for pending requests
       const pendingRequest = requests.find(r => 
-        r.bank === formData.bank && 
+        r.bank_name === formData.bank_name && 
         r.cpf === formData.cpf && 
-        r.status !== 'Finalizado' && 
-        r.status !== 'Recusado' &&
-        r.status !== 'Aprovado' &&
-        r.status !== 'Rejeitado'
+        r.status === 'aguardando_criacao'
       );
 
       if (pendingRequest) {
@@ -146,46 +147,37 @@ export default function UserRequests() {
         return;
       }
 
-      // Construct full address string
-      const fullAddress = `${formData.street}, ${formData.number} - ${formData.neighborhood}, ${formData.city} - ${formData.state}, ${formData.cep}`;
-
-      await db.access_requests.create({
-        usuario_id: user?.id || '',
-        name: formData.name!,
-        email: formData.email!,
-        bank: formData.bank!,
-        banco_nome: formData.bank!,
-        sellerName: formData.sellerName!,
+      await db.bank_access_requests.create({
+        seller_id: user?.id || '',
+        seller_name: formData.seller_name!,
+        seller_email: formData.seller_email!,
+        bank_name: formData.bank_name!,
+        request_type: 'novo_usuario',
+        full_name: formData.full_name!,
         cpf: formData.cpf!,
         rg: formData.rg || '',
         phone: formData.phone || '',
-        birthDate: formData.birthDate || '',
-        userEmail: formData.userEmail || '',
-        address: fullAddress,
-        
-        // Save individual address fields
-        cep: formData.cep,
-        street: formData.street,
-        number: formData.number,
-        complement: formData.complement,
-        neighborhood: formData.neighborhood,
-        city: formData.city,
-        state: formData.state,
-
-        requestedAccessType: formData.requestedAccessType,
-
-        pixKey: formData.pixKey || '',
-        tipo_solicitacao: 'novo_usuario'
+        birth_date: formData.birth_date || '',
+        access_type: formData.access_type || '',
+        cep: formData.cep || '',
+        street: formData.street || '',
+        number: formData.number || '',
+        complement: formData.complement || '',
+        district: formData.district || '',
+        city: formData.city || '',
+        state: formData.state || '',
+        pix_key: formData.pix_key || '',
+        status: 'aguardando_criacao'
       });
 
       await refreshRequests();
       setIsFormOpen(false);
       setFormData({ 
-        status: 'Aguardando Documentos',
-        cep: '', street: '', number: '', complement: '', neighborhood: '', city: '', state: '', requestedAccessType: ''
+        status: 'aguardando_criacao',
+        cep: '', street: '', number: '', complement: '', district: '', city: '', state: '', access_type: ''
       });
 
-      notify('success', `Solicitação enviada com sucesso!\n\nUm e-mail de notificação foi enviado para: agoraq@agoraqoficial.com.br`);
+      notify('success', `Solicitação enviada com sucesso!`);
     } catch (error: any) {
       console.error('Erro ao enviar solicitação:', error);
       notify('error', 'Erro ao enviar solicitação. Tente novamente.');
@@ -207,12 +199,9 @@ export default function UserRequests() {
     try {
       // Check for pending requests
       const pendingRequest = requests.find(r => 
-        r.bank === resetFormData.bank && 
-        r.userEmail === user?.email && // Assuming userEmail is the seller's email
-        r.status !== 'Finalizado' && 
-        r.status !== 'Recusado' &&
-        r.status !== 'Aprovado' &&
-        r.status !== 'Rejeitado'
+        r.bank_name === resetFormData.bank && 
+        r.seller_email === user?.email &&
+        r.status === 'aguardando_criacao'
       );
 
       if (pendingRequest) {
@@ -221,18 +210,17 @@ export default function UserRequests() {
         return;
       }
 
-      await db.access_requests.create({
-        usuario_id: user?.id || '',
-        name: user?.name || 'Vendedor',
-        email: user?.email || '',
-        bank: resetFormData.bank,
-        banco_nome: resetFormData.bank,
-        sellerName: user?.name || '',
-        cpf: '', // Not needed for reset? Or fetch from user profile
-        tipo_solicitacao: 'reset_senha',
-        motivo_reset: resetFormData.reason,
-        status: 'Aguardando Criação/Liberação'
-      } as any); // Type assertion for partial data
+      await db.bank_access_requests.create({
+        seller_id: user?.id || '',
+        seller_name: user?.name || '',
+        seller_email: user?.email || '',
+        bank_name: resetFormData.bank,
+        request_type: 'reset_senha',
+        full_name: user?.name || '',
+        cpf: '', 
+        status: 'aguardando_criacao',
+        admin_notes: resetFormData.reason
+      });
 
       await refreshRequests();
       setIsResetFormOpen(false);
@@ -246,52 +234,54 @@ export default function UserRequests() {
     }
   };
 
-  const updateStatus = async (id: string, newStatus: AccessRequest['status']) => {
-    if (newStatus === 'Recusado' && !adminObservation) {
+  const updateStatus = async (id: string, newStatus: BankAccessRequest['status']) => {
+    if (newStatus === 'recusado' && !adminObservation) {
       notify('error', 'Para recusar, é obrigatório informar o motivo na observação.');
       return;
     }
     
-    await db.access_requests.updateStatus(id, newStatus, adminObservation, user?.id);
-
-    // Send email if finalized/approved
-    if (newStatus === 'Finalizado' || newStatus === 'Aprovado') {
-      const req = requests.find(r => r.id === id);
-      if (req) {
-        notify('info', `Status atualizado para ${newStatus}. O usuário deve ser informado manualmente ou via Admin Panel.`);
-      }
+    try {
+      await db.bank_access_requests.updateStatus(id, newStatus, adminObservation);
+      notify('success', `Status atualizado para ${newStatus}.`);
+      setAdminObservation('');
+      await refreshRequests();
+      if (selectedRequest) setSelectedRequest(null);
+    } catch (error) {
+      console.error('Error updating status:', error);
+      notify('error', 'Erro ao atualizar status.');
     }
-
-    setAdminObservation('');
-    await refreshRequests();
-    if (selectedRequest) setSelectedRequest(null);
   };
 
   const handleApprove = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedRequest) return;
 
-    // 1. Create the credential
-    await db.credentials.create({
-      usuario_id: selectedRequest.usuario_id,
-      banco_nome: selectedRequest.banco_nome,
-      login: approvalFormData.login,
-      senha: approvalFormData.senha,
-      link_acesso: approvalFormData.link_acesso,
-      status: 'Ativo',
-      criado_por_admin: user?.id || '',
-      observation: approvalFormData.observation
-    });
+    try {
+      // 1. Create the credential
+      await db.credentials.create({
+        usuario_id: selectedRequest.seller_id,
+        banco_nome: selectedRequest.bank_name,
+        login: approvalFormData.login,
+        senha: approvalFormData.senha,
+        link_acesso: approvalFormData.link_acesso,
+        status: 'Ativo',
+        criado_por_admin: user?.id || '',
+        observation: approvalFormData.observation
+      });
 
-    // 2. Update request status to 'Finalizado' (or 'Aprovado')
-    await db.access_requests.updateStatus(selectedRequest.id, 'Finalizado', approvalFormData.observation, user?.id);
+      // 2. Update request status to 'finalizado'
+      await db.bank_access_requests.updateStatus(selectedRequest.id, 'finalizado', approvalFormData.observation);
 
-    // 3. Cleanup
-    setIsApprovalModalOpen(false);
-    setSelectedRequest(null);
-    setApprovalFormData({ login: '', senha: '', link_acesso: '', observation: '' });
-    await refreshRequests();
-    notify('success', 'Credencial cadastrada e solicitação finalizada com sucesso!');
+      // 3. Cleanup
+      setIsApprovalModalOpen(false);
+      setSelectedRequest(null);
+      setApprovalFormData({ login: '', senha: '', link_acesso: '', observation: '' });
+      await refreshRequests();
+      notify('success', 'Credencial cadastrada e solicitação finalizada com sucesso!');
+    } catch (error) {
+      console.error('Error approving request:', error);
+      notify('error', 'Erro ao aprovar solicitação.');
+    }
   };
 
   const handleAddBank = () => {
@@ -303,35 +293,34 @@ export default function UserRequests() {
   };
 
   const filteredRequests = requests.filter(req => {
-    const matchesSearch = req.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                          (req.bank && req.bank.toLowerCase().includes(searchTerm.toLowerCase()));
+    const matchesSearch = (req.full_name?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
+                          (req.bank_name && req.bank_name.toLowerCase().includes(searchTerm.toLowerCase()));
     
-    // Admin sees all, Seller sees only theirs (simulated by email check or just all for now if no auth filter implemented in db)
-    // Assuming db returns all, we filter for seller if needed. 
-    // But for this demo, let's assume db.access_requests.getAll() returns what the user is allowed to see or we filter here.
-    const isOwner = isAdmin || req.userEmail === user?.email || req.email === user?.email;
-    
-    return matchesSearch && isOwner;
-  }).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    return matchesSearch;
+  }).sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 
   // Dashboard Counters
   const statusCounts = {
-    'Aguardando Criação': filteredRequests.filter(r => r.status === 'Aguardando Criação/Liberação' || r.status === 'Aguardando Documentos' || r.status === 'Solicitação com Pendência' || r.status === 'Aguardando Banco').length,
-    'Recusado': filteredRequests.filter(r => r.status === 'Recusado' || r.status === 'Rejeitado').length,
-    'Finalizado': filteredRequests.filter(r => r.status === 'Finalizado' || r.status === 'Aprovado').length,
+    'Aguardando Criação': filteredRequests.filter(r => r.status === 'aguardando_criacao').length,
+    'Recusado': filteredRequests.filter(r => r.status === 'recusado').length,
+    'Finalizado': filteredRequests.filter(r => r.status === 'finalizado').length,
   };
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'Aguardando Documentos': 
-      case 'Aguardando Criação/Liberação': 
-      case 'Solicitação com Pendência': 
-      case 'Aguardando Banco': return 'bg-blue-100 text-blue-800 border-blue-200';
-      case 'Finalizado': 
-      case 'Aprovado': return 'bg-green-100 text-green-800 border-green-200';
-      case 'Recusado': 
-      case 'Rejeitado': return 'bg-red-100 text-red-800 border-red-200';
+      case 'aguardando_criacao': return 'bg-blue-100 text-blue-800 border-blue-200';
+      case 'finalizado': return 'bg-green-100 text-green-800 border-green-200';
+      case 'recusado': return 'bg-red-100 text-red-800 border-red-200';
       default: return 'bg-slate-100 text-slate-800 border-slate-200';
+    }
+  };
+
+  const getStatusLabel = (status: string) => {
+    switch (status) {
+      case 'aguardando_criacao': return 'Aguardando Criação';
+      case 'finalizado': return 'Finalizado';
+      case 'recusado': return 'Recusado';
+      default: return status;
     }
   };
 
@@ -440,11 +429,11 @@ export default function UserRequests() {
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="space-y-2">
                   <label className="text-sm font-medium">Nome do Correspondente</label>
-                  <Input required value={formData.name || ''} onChange={e => handleInputChange('name', e.target.value)} />
+                  <Input required value={formData.full_name || ''} onChange={e => handleInputChange('full_name', e.target.value)} />
                 </div>
                 <div className="space-y-2">
                   <label className="text-sm font-medium">E-mail</label>
-                  <Input type="email" required value={formData.email || ''} onChange={e => handleInputChange('email', e.target.value)} />
+                  <Input type="email" required value={formData.seller_email || ''} onChange={e => handleInputChange('seller_email', e.target.value)} />
                 </div>
                 <div className="space-y-2">
                   <div className="flex justify-between items-center">
@@ -454,11 +443,11 @@ export default function UserRequests() {
                   <select 
                     className="flex h-10 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-900 focus-visible:ring-offset-2"
                     required
-                    value={formData.bank || ''} 
-                    onChange={e => handleInputChange('bank', e.target.value)}
+                    value={formData.bank_name || ''} 
+                    onChange={e => handleInputChange('bank_name', e.target.value)}
                   >
                     <option value="">Selecione um banco...</option>
-                    {BANK_OPTIONS.map(bank => (
+                    {availableBanks.map(bank => (
                       <option key={bank} value={bank}>{bank}</option>
                     ))}
                   </select>
@@ -470,7 +459,7 @@ export default function UserRequests() {
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div className="space-y-2">
                     <label className="text-sm font-medium">Nome Completo</label>
-                    <Input required value={formData.sellerName || ''} onChange={e => handleInputChange('sellerName', e.target.value)} />
+                    <Input required value={formData.seller_name || ''} onChange={e => handleInputChange('seller_name', e.target.value)} />
                   </div>
                   <div className="space-y-2">
                     <label className="text-sm font-medium">CPF</label>
@@ -486,18 +475,18 @@ export default function UserRequests() {
                   </div>
                   <div className="space-y-2">
                     <label className="text-sm font-medium">Data de Nascimento</label>
-                    <Input type="date" required value={formData.birthDate || ''} onChange={e => handleInputChange('birthDate', e.target.value)} />
+                    <Input type="date" required value={formData.birth_date || ''} onChange={e => handleInputChange('birth_date', e.target.value)} />
                   </div>
                   <div className="space-y-2">
                     <label className="text-sm font-medium">E-mail do Vendedor</label>
-                    <Input type="email" required value={formData.userEmail || ''} onChange={e => handleInputChange('userEmail', e.target.value)} />
+                    <Input type="email" required value={formData.seller_email || ''} onChange={e => handleInputChange('seller_email', e.target.value)} />
                   </div>
                   <div className="space-y-2">
                     <label className="text-sm font-medium">Tipo de Acesso</label>
                     <select
                       className="flex h-10 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-900 focus-visible:ring-offset-2"
-                      value={formData.requestedAccessType || ''}
-                      onChange={e => handleInputChange('requestedAccessType', e.target.value)}
+                      value={formData.access_type || ''}
+                      onChange={e => handleInputChange('access_type', e.target.value)}
                     >
                       <option value="">Selecione...</option>
                       <option value="Vendedor">Vendedor</option>
@@ -546,7 +535,7 @@ export default function UserRequests() {
 
                     <div className="md:col-span-4 space-y-2">
                       <label className="text-sm font-medium">Bairro</label>
-                      <Input value={formData.neighborhood || ''} onChange={e => handleInputChange('neighborhood', e.target.value)} />
+                      <Input value={formData.district || ''} onChange={e => handleInputChange('district', e.target.value)} />
                     </div>
 
                     <div className="md:col-span-3 space-y-2">
@@ -562,7 +551,7 @@ export default function UserRequests() {
 
                   <div className="space-y-2 md:col-span-3 mt-4">
                     <label className="text-sm font-medium">Chave Pix</label>
-                    <Input required value={formData.pixKey || ''} onChange={e => handleInputChange('pixKey', e.target.value)} />
+                    <Input required value={formData.pix_key || ''} onChange={e => handleInputChange('pix_key', e.target.value)} />
                   </div>
                 </div>
               </div>
@@ -614,25 +603,25 @@ export default function UserRequests() {
                 {filteredRequests.map((req) => (
                   <tr key={req.id} className="border-b hover:bg-slate-50/50">
                     <td className="px-4 py-3 font-medium">
-                      {new Date(req.createdAt).toLocaleDateString()}
-                      <div className="text-xs text-slate-400">{new Date(req.createdAt).toLocaleTimeString()}</div>
+                      {new Date(req.created_at).toLocaleDateString()}
+                      <div className="text-xs text-slate-400">{new Date(req.created_at).toLocaleTimeString()}</div>
                     </td>
-                    <td className="px-4 py-3 font-medium">{req.bank}</td>
+                    <td className="px-4 py-3 font-medium">{req.bank_name}</td>
                     <td className="px-4 py-3">
-                      <Badge variant="outline" className={req.tipo_solicitacao === 'reset_senha' ? 'border-orange-200 bg-orange-50 text-orange-700' : 'border-blue-200 bg-blue-50 text-blue-700'}>
-                        {req.tipo_solicitacao === 'reset_senha' ? 'Reset Senha' : 'Novo Usuário'}
+                      <Badge variant="outline" className={req.request_type === 'reset_senha' ? 'border-orange-200 bg-orange-50 text-orange-700' : 'border-blue-200 bg-blue-50 text-blue-700'}>
+                        {req.request_type === 'reset_senha' ? 'Reset Senha' : 'Novo Usuário'}
                       </Badge>
                     </td>
                     <td className="px-4 py-3">
                       <span className={`px-2 py-1 rounded-full text-xs font-medium border ${getStatusColor(req.status)}`}>
-                        {req.status}
+                        {getStatusLabel(req.status)}
                       </span>
                     </td>
                     <td className="px-4 py-3 text-slate-500">
-                      {req.data_finalizacao ? new Date(req.data_finalizacao).toLocaleDateString() : '-'}
+                      {req.finalized_at ? new Date(req.finalized_at).toLocaleDateString() : '-'}
                     </td>
-                    <td className="px-4 py-3 text-slate-500 max-w-[200px] truncate" title={req.observacao_admin}>
-                      {req.observacao_admin || '-'}
+                    <td className="px-4 py-3 text-slate-500 max-w-[200px] truncate" title={req.admin_notes}>
+                      {req.admin_notes || '-'}
                     </td>
                     <td className="px-4 py-3 text-right">
                       <Button variant="ghost" size="sm" onClick={() => setSelectedRequest(req)}>Detalhes</Button>
@@ -666,8 +655,8 @@ export default function UserRequests() {
                 <div className="space-y-1">
                   <label className="text-xs font-medium text-slate-500 uppercase">Tipo</label>
                   <div>
-                    <Badge variant="outline" className={selectedRequest.tipo_solicitacao === 'reset_senha' ? 'border-orange-200 bg-orange-50 text-orange-700' : 'border-blue-200 bg-blue-50 text-blue-700'}>
-                      {selectedRequest.tipo_solicitacao === 'reset_senha' ? 'Reset Senha' : 'Novo Usuário'}
+                    <Badge variant="outline" className={selectedRequest.request_type === 'reset_senha' ? 'border-orange-200 bg-orange-50 text-orange-700' : 'border-blue-200 bg-blue-50 text-blue-700'}>
+                      {selectedRequest.request_type === 'reset_senha' ? 'Reset Senha' : 'Novo Usuário'}
                     </Badge>
                   </div>
                 </div>
@@ -675,22 +664,22 @@ export default function UserRequests() {
                   <label className="text-xs font-medium text-slate-500 uppercase">Status</label>
                   <div>
                     <span className={`px-2 py-1 rounded-full text-xs font-medium border ${getStatusColor(selectedRequest.status)}`}>
-                      {selectedRequest.status}
+                      {getStatusLabel(selectedRequest.status)}
                     </span>
                   </div>
                 </div>
                 
-                {selectedRequest.tipo_solicitacao === 'reset_senha' ? (
+                {selectedRequest.request_type === 'reset_senha' ? (
                   <div className="md:col-span-2 border-t pt-4">
                     <h3 className="font-semibold text-slate-900 mb-3">Dados do Reset</h3>
                     <div className="space-y-4">
                       <div>
                         <label className="text-xs font-medium text-slate-500 uppercase">Banco</label>
-                        <p className="font-medium text-lg">{selectedRequest.bank}</p>
+                        <p className="font-medium text-lg">{selectedRequest.bank_name}</p>
                       </div>
                       <div>
                         <label className="text-xs font-medium text-slate-500 uppercase">Motivo</label>
-                        <p className="bg-slate-50 p-3 rounded border text-slate-700">{selectedRequest.motivo_reset}</p>
+                        <p className="bg-slate-50 p-3 rounded border text-slate-700">{selectedRequest.admin_notes}</p>
                       </div>
                     </div>
                   </div>
@@ -700,27 +689,27 @@ export default function UserRequests() {
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div>
                         <label className="text-xs font-medium text-slate-500 uppercase">Nome</label>
-                        <p>{selectedRequest.name}</p>
+                        <p>{selectedRequest.full_name}</p>
                       </div>
                       <div>
                         <label className="text-xs font-medium text-slate-500 uppercase">E-mail</label>
-                        <p>{selectedRequest.email}</p>
+                        <p>{selectedRequest.seller_email}</p>
                       </div>
                       <div>
                         <label className="text-xs font-medium text-slate-500 uppercase">Banco Solicitado</label>
-                        <p className="font-medium text-blue-700">{selectedRequest.bank}</p>
+                        <p className="font-medium text-blue-700">{selectedRequest.bank_name}</p>
                       </div>
                     </div>
                   </div>
                 )}
 
-                {selectedRequest.tipo_solicitacao === 'novo_usuario' && (
+                {selectedRequest.request_type === 'novo_usuario' && (
                   <div className="md:col-span-2 border-t pt-4">
                     <h3 className="font-semibold text-slate-900 mb-3">Dados do Vendedor</h3>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div>
                         <label className="text-xs font-medium text-slate-500 uppercase">Nome Completo</label>
-                        <p>{selectedRequest.sellerName}</p>
+                        <p>{selectedRequest.seller_name}</p>
                       </div>
                       <div>
                         <label className="text-xs font-medium text-slate-500 uppercase">CPF</label>
@@ -732,7 +721,7 @@ export default function UserRequests() {
                       </div>
                       <div>
                         <label className="text-xs font-medium text-slate-500 uppercase">Data de Nascimento</label>
-                        <p>{selectedRequest.birthDate ? new Date(selectedRequest.birthDate).toLocaleDateString() : '-'}</p>
+                        <p>{selectedRequest.birth_date ? new Date(selectedRequest.birth_date).toLocaleDateString() : '-'}</p>
                       </div>
                       <div>
                         <label className="text-xs font-medium text-slate-500 uppercase">Telefone</label>
@@ -740,32 +729,32 @@ export default function UserRequests() {
                       </div>
                       <div>
                         <label className="text-xs font-medium text-slate-500 uppercase">E-mail Pessoal</label>
-                        <p>{selectedRequest.userEmail || '-'}</p>
+                        <p>{selectedRequest.seller_email || '-'}</p>
                       </div>
                       <div className="md:col-span-2">
                         <label className="text-xs font-medium text-slate-500 uppercase">Endereço</label>
-                        <p>{selectedRequest.address || '-'}</p>
+                        <p>{`${selectedRequest.street}, ${selectedRequest.number} - ${selectedRequest.district}, ${selectedRequest.city}/${selectedRequest.state}` || '-'}</p>
                       </div>
                       <div className="md:col-span-2">
                         <label className="text-xs font-medium text-slate-500 uppercase">Chave PIX</label>
-                        <p className="font-mono bg-slate-50 p-2 rounded border">{selectedRequest.pixKey || '-'}</p>
+                        <p className="font-mono bg-slate-50 p-2 rounded border">{selectedRequest.pix_key || '-'}</p>
                       </div>
                     </div>
                   </div>
                 )}
 
-                {selectedRequest.observacao_admin && (
+                {selectedRequest.admin_notes && (
                   <div className="md:col-span-2 border-t pt-4">
                     <label className="text-xs font-medium text-slate-500 uppercase">Observação do Admin</label>
                     <p className="bg-slate-100 p-3 rounded-md text-slate-900 border border-slate-200 mt-1">
-                      {selectedRequest.observacao_admin}
+                      {selectedRequest.admin_notes}
                     </p>
                   </div>
                 )}
               </div>
               
               <div className="flex flex-col gap-4 pt-4 border-t">
-                {isAdmin && selectedRequest.status !== 'Finalizado' && selectedRequest.status !== 'Recusado' && selectedRequest.status !== 'Aprovado' && selectedRequest.status !== 'Rejeitado' && (
+                {isAdmin && selectedRequest.status === 'aguardando_criacao' && (
                   <div className="bg-slate-50 p-4 rounded-lg border">
                     <h4 className="font-medium mb-3">Ações Administrativas</h4>
                     <div className="space-y-3">
@@ -782,31 +771,31 @@ export default function UserRequests() {
                         <Button 
                           variant="outline" 
                           className="bg-white hover:bg-blue-50 text-blue-700 border-blue-200"
-                          onClick={() => updateStatus(selectedRequest.id, 'Aguardando Criação/Liberação')}
+                          onClick={() => updateStatus(selectedRequest.id, 'aguardando_criacao')}
                         >
                           Aguardando Criação
                         </Button>
                         <Button 
                           className="bg-red-600 hover:bg-red-700 text-white ml-auto" 
-                          onClick={() => updateStatus(selectedRequest.id, 'Recusado')}
+                          onClick={() => updateStatus(selectedRequest.id, 'recusado')}
                         >
                           Recusar
                         </Button>
                         <Button 
                           className="bg-emerald-600 hover:bg-emerald-700 text-white" 
                           onClick={() => {
-                            if (selectedRequest.tipo_solicitacao === 'reset_senha') {
-                              updateStatus(selectedRequest.id, 'Finalizado');
+                            if (selectedRequest.request_type === 'reset_senha') {
+                              updateStatus(selectedRequest.id, 'finalizado');
                             } else {
                               setApprovalFormData({
                                 ...approvalFormData,
-                                link_acesso: selectedRequest.bank === 'Banco Pan' ? 'https://contas.bancopan.com.br/' : ''
+                                link_acesso: selectedRequest.bank_name === 'Banco Pan' ? 'https://contas.bancopan.com.br/' : ''
                               });
                               setIsApprovalModalOpen(true);
                             }
                           }}
                         >
-                          {selectedRequest.tipo_solicitacao === 'reset_senha' ? 'Senha Atualizada' : 'Aprovar e Cadastrar'}
+                          {selectedRequest.request_type === 'reset_senha' ? 'Senha Atualizada' : 'Aprovar e Cadastrar'}
                         </Button>
                       </div>
                     </div>

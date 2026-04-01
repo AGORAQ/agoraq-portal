@@ -111,6 +111,34 @@ export interface AccessRequest {
   criado_por_admin?: string;
 }
 
+export interface BankAccessRequest {
+  id: string;
+  created_at: string;
+  updated_at: string;
+  seller_id: string;
+  seller_name: string;
+  seller_email: string;
+  bank_name: string;
+  request_type: 'novo_usuario' | 'reset_senha';
+  full_name: string;
+  cpf: string;
+  rg?: string;
+  phone?: string;
+  birth_date?: string;
+  access_type?: string;
+  cep?: string;
+  street?: string;
+  number?: string;
+  complement?: string;
+  district?: string;
+  city?: string;
+  state?: string;
+  pix_key?: string;
+  status: 'aguardando_criacao' | 'recusado' | 'finalizado' | 'aguardando_banco' | 'pendencia';
+  admin_notes?: string;
+  finalized_at?: string;
+}
+
 export interface PlatformCredential {
   id: string;
   usuario_id: string; // Referência obrigatória ao vendedor
